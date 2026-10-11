@@ -3621,10 +3621,16 @@ async function runAgent(isDaemon: boolean = false): Promise<void> {
       capabilities.permissions.addTempScope('/', true, true);
     }
   } else {
-    await channels.startAll();
+    // Listener first: a second terminal attaches the moment the daemon is
+    // up, not after every channel and bot has booted. /api/health reports
+    // 'booting' until the rest is live.
     if (config.web.enabled) {
       startWebServer();
       writeAttachToken();
+      updateWebStatus({ running: true, pid: process.pid, state: 'booting' });
+    }
+    await channels.startAll();
+    if (config.web.enabled) {
       updateWebStatus({
         running: true,
         pid: process.pid,

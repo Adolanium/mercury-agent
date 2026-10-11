@@ -100,3 +100,28 @@ function makeContext(path: string, token: string, remoteAddress: string): any {
     json: (body: unknown, status = 200) => ({ body, status }),
   };
 }
+describe('/api/health (attach liveness)', () => {
+  let home: string;
+  const previousHome = process.env.MERCURY_HOME;
+  beforeEach(() => { home = mkdtempSync(join(tmpdir(), 'mercury-health-')); process.env.MERCURY_HOME = home; });
+  afterEach(() => { if (previousHome === undefined) delete process.env.MERCURY_HOME; else process.env.MERCURY_HOME = previousHome; rmSync(home, { recursive: true, force: true }); });
+
+  it('passes the auth guard without any token — a launcher must be able to ask before it has one', async () => {
+    let nextCalled = false;
+    const result = await authGuard(makeContext('/api/health', '', '127.0.0.1'), async () => { nextCalled = true; });
+    expect(nextCalled).toBe(true);
+    expect(result).toBeUndefined();
+  });
+
+  it('answers with this process pid on loopback, and hides itself from the network', async () => {
+    const { default: statusRoutes } = await import('./api/status.js');
+    const loopback = await statusRoutes.request('http://127.0.0.1:6174/api/health', {}, { incoming: { socket: { remoteAddress: '127.0.0.1' } } });
+    expect(loopback.status).toBe(200);
+    const body = await loopback.json() as { ok: boolean; pid: number; booting: boolean };
+    expect(body.ok).toBe(true);
+    expect(body.pid).toBe(process.pid);
+    expect(typeof body.booting).toBe('boolean');
+    const remote = await statusRoutes.request('http://127.0.0.1:6174/api/health', {}, { incoming: { socket: { remoteAddress: '10.0.0.7' } } });
+    expect(remote.status).toBe(404);
+  });
+});

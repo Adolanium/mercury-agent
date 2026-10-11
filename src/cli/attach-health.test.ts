@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { waitForRuntimeHealth } from './attach.js';
+import { waitForRuntimeHealth, isFinalHealthFailure } from './attach.js';
 
 /** Fake health probe configurable per test. */
-function clientWith(behavior: () => Promise<void>): { healthCheck: () => Promise<void>; calls: () => number } {
+function clientWith(behavior: () => Promise<void>): { healthCheck: () => Promise<never>; calls: () => number } {
   let calls = 0;
   return {
-    healthCheck: async () => { calls++; return behavior(); },
+    healthCheck: async () => { calls++; await behavior(); return undefined as never; },
     calls: () => calls,
   };
 }
@@ -43,5 +43,23 @@ describe('waitForRuntimeHealth (attach boot-grace retry)', () => {
     expect(result.ok).toBe(false);
     expect(result.message).toBe('auth');
     expect(client.calls()).toBe(1);
+  });
+
+  it('does not retry a foreign process on the port — restarting would not free it', async () => {
+    const client = clientWith(async () => { throw new Error('foreign:97738:1.3.0'); });
+    const result = await waitForRuntimeHealth(client, 5_000);
+    expect(result.ok).toBe(false);
+    expect(result.message).toBe('foreign:97738:1.3.0');
+    expect(client.calls()).toBe(1);
+    expect(isFinalHealthFailure('foreign:1:x')).toBe(true);
+    expect(isFinalHealthFailure('booting')).toBe(false);
+  });
+
+  it('keeps polling a runtime that reports booting until it is live', async () => {
+    let n = 0;
+    const client = clientWith(async () => { n++; if (n < 4) throw new Error('booting'); });
+    const result = await waitForRuntimeHealth(client, 5_000);
+    expect(result.ok).toBe(true);
+    expect(client.calls()).toBe(4);
   });
 });

@@ -248,7 +248,15 @@ export function startWebServer(): { port: number; url: string } {
   const server = createAdaptorServer({ fetch: app.fetch });
   webServer = server;
 
+  let bindAttempts = 0;
   server.on('error', (err: any) => {
+    if (err?.code === 'EADDRINUSE' && bindAttempts < 10) {
+      // A previous instance shutting down keeps the port for a moment;
+      // retry before declaring the dashboard unavailable.
+      bindAttempts++;
+      setTimeout(() => server.listen(port, '127.0.0.1'), 500);
+      return;
+    }
     if (err?.code === 'EADDRINUSE') {
       // The runtime stays alive for its channels, but with no web listener
       // every attach health check fails — the launcher treats that as an

@@ -2,7 +2,7 @@ import { Context, Next } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { validateSession, getSessionCookieName, readAttachToken } from './auth.js';
 
-const PUBLIC_PATHS = new Set(['/login', '/api/auth/login', '/api/auth/logout']);
+const PUBLIC_PATHS = new Set(['/login', '/api/auth/login', '/api/auth/logout', '/api/health']);
 
 /**
  * The attach token is only honored from loopback connections. Defense in
