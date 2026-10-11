@@ -2,6 +2,7 @@
 
 ## Unreleased — instant attach
 
+- **Slash commands no longer show "Processing".** `/memory`, `/bots`, `/help` and friends are answered without the model; the turn indicator and heartbeat are raised only when a command actually falls through to a model turn. (`/memory` opens a menu that stays open as long as you use it — with the spinner up it looked like a hung agent.)
 - **`mercury` attaches instantly to a running daemon.** The daemon binds its web listener *first* at boot (channels and bots come after), an unauthenticated loopback `/api/health` answers with pid/version/booting, and the launcher polls every 250 ms instead of 750 ms. A port owned by another process (an old global install, another Mercury) is now reported in one line — *Port 6174 is owned by another Mercury (PID …) — stop it or set web.port* — instead of a 15-second wait followed by a pointless restart. The web server also retries a busy port for 5 s, so a restart right after a stop no longer loses the dashboard.
 
 ## Unreleased — bots in your pocket (ADR-023)
