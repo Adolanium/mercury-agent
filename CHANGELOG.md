@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.4.0 — Steady Mercury
+## 1.3.1 — Steady Mercury
 
 The release where Mercury stays out of your way. One process runs the fleet and your channels; the terminal just attaches to it — instantly. Bots do real work, deliver files you can find, stay online without burning tokens, and can be run from a phone. The 1.3.1 "Honest Mercury" line (chat that answers, "done" that means verified, security fixes) was never published on its own and ships here.
 
@@ -87,7 +87,7 @@ Mercury's terminal renderer moves from a heavily patched ink 5.2.1 to ink 8.0.0,
 - **Smaller patch** — four Mercury hunks remain (Static `itemKey`, freeze gate, live-region guard, cursor anchor); the rest are upstream. See `docs/ink-patch.md` and ADR-019.
 - React 19.3.
 
-### Honest Mercury — the 1.3.1 line (never published; folded into 1.4.0)
+### Honest Mercury — the earlier 1.3.1 work (never published separately)
 
 The release where Mercury stops pretending. Chat answers instead of forcing tool rounds, "done" means a check actually passed, every channel shows the same evidence, and the terminal UI takes paste, Esc and IME like a real editor. Built from a full audit (`ROADMAP.md`); every change below is covered by tests, including a replay eval harness that drives the real agent loop.
 

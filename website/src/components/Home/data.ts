@@ -12,7 +12,7 @@ export const NPM_URL = 'https://www.npmjs.com/package/@cosmicstack/mercury-agent
 export const SKILLS_URL = 'https://skills.mercuryagent.sh';
 
 /** Bump on release, together with the announcement bar in docusaurus.config.ts. */
-export const RELEASE = { version: '1.4.0', name: 'Steady Mercury', notes: '/docs/releases/1.4.0' };
+export const RELEASE = { version: '1.3.1', name: 'Steady Mercury', notes: '/docs/releases/1.3.1' };
 
 export const SEO = {
   title: 'Mercury Agent: the soul-driven AI agent, loyal only to you',
@@ -32,7 +32,7 @@ export type TermLine = {
 
 export const HERO_SCRIPT: TermLine[] = [
   { k: 'cmd', t: 'mercury' },
-  { k: 'dim', t: '☿ Mercury 1.4.0 · deepseek-chat · Ask Me mode' },
+  { k: 'dim', t: '☿ Mercury 1.3.1 · deepseek-chat · Ask Me mode' },
   { k: 'gap', t: '' },
   { k: 'in', t: 'tidy CHANGELOG for 1.3.1, push it, and open a PR' },
   { k: 'ok', t: 'git_status', n: 'read · no prompt' },
