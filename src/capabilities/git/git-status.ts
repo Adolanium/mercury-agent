@@ -1,8 +1,7 @@
 import { tool, zodSchema } from 'ai';
 import { z } from 'zod';
-import { execFileSync } from 'node:child_process';
 import type { PermissionManager } from '../permissions.js';
-import { checkGitReadPath, gitReadInvocation } from './git-path.js';
+import { checkGitReadPath, gitReadInvocation, runGit } from './git-path.js';
 
 export function createGitStatusTool(permissions: PermissionManager, getCwd: () => string) {
   return tool({
@@ -22,7 +21,7 @@ export function createGitStatusTool(permissions: PermissionManager, getCwd: () =
       try {
         const git = gitReadInvocation(args);
         if ('error' in git) return git.error;
-        const result = execFileSync(git.file, git.args, { encoding: 'utf-8', timeout: 20000, cwd: getCwd(), env: git.env });
+        const result = await runGit(git.file, git.args, { timeoutMs: 20000, cwd: getCwd(), env: git.env });
         if (!result.trim()) return 'Working tree clean — no changes.';
         return result.trim();
       } catch (err: any) {

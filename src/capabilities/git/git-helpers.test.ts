@@ -4,14 +4,15 @@ import { resolve } from 'node:path';
 // Regression tests for ROADMAP P0.4: the git helpers used to build a shell
 // string from a model-chosen path and run it through execSync with no
 // permission check. They must now (a) hand the path to git as one argv
-// element via execFileSync and (b) refuse out-of-scope paths before exec.
+// element via execFile (async — git must never hold the event loop) and
+// (b) refuse out-of-scope paths before exec.
 
 vi.mock('node:child_process', () => ({
-  execFileSync: vi.fn(() => ''),
+  execFile: vi.fn((_f: unknown, _a: unknown, _o: unknown, cb: (e: unknown, out: string, err: string) => void) => cb(null, '', '')),
   execSync: vi.fn(() => { throw new Error('execSync must not be used by git helpers'); }),
 }));
 
-import { execFileSync, execSync } from 'node:child_process';
+import { execFile, execSync } from 'node:child_process';
 import { createGitStatusTool } from './git-status.js';
 import { createGitLogTool } from './git-log.js';
 import { createGitDiffTool } from './git-diff.js';
@@ -38,8 +39,8 @@ function fakePermissions(opts: { readAllowed: boolean; shellAllowed?: boolean })
 const run = (t: any, input: Record<string, unknown>) => (t.execute as any)(input, { toolCallId: 't', messages: [] });
 
 beforeEach(() => {
-  vi.mocked(execFileSync).mockClear();
-  vi.mocked(execFileSync).mockImplementation(() => '' as any);
+  vi.mocked(execFile).mockClear();
+  vi.mocked(execFile).mockImplementation(((...a: unknown[]) => (a[3] as (...r: unknown[]) => void)(null, '', '')) as never);
   vi.mocked(execSync).mockClear();
 });
 
@@ -49,8 +50,8 @@ describe('git helpers pass the path as a single argv element (no shell)', () => 
     await run(createGitStatusTool(permissions, () => CWD), { path: INJECTED });
 
     expect(execSync).not.toHaveBeenCalled();
-    expect(execFileSync).toHaveBeenCalledTimes(1);
-    const [file, args, opts] = vi.mocked(execFileSync).mock.calls[0] as unknown as [string, string[], any];
+    expect(execFile).toHaveBeenCalledTimes(1);
+    const [file, args, opts] = vi.mocked(execFile).mock.calls[0] as unknown as [string, string[], any];
     expect(file).toBe(PINNED_GIT);
     expect(args).toEqual([...H, '-C', resolve(INJECTED), 'status', '--porcelain']);
     expect(opts.cwd).toBe(CWD);
@@ -65,7 +66,7 @@ describe('git helpers pass the path as a single argv element (no shell)', () => 
     await run(createGitLogTool(permissions, () => CWD), { path: INJECTED, count: 5 });
 
     expect(execSync).not.toHaveBeenCalled();
-    const [file, args] = vi.mocked(execFileSync).mock.calls[0] as unknown as [string, string[]];
+    const [file, args] = vi.mocked(execFile).mock.calls[0] as unknown as [string, string[]];
     expect(file).toBe(PINNED_GIT);
     expect(args).toEqual([...H, 'log', '--no-ext-diff', '--no-textconv', '--oneline', '--decorate', '-5', '--', INJECTED]);
   });
@@ -75,7 +76,7 @@ describe('git helpers pass the path as a single argv element (no shell)', () => 
     await run(createGitDiffTool(permissions, () => CWD), { path: INJECTED, staged: true });
 
     expect(execSync).not.toHaveBeenCalled();
-    const [file, args] = vi.mocked(execFileSync).mock.calls[0] as unknown as [string, string[]];
+    const [file, args] = vi.mocked(execFile).mock.calls[0] as unknown as [string, string[]];
     expect(file).toBe(PINNED_GIT);
     expect(args).toEqual([...H, 'diff', '--no-ext-diff', '--no-textconv', '--cached', '--', INJECTED]);
   });
@@ -86,21 +87,21 @@ describe('git helpers pass the path as a single argv element (no shell)', () => 
 
     await run(push, { remote: 'origin; echo pwned', branch: 'main' });
     expect(execSync).not.toHaveBeenCalled();
-    const [file, args] = vi.mocked(execFileSync).mock.calls[0] as unknown as [string, string[]];
+    const [file, args] = vi.mocked(execFile).mock.calls[0] as unknown as [string, string[]];
     expect(file).toBe('git');
     expect(args).toEqual(['push', 'origin; echo pwned', 'main']);
 
-    vi.mocked(execFileSync).mockClear();
+    vi.mocked(execFile).mockClear();
     const result = await run(push, { remote: '--receive-pack=echo pwned', branch: 'main' });
     expect(result).toMatch(/must be names/);
-    expect(execFileSync).not.toHaveBeenCalled();
+    expect(execFile).not.toHaveBeenCalled();
   });
 
   it('git_status without a path runs plain `git status --porcelain` and skips the scope check', async () => {
     const permissions = fakePermissions({ readAllowed: false });
     await run(createGitStatusTool(permissions, () => CWD), {});
     expect(permissions.checkFsAccess).not.toHaveBeenCalled();
-    const [, args] = vi.mocked(execFileSync).mock.calls[0] as unknown as [string, string[]];
+    const [, args] = vi.mocked(execFile).mock.calls[0] as unknown as [string, string[]];
     expect(args).toEqual([...H, 'status', '--porcelain']);
   });
 });
@@ -122,7 +123,7 @@ describe('git helpers reject out-of-scope paths before any exec', () => {
 
     expect(result).toMatch(DENIED);
     expect(permissions.checkFsAccess).toHaveBeenCalledWith(OUTSIDE_RESOLVED, 'read');
-    expect(execFileSync).not.toHaveBeenCalled();
+    expect(execFile).not.toHaveBeenCalled();
     expect(execSync).not.toHaveBeenCalled();
   });
 
@@ -130,7 +131,7 @@ describe('git helpers reject out-of-scope paths before any exec', () => {
     const permissions = fakePermissions({ readAllowed: false });
     await run(createGitLogTool(permissions, () => CWD), { path: '../outside' });
     expect(permissions.checkFsAccess).toHaveBeenCalledWith(resolve(CWD, '../outside'), 'read');
-    expect(execFileSync).not.toHaveBeenCalled();
+    expect(execFile).not.toHaveBeenCalled();
   });
 
   it('git_push denies before exec when the shell permission check fails', async () => {
@@ -138,7 +139,7 @@ describe('git helpers reject out-of-scope paths before any exec', () => {
     const result = await run(createGitPushTool(permissions, () => CWD), {});
     expect(result).toMatch(/^Error:/);
     expect(permissions.checkShellCommand).toHaveBeenCalledWith('git push origin');
-    expect(execFileSync).not.toHaveBeenCalled();
+    expect(execFile).not.toHaveBeenCalled();
   });
 });
 
@@ -151,13 +152,13 @@ describe('output format is unchanged', () => {
 
     // The pre-existing behaviour trims the whole result (including the
     // leading porcelain status column); keep it byte-for-byte identical.
-    vi.mocked(execFileSync).mockImplementation(() => ' M src/a.ts\n?? new.ts\n' as any);
+    vi.mocked(execFile).mockImplementation(((...a: unknown[]) => (a[3] as (...r: unknown[]) => void)(null, ' M src/a.ts\n?? new.ts\n', '')) as never);
     expect(await run(createGitStatusTool(permissions, () => CWD), {})).toBe('M src/a.ts\n?? new.ts');
   });
 
   it('surfaces git stderr as an Error line', async () => {
     const permissions = fakePermissions({ readAllowed: true });
-    vi.mocked(execFileSync).mockImplementation(() => { throw Object.assign(new Error('boom'), { stderr: 'fatal: not a git repository\n' }); });
+    vi.mocked(execFile).mockImplementation(((...a: unknown[]) => (a[3] as (...r: unknown[]) => void)(Object.assign(new Error('boom'), { stderr: 'fatal: not a git repository\n' }))) as never);
     expect(await run(createGitDiffTool(permissions, () => CWD), {})).toBe('Error: fatal: not a git repository');
   });
 });

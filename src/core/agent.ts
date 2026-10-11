@@ -1095,8 +1095,8 @@ export class Agent {
     }
     if (rawArgs === 'diff') {
       try {
-        const { execFileSync } = await import('node:child_process');
-        const diff = execFileSync('git', ['--no-pager', 'diff', '--no-color', 'HEAD'], { cwd: this.capabilities.getCwd(), encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 });
+        const { runGit } = await import('../capabilities/git/git-path.js');
+        const diff = await runGit('git', ['--no-pager', 'diff', '--no-color', 'HEAD'], { cwd: this.capabilities.getCwd(), timeoutMs: 30000 });
         await channel.send(diff.trim() ? '```\n' + (diff.length > 20000 ? diff.slice(-20000) : diff) + '\n```' : 'Working tree is clean.', msg.channelId);
       } catch (err: any) {
         await channel.send(`git diff failed: ${err?.message || String(err)}`, msg.channelId);

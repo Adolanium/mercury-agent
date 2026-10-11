@@ -1,6 +1,6 @@
 import { tool, zodSchema } from 'ai';
+import { runGit } from './git-path.js';
 import { z } from 'zod';
-import { execFileSync } from 'node:child_process';
 import { writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PermissionManager } from '../permissions.js';
@@ -21,11 +21,7 @@ export function createGitCommitTool(permissions: PermissionManager, getCwd: () =
         const cwd = getCwd();
         const msgFilePath = join(cwd, '.git', 'MERCU_MSG');
         writeFileSync(msgFilePath, fullMessage, 'utf-8');
-        const result = execFileSync('git', ['commit', '-F', msgFilePath], {
-          encoding: 'utf-8',
-          timeout: 20000,
-          cwd,
-        });
+        const result = await runGit('git', ['commit', '-F', msgFilePath], { timeoutMs: 20000, cwd: getCwd() });
         try { unlinkSync(msgFilePath); } catch {}
         return result.trim() || 'Committed successfully.';
       } catch (err: any) {

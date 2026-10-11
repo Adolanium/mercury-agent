@@ -2,6 +2,8 @@
 
 ## Unreleased — one runtime (ADR-024)
 
+- **git tools no longer hold the runtime.** `git_status/log/diff/add/commit/push` (and `/code diff`) ran git synchronously — a push over a slow link froze Telegram, every bot and the attach TUI for up to 60 s. They now run async; errors and output are unchanged.
+- **Windows service drift** is detected too (Task Scheduler XML and the Run key are read back), so a stale autostart is re-pointed on every platform.
 - **The login service follows the install.** After a reinstall (npm → binary, stable → dev, a new Node under nvm) the old LaunchAgent / systemd unit kept resurrecting the *old* daemon on every login, so the new build could never own its port. Mercury now checks what the service launches on every launch and re-points it (unloading the old job first); `mercury doctor` shows **Login service: points at this install / STALE**, and the "port owned by another Mercury" message names the service when it is the cause.
 - **The terminal no longer runs a second copy of Mercury.** Launching `mercury` with no daemon used to spawn the daemon *and* boot a full runtime in the terminal — Telegram, the scheduler and every bot ran twice, and the second copy ran on the thread that paints your keystrokes. That was the typing lag, and the Telegram "terminated by other getUpdates" (409) conflicts. Now the terminal spawns the daemon and attaches to it; a foreground runtime beside a live daemon (`mercury code`, recovery) is a terminal for the main agent only — no bots, no channels, no web port.
 - **Attach waits for a booting daemon** (token not written yet, token rotated at bind) instead of failing on the first read.

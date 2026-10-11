@@ -365,4 +365,12 @@ describe('login service drift (what the installed service actually launches)', (
     expect(parseSystemdExecStart(buildSystemdUnit(args, { mercuryHome: '/home/x/.mercury', userHome: '/home/x', pathEnv: '/usr/bin' } as never))).toEqual(args);
     expect(parseSystemdExecStart('ExecStart="/opt/My Apps/mercury" start --daemon')).toEqual(['/opt/My Apps/mercury', 'start', '--daemon']);
   });
+
+  it('reads the Windows forms back: task XML Command/Arguments and the Run-key REG_SZ data', async () => {
+    const { buildWindowsTaskXml, parseWindowsTaskXml, splitWindowsCommandLine, parseRegQueryValue } = await import('./service.js');
+    const args = ['C:\\Program Files\\nodejs\\node.exe', 'C:\\Users\\x\\AppData\\Roaming\\npm\\node_modules\\@cosmicstack\\mercury-agent\\dist\\index.js', 'start', '--daemon'];
+    expect(parseWindowsTaskXml(buildWindowsTaskXml(args, { workingDirectory: 'C:\\Users\\x' }))).toEqual(args);
+    expect(splitWindowsCommandLine('"C:\\Program Files\\mercury.exe" start --daemon')).toEqual(['C:\\Program Files\\mercury.exe', 'start', '--daemon']);
+    expect(parseRegQueryValue('\r\nHKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\r\n    MercuryAgent    REG_SZ    "C:\\mercury.exe" start\r\n', 'MercuryAgent')).toBe('"C:\\mercury.exe" start');
+  });
 });

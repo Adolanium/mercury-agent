@@ -1,6 +1,6 @@
 import { tool, zodSchema } from 'ai';
+import { runGit } from './git-path.js';
 import { z } from 'zod';
-import { execFileSync } from 'node:child_process';
 import type { PermissionManager } from '../permissions.js';
 
 export function createGitAddTool(permissions: PermissionManager, getCwd: () => string) {
@@ -13,7 +13,7 @@ export function createGitAddTool(permissions: PermissionManager, getCwd: () => s
       try {
         const permission = await permissions.checkShellCommand(`git add -- ${paths.join(' ')}`);
         if (!permission.allowed) return `Permission denied: ${permission.reason || 'git add requires approval'}`;
-        const result = execFileSync('git', ['add', '--', ...paths], { encoding: 'utf-8', timeout: 20000, cwd: getCwd() });
+        const result = await runGit('git', ['add', '--', ...paths], { timeoutMs: 20000, cwd: getCwd() });
         return `Staged ${paths.length} file(s): ${paths.join(', ')}`;
       } catch (err: any) {
         return `Error: ${err.stderr?.trim() || err.message}`;

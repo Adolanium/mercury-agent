@@ -165,10 +165,62 @@ export function parseSystemdExecStart(unit: string): string[] {
   return words;
 }
 
+/** Split a Windows command line into argv (CreateProcess quoting: "..." groups, \" inside). */
+export function splitWindowsCommandLine(line: string): string[] {
+  const words: string[] = [];
+  let i = 0;
+  const s = line.trim();
+  while (i < s.length) {
+    if (s[i] === ' ') { i++; continue; }
+    let word = '';
+    let quoted = false;
+    while (i < s.length && (quoted || s[i] !== ' ')) {
+      if (s[i] === '\\' && s[i + 1] === '"') { word += '"'; i += 2; continue; }
+      if (s[i] === '"') { quoted = !quoted; i++; continue; }
+      word += s[i++];
+    }
+    words.push(word);
+  }
+  return words;
+}
+
+/** Command + Arguments of a Task Scheduler task XML, as argv. */
+export function parseWindowsTaskXml(xml: string): string[] {
+  const unescape = (t: string) => t.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
+  const command = xml.match(/<Command>([\s\S]*?)<\/Command>/);
+  if (!command) return [];
+  const args = xml.match(/<Arguments>([\s\S]*?)<\/Arguments>/);
+  return [unescape(command[1].trim()), ...(args ? splitWindowsCommandLine(unescape(args[1])) : [])];
+}
+
+/** The REG_SZ data of a `reg query` line for one value. */
+export function parseRegQueryValue(output: string, valueName: string): string | null {
+  const line = output.split(/\r?\n/).map((l) => l.trim()).find((l) => l.startsWith(valueName + ' ') || l.startsWith(valueName + '\t'));
+  if (!line) return null;
+  const m = line.match(/REG_(?:EXPAND_)?SZ\s+(.*)$/);
+  return m ? m[1].trim() : null;
+}
+
 /** What the installed login service launches, or null when none / unknown platform. */
 export function installedServiceArgs(): string[] | null {
   try {
     if (isTermux()) return null;
+    if (process.platform === 'win32') {
+      const mode = getWindowsServiceMode();
+      if (mode === 'task') {
+        // The XML written at install is the source of truth; fall back to
+        // asking Task Scheduler (UTF-16 output, decoded by the shell).
+        const saved = join(getMercuryHome(), WIN_TASK_XML_FILE);
+        const xml = existsSync(saved) ? readFileSync(saved, 'utf-8') : execSync(`schtasks /query /tn "${WIN_TASK_NAME}" /xml`, { encoding: 'utf-8', shell: 'cmd.exe' });
+        return parseWindowsTaskXml(xml);
+      }
+      if (mode === 'run-key') {
+        const out = execSync(`reg query "${WIN_RUN_KEY}" /v ${WIN_RUN_VALUE}`, { encoding: 'utf-8', shell: 'cmd.exe' });
+        const data = parseRegQueryValue(out, WIN_RUN_VALUE);
+        return data ? splitWindowsCommandLine(data) : null;
+      }
+      return null;
+    }
     if (process.platform === 'darwin') {
       const p = join(homedir(), 'Library', 'LaunchAgents', 'com.cosmicstack.mercury.plist');
       return existsSync(p) ? parseLaunchAgentArgs(readFileSync(p, 'utf-8')) : null;
