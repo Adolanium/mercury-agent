@@ -1,30 +1,30 @@
 ---
-title: "v1.4.0 — Steady Mercury"
-sidebar_label: "v1.4.0"
+title: "v1.3.1 — Steady Mercury"
+sidebar_label: "v1.3.1"
 description: "One process runs the fleet and your channels; the terminal attaches to it instantly. Bots do real work, deliver files you can find, stay online without burning tokens, and run from your phone. Node 22, patched Ink 8, and the whole unpublished 1.3.1 line."
-keywords: [mercury, mercury-agent, release, 1.4.0, bots, fleet, telegram, node 22, ink, attach, daemon]
+keywords: [mercury, mercury-agent, release, 1.3.1, bots, fleet, telegram, node 22, ink, attach, daemon]
 ---
 
 import Head from '@docusaurus/Head';
 
 <Head>
-  <meta property="og:title" content="Mercury Agent v1.4.0 — Steady Mercury" />
+  <meta property="og:title" content="Mercury Agent v1.3.1 — Steady Mercury" />
   <meta property="og:description" content="One runtime · Instant attach · Bots that do work and stay online · Fleets with typed tasks · Telegram control · Node 22 + patched Ink 8" />
   <meta property="og:type" content="article" />
-  <meta property="og:url" content="https://mercuryagent.sh/docs/releases/1.4.0" />
+  <meta property="og:url" content="https://mercuryagent.sh/docs/releases/1.3.1" />
   <meta property="og:site_name" content="Mercury Agent — Soul-driven" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:site" content="@mercuryagent" />
-  <meta name="twitter:title" content="Mercury Agent v1.4.0 — Steady Mercury" />
+  <meta name="twitter:title" content="Mercury Agent v1.3.1 — Steady Mercury" />
   <meta name="twitter:description" content="One runtime · Instant attach · Bots that do work and stay online · Fleets with typed tasks · Telegram control · Node 22 + patched Ink 8" />
-  <link rel="canonical" href="https://mercuryagent.sh/docs/releases/1.4.0" />
+  <link rel="canonical" href="https://mercuryagent.sh/docs/releases/1.3.1" />
 </Head>
 
-# v1.4.0 — Steady Mercury
+# v1.3.1 — Steady Mercury
 
 > **The release where Mercury stays out of your way.**
 
-`1.4.0` is about the shape of the thing: **one process** runs your bots and your channels, and the terminal is a window onto it — open in under a second, closed without consequence. Bots now **do work** instead of writing notes about work, **deliver files** where you can find them, **stay online** without burning tokens, and can be run **from your phone**. Underneath, Node 22 and a patched Ink 8 renderer; alongside, everything from the unpublished 1.3.1 "Honest Mercury" line — chat that answers, "done" that means verified, and six security fixes.
+`1.3.1` is about the shape of the thing: **one process** runs your bots and your channels, and the terminal is a window onto it — open in under a second, closed without consequence. Bots now **do work** instead of writing notes about work, **deliver files** where you can find them, **stay online** without burning tokens, and can be run **from your phone**. Underneath, Node 22 and a patched Ink 8 renderer; alongside, everything from the earlier, unpublished "Honest Mercury" work — chat that answers, "done" that means verified, and six security fixes.
 
 ## At a glance
 
@@ -61,7 +61,7 @@ Your **login service follows the install**: after a reinstall (npm → binary, s
 
 `/bots cost [days]`, `/bots show <id> [runId]`, `/bots stop all` / `start all`, `/bots dlq clear`, `/bots doctor`, `/bots outputs`, `/bots fetch`. On **Telegram**: `/bots` and `/bot` in the command menu; the roster arrives with **Stop/Start · Run · Runs** per bot and **Cost · Outputs · Doctor · Stop all** — a tap runs the real command. Delivered files come back to the chat as attachments. `/bots create` on Telegram runs the full onboarding — persona, permissions tier, solo/fleet, budget — as native buttons that settle in place.
 
-## Honest Mercury — the 1.3.1 line, folded in
+## Honest Mercury — the earlier 1.3.1 work, folded in
 
 Never published on its own; everything from it ships here: chat no longer forced through tool rounds, "done" means a check actually passed, one feedback contract on every channel, `/trace`, `/new` everywhere, context window v2, memory bounds, Telegram prompt timeouts that say what they defaulted to, per-agent permission contexts, the replay eval harness, and six published security advisories (GHSA-hj5j-2689-x8r2, -xc4h-859q-mq79, -gc84-h2g2-h54w, -h2c6-h3vx-mqwh, -qjx7-rw28-6hxq, -r27w-9m8h-qwg8).
 
@@ -88,7 +88,7 @@ irm https://mercuryagent.sh/install.ps1 | iex          # Windows
 ```bash
 node -v                                   # must be 22+
 nvm install 22 && nvm alias default 22    # if it is not
-npm i -g @cosmicstack/mercury-agent@1.4.0
+npm i -g @cosmicstack/mercury-agent@1.3.1
 mercury                                   # re-points your login service, migrates bot outputs, attaches
 ```
 
