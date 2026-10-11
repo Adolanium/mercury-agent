@@ -1077,8 +1077,8 @@ export async function handleChatCommand(agent: Agent, content: string, channelTy
     if (rawArgs === 'diff') {
       const cwd = agent.capabilities.getCwd();
       try {
-        const { execFileSync } = await import('node:child_process');
-        const diff = execFileSync('git', ['--no-pager', 'diff', '--no-color', 'HEAD'], { cwd, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 });
+        const { runGit } = await import('../../capabilities/git/git-path.js');
+        const diff = await runGit('git', ['--no-pager', 'diff', '--no-color', 'HEAD'], { cwd, timeoutMs: 30000 });
         const trimmedDiff = diff.length > 20000 ? diff.slice(-20000) : diff;
         if (!trimmedDiff.trim()) {
           await channel.send('Working tree is clean — no unstaged/staged changes vs HEAD.', channelId);

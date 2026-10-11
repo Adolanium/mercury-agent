@@ -1,4 +1,5 @@
 import { resolve, isAbsolute } from 'node:path';
+import { execFile } from 'node:child_process';
 import type { PermissionManager } from '../permissions.js';
 import { readDenialMessage } from '../filesystem/verified-read.js';
 import { pinnedBinary, pinnedSearchDirs, minimalEnv } from '../shell/argv-lane.js';
@@ -48,6 +49,27 @@ export function gitReadInvocation(args: string[]): { file: string; args: string[
   const [sub, ...rest] = args;
   const body = sub === 'diff' || sub === 'log' ? [sub, '--no-ext-diff', '--no-textconv', ...rest] : args;
   return { file, args: [...GIT_READ_HARDENING, ...body], env: minimalEnv() };
+}
+
+/**
+ * Run git without holding the event loop. The sync form froze the whole
+ * runtime — Telegram, every bot, the attach TUI — for as long as git took
+ * (a push over a slow link: up to its 60 s timeout). Errors carry
+ * `stderr` and `message` exactly as execFileSync's did, so callers' catch
+ * blocks are unchanged.
+ */
+export function runGit(file: string, args: readonly string[], opts: { cwd: string; env?: NodeJS.ProcessEnv; timeoutMs: number; maxBuffer?: number }): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(file, [...args], { encoding: 'utf-8', timeout: opts.timeoutMs, cwd: opts.cwd, env: opts.env, maxBuffer: opts.maxBuffer ?? 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err) {
+        const e = err as Error & { stderr?: string };
+        if (typeof e.stderr !== 'string') e.stderr = typeof stderr === 'string' ? stderr : String(stderr ?? '');
+        reject(e);
+        return;
+      }
+      resolve(typeof stdout === 'string' ? stdout : String(stdout));
+    });
+  });
 }
 
 export const GIT_READ_HARDENING: readonly string[] = ['-c', 'core.fsmonitor=false', '-c', 'core.pager=cat', '--no-pager'];

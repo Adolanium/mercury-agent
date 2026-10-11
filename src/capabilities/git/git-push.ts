@@ -1,8 +1,7 @@
 import { tool, zodSchema } from 'ai';
 import { z } from 'zod';
-import { execFileSync } from 'node:child_process';
 import type { PermissionManager } from '../permissions.js';
-import { looksLikeGitOption } from './git-path.js';
+import { looksLikeGitOption, runGit } from './git-path.js';
 
 export function createGitPushTool(permissions: PermissionManager, getCwd: () => string) {
   return tool({
@@ -26,7 +25,7 @@ export function createGitPushTool(permissions: PermissionManager, getCwd: () => 
       }
 
       try {
-        const result = execFileSync('git', args, { encoding: 'utf-8', timeout: 60000, cwd: getCwd() });
+        const result = await runGit('git', args, { timeoutMs: 60000, cwd: getCwd() });
         return result.trim() || 'Pushed successfully.';
       } catch (err: any) {
         return `Error: ${err.stderr?.trim() || err.message}`;
