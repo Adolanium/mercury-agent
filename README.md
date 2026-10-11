@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <strong>🔖 Current Stable: v1.3.1 — Steady Mercury</strong>
+  <strong>🔖 Current Stable: v1.3.2 — Steady Mercury</strong>
 </p>
 
 <p align="center">

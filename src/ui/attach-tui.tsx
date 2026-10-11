@@ -1,4 +1,5 @@
 import React from 'react';
+import { parseAttachHandoff } from './attach-handoff.js';
 import { Box, Text, Spacer, Static, useApp, useInput } from 'ink';
 import type { AttachClient, AttachEvent, AttachThread } from '../cli/attach.js';
 import { renderMarkdown } from '../utils/markdown.js';
@@ -116,7 +117,7 @@ function AttachPromptView({ prompt, activeIdx }: { prompt: AttachPrompt; activeI
   );
 }
 
-export function AttachTui({ client, pid, onExit }: { client: AttachClient; pid: number | null; onExit: () => void }): React.ReactNode {
+export function AttachTui({ client, pid, onExit, onHandoff }: { client: AttachClient; pid: number | null; onExit: () => void; onHandoff?: (handoff: { kind: 'code'; dir?: string }) => void }): React.ReactNode {
   const { exit } = useApp();
 
   const [phase, setPhase] = React.useState<'pick' | 'chat'>('pick');
@@ -306,6 +307,10 @@ export function AttachTui({ client, pid, onExit }: { client: AttachClient; pid: 
 
   const sendInput = React.useCallback(async (text: string) => {
     if (!thread || !text.trim()) return;
+    // Mercury Code needs this terminal, not the daemon's web channel.
+    const handoff = parseAttachHandoff(text);
+    if (handoff?.kind === 'notice') { setNotice(handoff.text); return; }
+    if (handoff?.kind === 'code') { onHandoff?.(handoff); exit(); return; }
     const id = `a_local_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
     setHistory((prev) => [...prev, { id, role: 'user', content: text }]);
     setStreaming(true);
@@ -318,7 +323,7 @@ export function AttachTui({ client, pid, onExit }: { client: AttachClient; pid: 
     if (!thread.id && result.sessionId) {
       setThread({ ...thread, id: result.sessionId, alias: 'session', title: 'New session' });
     }
-  }, [client, thread]);
+  }, [client, thread, onHandoff, exit]);
 
   const resolvePrompt = React.useCallback(async (value: string) => {
     const active = prompt;

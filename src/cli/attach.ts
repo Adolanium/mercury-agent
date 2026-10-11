@@ -394,7 +394,8 @@ export interface AttachRunOptions {
   exitOnFailure?: boolean;
 }
 
-export type AttachResult = 'attached' | 'unavailable' | 'unhealthy';
+/** 'code' = the user asked for Mercury Code; MERCURY_BOOT_CODE is set and the caller boots the terminal runtime. */
+export type AttachResult = 'attached' | 'unavailable' | 'unhealthy' | 'code';
 
 /**
  * Entry point for `mercury attach` (and the auto-attach path when a second
@@ -464,12 +465,26 @@ export async function runAttach(opts: AttachRunOptions = {}): Promise<AttachResu
     }
   }
 
+  let handoff: { kind: 'code'; dir?: string } | null = null;
   const instance = render(React.createElement(AttachTui, {
     client,
     pid: target.pid,
     onExit: () => {},
+    onHandoff: (h) => { handoff = h; },
   }));
   await instance.waitUntilExit();
+  if (handoff) {
+    const h: { kind: 'code'; dir?: string } = handoff;
+    const { resolve } = await import('node:path');
+    const { existsSync, statSync } = await import('node:fs');
+    const dir = h.dir ? resolve(h.dir.replace(/^~(?=$|[\\/])/, process.env.HOME ?? '')) : '';
+    if (dir && !(existsSync(dir) && statSync(dir).isDirectory())) {
+      console.log(chalk.yellow(`  Not a directory: ${dir} — opening Mercury Code here instead.`));
+    }
+    process.env.MERCURY_BOOT_CODE = dir && existsSync(dir) ? dir : '1';
+    console.log(chalk.dim('  Opening Mercury Code in this terminal (the runtime keeps running in the background)…'));
+    return 'code';
+  }
   console.log(chalk.dim(`  Detached. Runtime still running${target.pid ? ` (PID ${target.pid})` : ''} — \`mercury stop\` stops it.`));
   return 'attached';
 }

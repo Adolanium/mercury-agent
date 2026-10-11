@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.2 — hotfix: /code from the default launch
+
+- **`/code` works again from `mercury`.** Since 1.3.1 the default launch attaches to the daemon, and `/code` typed there was forwarded to the daemon's web channel — which has no terminal to switch into — so it printed "Programming mode: Off". The attach TUI now hands the terminal to Mercury Code (`/code` or `/code <dir>`), exactly what `mercury code` does; the runtime keeps running in the background. `/code plan|auto|off` inside the attach TUI explain where to run them.
+
 ## 1.3.1 — Steady Mercury
 
 The release where Mercury stays out of your way. One process runs the fleet and your channels; the terminal just attaches to it — instantly. Bots do real work, deliver files you can find, stay online without burning tokens, and can be run from a phone. The 1.3.1 "Honest Mercury" line (chat that answers, "done" that means verified, security fixes) was never published on its own and ships here.
