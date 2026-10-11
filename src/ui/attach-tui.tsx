@@ -1,5 +1,8 @@
 import React from 'react';
 import { parseAttachHandoff } from './attach-handoff.js';
+import { LaunchPad } from './launch-pad.js';
+import { rotateTip } from './tips.js';
+import type { TuiState } from '../channels/cli.js';
 import { Box, Text, Spacer, Static, useApp, useInput } from 'ink';
 import type { AttachClient, AttachEvent, AttachThread } from '../cli/attach.js';
 import { renderMarkdown } from '../utils/markdown.js';
@@ -117,7 +120,7 @@ function AttachPromptView({ prompt, activeIdx }: { prompt: AttachPrompt; activeI
   );
 }
 
-export function AttachTui({ client, pid, onExit, onHandoff }: { client: AttachClient; pid: number | null; onExit: () => void; onHandoff?: (handoff: { kind: 'code'; dir?: string }) => void }): React.ReactNode {
+export function AttachTui({ client, pid, version, onExit, onHandoff }: { client: AttachClient; pid: number | null; version?: string; onExit: () => void; onHandoff?: (handoff: { kind: 'code'; dir?: string }) => void }): React.ReactNode {
   const { exit } = useApp();
 
   const [phase, setPhase] = React.useState<'pick' | 'chat'>('pick');
@@ -133,6 +136,8 @@ export function AttachTui({ client, pid, onExit, onHandoff }: { client: AttachCl
   const [prompt, setPrompt] = React.useState<AttachPrompt | null>(null);
   const [promptIdx, setPromptIdx] = React.useState(0);
   const [provider, setProvider] = React.useState<{ name: string; model: string } | null>(null);
+  const [tokenInfo, setTokenInfo] = React.useState<{ used: number; budget: number } | null>(null);
+  const launchTip = React.useMemo(() => rotateTip('chat')?.tip ?? null, []);
   const [notice, setNotice] = React.useState<string | null>(null);
 
   const [input, setInput] = React.useState('');
@@ -154,6 +159,9 @@ export function AttachTui({ client, pid, onExit, onHandoff }: { client: AttachCl
   React.useEffect(() => {
     let cancelled = false;
     client.listSkills().then((list) => { if (!cancelled) setSkills(list); }).catch(() => {});
+    // Launch pad rows: real state from the runtime, same as the main TUI.
+    client.currentModel().then((m) => { if (!cancelled && m) setProvider(m); }).catch(() => {});
+    client.budget().then((b) => { if (!cancelled && b) setTokenInfo({ used: b.used, budget: b.budget }); }).catch(() => {});
     client.listBots().then((list) => { if (!cancelled) setBots(list); }).catch(() => {});
     return () => { cancelled = true; };
   }, [client]);
@@ -466,10 +474,21 @@ export function AttachTui({ client, pid, onExit, onHandoff }: { client: AttachCl
   });
 
   if (phase === 'pick') {
+    // The same launch pad the main TUI opens with (ADR-024 made attach the
+    // default launch; the first screen must not get plainer for it).
+    const padState = {
+      version: version ?? 'dev',
+      agentName: 'Mercury',
+      provider,
+      skills,
+      web: { enabled: true, port: Number(new URL(client.getBaseUrl()).port) || 6174 },
+      tokenInfo: tokenInfo ? { used: tokenInfo.used, budget: tokenInfo.budget, percentage: tokenInfo.budget > 0 ? Math.round((tokenInfo.used / tokenInfo.budget) * 100) : 0 } : null,
+    } as unknown as TuiState;
     return (
       <Box flexDirection="column" paddingX={1}>
-        <Text bold color="cyan">⚿ Attach to Mercury</Text>
-        {pid != null && <Text dimColor>runtime PID {pid} · Ctrl+C cancels</Text>}
+        <LaunchPad state={padState} cols={terminalSize.cols} showDetails={false} tip={launchTip} />
+        <Text bold color="cyan">⚿ Attached to the running Mercury</Text>
+        {pid != null && <Text dimColor>runtime PID {pid} · Ctrl+C detaches (Mercury keeps running)</Text>}
         <Text> </Text>
         {!threadsLoaded ? (
           <Text dimColor>Loading sessions…</Text>

@@ -795,6 +795,17 @@ export class Agent {
       }
     }
 
+    // /stop is asynchronous: the abort lands, the turn unwinds, THEN
+    // processing clears. A command typed in that window used to be answered
+    // "Agent is busy" — wait for the stop to finish and route it normally.
+    if (this.processing && trimmed.startsWith('/') && this.currentAbortReason && !msg.metadata?.waitedForStop) {
+      void this.waitUntilIdle(5000).then(() => {
+        msg.metadata = { ...msg.metadata, waitedForStop: true };
+        this.enqueueMessage(msg);
+      });
+      return;
+    }
+
     if (this.processing && trimmed.startsWith('/')) {
       this.handleFastPathCommand(msg).catch((err) => {
         logger.error({ err, content: trimmed.slice(0, 50) }, 'Fast-path command failed');
@@ -1038,6 +1049,15 @@ export class Agent {
       return reason === 'halted' ? 'All sub-agents halted.' : 'All agents stopped, locks released, task board cleared.';
     }
     return reason === 'halted' ? 'Foreground task halted.' : 'Foreground task stopped, locks released, task board cleared.';
+  }
+
+  /** Resolves when no turn is running (or after the deadline). */
+  private waitUntilIdle(maxMs: number): Promise<void> {
+    const deadline = Date.now() + maxMs;
+    return new Promise((resolve) => {
+      const tick = () => { if (!this.processing || Date.now() >= deadline) resolve(); else setTimeout(tick, 50); };
+      tick();
+    });
   }
 
   private async handleFastPathCommand(msg: ChannelMessage): Promise<void> {

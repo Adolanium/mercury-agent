@@ -160,6 +160,30 @@ export class AttachClient {
     }
   }
 
+  getBaseUrl(): string { return this.baseUrl; }
+
+  /** Provider the runtime answers with right now (launch pad "Provider" row). */
+  async currentModel(): Promise<{ name: string; model: string } | null> {
+    try {
+      const res = await this.request('/api/chat/models');
+      if (!res.ok) return null;
+      const body = await res.json() as { current?: { name?: string; model?: string } };
+      return body.current?.name ? { name: body.current.name, model: body.current.model ?? '' } : null;
+    } catch { return null; }
+  }
+
+  /** Today's token use against the cap (launch pad "Budget" row). */
+  async budget(): Promise<{ used: number; budget: number } | null> {
+    try {
+      const res = await this.request('/api/status');
+      if (!res.ok) return null;
+      const b = await res.json() as Record<string, unknown> & { tokens?: { used?: number; budget?: number } };
+      const used = Number(b.tokensUsed ?? b.tokens?.used ?? NaN);
+      const budget = Number(b.tokenBudget ?? b.tokens?.budget ?? NaN);
+      return Number.isFinite(used) && Number.isFinite(budget) ? { used, budget } : null;
+    } catch { return null; }
+  }
+
   async listThreads(): Promise<AttachThread[]> {
     const res = await this.request('/api/chat/threads');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -466,9 +490,11 @@ export async function runAttach(opts: AttachRunOptions = {}): Promise<AttachResu
   }
 
   let handoff: { kind: 'code'; dir?: string } | null = null;
+  const info = await client.healthCheck().catch(() => null);
   const instance = render(React.createElement(AttachTui, {
     client,
     pid: target.pid,
+    version: info?.version || undefined,
     onExit: () => {},
     onHandoff: (h) => { handoff = h; },
   }));
