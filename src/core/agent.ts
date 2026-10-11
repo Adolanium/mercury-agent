@@ -2262,9 +2262,20 @@ export class Agent {
     this.currentActivity = '';
     this.completedStepCount = 0;
     this.stepNarrative = [];
-    this.markProgress('Starting...');
-    this.pushLiveActivity('Starting task');
-    const stopHeartbeat = this.startForegroundHeartbeat(msg);
+    // A slash command is handled below without the model: no "Processing"
+    // block, no heartbeat — those are raised only if it falls through to a
+    // real turn. (/memory opens a menu that blocks here for as long as it is
+    // open; with the indicator up it read as a hung agent.)
+    const isSlashCommand = msg.content.trim().startsWith('/');
+    let turnIndicatorUp = false;
+    const raiseTurnIndicator = (): void => {
+      if (turnIndicatorUp) return;
+      turnIndicatorUp = true;
+      this.markProgress('Starting...');
+      this.pushLiveActivity('Starting task');
+    };
+    if (!isSlashCommand) raiseTurnIndicator();
+    const stopHeartbeat = isSlashCommand ? () => {} : this.startForegroundHeartbeat(msg);
     const heapBaseline = process.memoryUsage().heapUsed;
     const heapAbortThreshold = taskHeapAbortThreshold(getHeapStatistics().heap_size_limit, heapBaseline);
     const heapExitThreshold = taskHeapExitThreshold(getHeapStatistics().heap_size_limit, heapBaseline);
@@ -2557,6 +2568,8 @@ export class Agent {
       //      - Ambiguous (multiple contenders bunched near the top) → ask the
       //        user to disambiguate before doing anything.
       //      - No usable match → fall through to the normal LLM loop.
+      // A command that reached the model is a real turn after all.
+      raiseTurnIndicator();
       await this.routeSkillIntent(msg, trimmed, messages);
 
       this.lifecycle.transition('responding');
