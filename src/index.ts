@@ -76,7 +76,7 @@ import { getManual } from './utils/manual.js';
 import { ask, InputClosedError } from './cli/ask.js';
 import { startBackground, stopDaemon, showLogs, getDaemonStatus, registerRuntimeProcess, releaseRuntimeProcess, restartDaemon, tryAutoDaemonize, isStandaloneBinary, getForegroundRuntimeStatus, stopForegroundRuntime } from './cli/daemon.js';
 import { runUninstall } from './cli/uninstall.js';
-import { runAttach } from './cli/attach.js';
+import { runAttach, type AttachResult } from './cli/attach.js';
 import { installService, uninstallService, showServiceStatus, isServiceInstalled, pinDaemonPathOnWindows, serviceDrift } from './cli/service.js';
 import { detectInkPatch, describeInkPatch, inkPatchFixCommand } from './ui/ink-patch-check.js';
 import { runWithWatchdog } from './cli/watchdog.js';
@@ -2229,8 +2229,22 @@ async function configure(existingConfig?: MercuryConfig): Promise<void> {
  * Auto-attach entry for launch paths that found a "running" runtime. Attach,
  * or — when the runtime proved unresponsive — heal it and boot fresh.
  */
+/**
+ * Attach, and if the user asks for Mercury Code from inside the attach TUI,
+ * boot it here: runAgent() beside the live daemon is a terminal for the
+ * main agent only (ADR-024) and honours MERCURY_BOOT_CODE.
+ */
+async function attachOrCode(opts?: Parameters<typeof runAttach>[0]): Promise<AttachResult> {
+  const result = await runAttach(opts);
+  if (result === 'code') {
+    await runAgent();
+    return 'attached';
+  }
+  return result;
+}
+
 async function attachOrHeal(): Promise<void> {
-  const result = await runAttach();
+  const result = await attachOrCode();
   if (result === 'attached') return;
   if (result !== 'unhealthy') { process.exitCode = 1; return; }
   await healRuntimeAndBoot();
@@ -2253,7 +2267,7 @@ async function bootDaemonThenAttach(): Promise<void> {
     await runAgent();
     return;
   }
-  const result = await runAttach();
+  const result = await attachOrCode();
   if (result === 'attached') return;
   // The daemon came up but we could not attach (web disabled, port taken):
   // a terminal for the main agent only — runAgent() sees the live daemon
@@ -3871,7 +3885,7 @@ program
   .command('attach')
   .description('Attach this terminal to an already-running Mercury runtime (chat + live streaming)')
   .action(async () => {
-    await runAttach({ exitOnFailure: true });
+    await attachOrCode({ exitOnFailure: true });
   });
 
 program
