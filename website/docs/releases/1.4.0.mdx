@@ -1,0 +1,95 @@
+---
+title: "v1.4.0 — Steady Mercury"
+sidebar_label: "v1.4.0"
+description: "One process runs the fleet and your channels; the terminal attaches to it instantly. Bots do real work, deliver files you can find, stay online without burning tokens, and run from your phone. Node 22, patched Ink 8, and the whole unpublished 1.3.1 line."
+keywords: [mercury, mercury-agent, release, 1.4.0, bots, fleet, telegram, node 22, ink, attach, daemon]
+---
+
+import Head from '@docusaurus/Head';
+
+<Head>
+  <meta property="og:title" content="Mercury Agent v1.4.0 — Steady Mercury" />
+  <meta property="og:description" content="One runtime · Instant attach · Bots that do work and stay online · Fleets with typed tasks · Telegram control · Node 22 + patched Ink 8" />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://mercuryagent.sh/docs/releases/1.4.0" />
+  <meta property="og:site_name" content="Mercury Agent — Soul-driven" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:site" content="@mercuryagent" />
+  <meta name="twitter:title" content="Mercury Agent v1.4.0 — Steady Mercury" />
+  <meta name="twitter:description" content="One runtime · Instant attach · Bots that do work and stay online · Fleets with typed tasks · Telegram control · Node 22 + patched Ink 8" />
+  <link rel="canonical" href="https://mercuryagent.sh/docs/releases/1.4.0" />
+</Head>
+
+# v1.4.0 — Steady Mercury
+
+> **The release where Mercury stays out of your way.**
+
+`1.4.0` is about the shape of the thing: **one process** runs your bots and your channels, and the terminal is a window onto it — open in under a second, closed without consequence. Bots now **do work** instead of writing notes about work, **deliver files** where you can find them, **stay online** without burning tokens, and can be run **from your phone**. Underneath, Node 22 and a patched Ink 8 renderer; alongside, everything from the unpublished 1.3.1 "Honest Mercury" line — chat that answers, "done" that means verified, and six security fixes.
+
+## At a glance
+
+| | |
+|---|---|
+| **One runtime** (ADR-024) | The daemon owns channels, bots and the web port; `mercury` attaches to it. No second copy of the fleet in your terminal. |
+| **Instant attach** | Listener binds first at boot; `/api/health` answers with pid/version; a foreign process on the port is named, not restarted around. |
+| **Bots that do work** (ADR-020) | Per-turn caps, outcome judged from the tool trace, daily budgets on by default, deliverables in `~/Documents/Mercury/<Bot>/`. |
+| **Fleets that coordinate** (ADR-021) | Typed tasks with one digest wake, pipelines as data, bots that remember. |
+| **Operate the fleet** (ADR-022) | `/bots cost`, `/bots show`, `/bots stop all`, DLQ clear, budget presets. |
+| **Bots in your pocket** (ADR-023) | Telegram command menu, tappable roster, files pushed to the chat, onboarding with native buttons. |
+| **Bots stay online** | No-outcome routines cool down and auto-resume; declared cadence honoured; `doctor` flags stale bots. |
+| **Node 22 + Ink 8** | Required for npm installs; binaries unaffected. Four Mercury hunks on Ink 8, upstreaming. |
+
+## One runtime — the terminal attaches
+
+Launching `mercury` with no daemon used to spawn one **and** boot a second full runtime in the terminal. Both ran the fleet on one queue, both polled Telegram (409 conflicts), and the terminal copy ran every bot turn on the thread that paints your keystrokes. Now the terminal spawns the daemon and attaches; a foreground runtime beside a live daemon (`mercury code`) is a terminal for the main agent only. The event loop is measured: `/api/health.loopLag`, and stalls ≥250 ms are logged.
+
+Your **login service follows the install**: after a reinstall (npm → binary, stable → dev, new Node) the old LaunchAgent/systemd unit/Task used to keep resurrecting the old daemon. Mercury now re-points it on launch, on macOS, Linux and Windows. `mercury doctor` → *Login service: points at this install*.
+
+## Bots that do work
+
+- **Caps and compaction** — 300k tokens / 20 min per turn; context compacted automatically.
+- **Judged by the trace** — a run is `deliverable`, `action`, `delegated`, `message` or `none`; a reply that claims more than the trace shows is flagged.
+- **Budgets by default** — 5M tokens/day per bot, 20M per fleet; warned at 80%, paused until tomorrow at 100%.
+- **Deliverables you can find** — `bot_deliver` files land in `~/Documents/Mercury/<Bot name>/`, finals on top, crew work under `work/`, README index. Legacy outputs migrate on first start.
+- **Routines honoured** — a bot.yaml cadence runs as written; bot-created routines ≥30 min; three empty runs cool a routine down (6 h → 24 h) and it resumes by itself.
+
+## Fleets that coordinate
+
+`fleet_delegate` hands several typed tasks to the crew and wakes the lead **once** with a digest. Pipelines are data in `bot.yaml` (`research → draft → check → package`), stages chain themselves, finals are promoted. Every turn starts with a digest of the last five runs and the bot's own working-state note; durable facts go into the bot's memory.
+
+## Operate it — from the terminal or a phone
+
+`/bots cost [days]`, `/bots show <id> [runId]`, `/bots stop all` / `start all`, `/bots dlq clear`, `/bots doctor`, `/bots outputs`, `/bots fetch`. On **Telegram**: `/bots` and `/bot` in the command menu; the roster arrives with **Stop/Start · Run · Runs** per bot and **Cost · Outputs · Doctor · Stop all** — a tap runs the real command. Delivered files come back to the chat as attachments. `/bots create` on Telegram runs the full onboarding — persona, permissions tier, solo/fleet, budget — as native buttons that settle in place.
+
+## Honest Mercury — the 1.3.1 line, folded in
+
+Never published on its own; everything from it ships here: chat no longer forced through tool rounds, "done" means a check actually passed, one feedback contract on every channel, `/trace`, `/new` everywhere, context window v2, memory bounds, Telegram prompt timeouts that say what they defaulted to, per-agent permission contexts, the replay eval harness, and six published security advisories (GHSA-hj5j-2689-x8r2, -xc4h-859q-mq79, -gc84-h2g2-h54w, -h2c6-h3vx-mqwh, -qjx7-rw28-6hxq, -r27w-9m8h-qwg8).
+
+## Node 22 and a patched Ink 8
+
+Mercury's terminal renderer moves to **Ink 8 + React 19**, which needs **Node 22**. Stock Ink's `<Static>` is positional — a bounded transcript remounted the whole subtree every frame — and tall frames stamped copies into scrollback on every repaint. Mercury vendors Ink 8 with four hunks (keyed static, scrollback guard, freeze gate, IME cursor anchor), verified in CI as *tarball + hunks*, and is proposing them upstream from [cosmicstack-labs/ink](https://github.com/cosmicstack-labs/ink).
+
+## Known limitations
+
+- The attach TUI (what `mercury` now opens) does not yet have bot threads (`/bots open`) or the `/telegram` / `/discord` / `/slack` menus. Use `/bots send <id> <message>`, `mercury telegram …` from the shell, or `mercury code` for the in-process TUI. First item of the next release.
+- Bots share the daemon's thread with the main agent — bounded, not isolated. `loopLag` will tell you if it ever matters.
+
+## Upgrade
+
+**Standalone binaries** — nothing to think about:
+
+```bash
+curl -fsSL https://mercuryagent.sh/install.sh | sh   # macOS / Linux
+irm https://mercuryagent.sh/install.ps1 | iex          # Windows
+```
+
+**npm** — check Node first:
+
+```bash
+node -v                                   # must be 22+
+nvm install 22 && nvm alias default 22    # if it is not
+npm i -g @cosmicstack/mercury-agent@1.4.0
+mercury                                   # re-points your login service, migrates bot outputs, attaches
+```
+
+`mercury upgrade` checks the Node requirement before it removes anything; the package refuses to install on an older Node with a readable message. `~/.mercury` carries over untouched.

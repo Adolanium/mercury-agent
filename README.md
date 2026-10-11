@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <strong>🔖 Current Stable: v1.3.0 — Mercury Bots</strong>
+  <strong>🔖 Current Stable: v1.4.0 — Steady Mercury</strong>
 </p>
 
 <p align="center">
@@ -44,7 +44,7 @@ curl -fsSL https://mercuryagent.sh/install.sh | sh
 irm https://mercuryagent.sh/install.ps1 | iex
 ```
 
-Or via npm if you already have Node.js 22+:
+Or via npm if you already have **Node.js 22+** (required since 1.4.0 — binaries carry their own runtime):
 
 ```bash
 npx @cosmicstack/mercury-agent
@@ -434,7 +434,7 @@ Output is **versioned** so older builds are never overwritten:
 ```
 release/
 ├── latest                       → symlink to most-recent version
-├── v1.3.0/
+├── v1.4.0/
 │   ├── mercury-macos-arm64
 │   ├── mercury-macos-x64
 │   ├── mercury-linux-x64

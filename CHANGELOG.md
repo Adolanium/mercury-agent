@@ -1,6 +1,22 @@
 # Changelog
 
-## Unreleased — one runtime (ADR-024)
+## 1.4.0 — Steady Mercury
+
+The release where Mercury stays out of your way. One process runs the fleet and your channels; the terminal just attaches to it — instantly. Bots do real work, deliver files you can find, stay online without burning tokens, and can be run from a phone. The 1.3.1 "Honest Mercury" line (chat that answers, "done" that means verified, security fixes) was never published on its own and ships here.
+
+### Upgrading
+
+- **Node.js 22 or newer is required for npm installs.** Standalone binaries carry their own runtime — nothing to do. On npm: run `node -v` first; on Node 20, `nvm install 22 && nvm alias default 22`, then `npm i -g @cosmicstack/mercury-agent`. `mercury upgrade` now checks this before it removes anything, and the package refuses to install on an older Node with a readable message instead of installing something that will not start.
+- **Your login service is re-pointed automatically** the first time the new build launches (it used to keep starting the old install). `mercury doctor` shows *Login service: points at this install*.
+- **First start moves bot outputs** from `~/.mercury/bots/outputs/` to `~/Documents/Mercury/<Bot name>/` (one-way; the old folder gets a README saying where things went).
+- No config migrations. `~/.mercury` (config, bots, memory, Telegram pairing) carries over untouched.
+
+### Known limitations
+
+- Launching `mercury` now attaches to the daemon (ADR-024), and the attach TUI does not yet have bot threads (`/bots open`) or the `/telegram`, `/discord`, `/slack` menus — use `/bots send <id> <message>` and `mercury telegram ...` from the shell, or `mercury code` for the in-process TUI. Closing this gap is the first item of the next release.
+- Bots still share the daemon's thread with the main agent: bounded (turn caps, async tools) but not isolated. `/api/health.loopLag` tells you if it ever matters.
+
+### One runtime (ADR-024)
 
 - **git tools no longer hold the runtime.** `git_status/log/diff/add/commit/push` (and `/code diff`) ran git synchronously — a push over a slow link froze Telegram, every bot and the attach TUI for up to 60 s. They now run async; errors and output are unchanged.
 - **Windows service drift** is detected too (Task Scheduler XML and the Run key are read back), so a stale autostart is re-pointed on every platform.
@@ -9,25 +25,25 @@
 - **Attach waits for a booting daemon** (token not written yet, token rotated at bind) instead of failing on the first read.
 - **Event-loop stall monitor**: `/api/health` reports `loopLag` (p99 / worst stall over the last 10 s) and stalls ≥250 ms are logged with a warning, so lag is a number, not a feeling.
 
-## Unreleased — instant attach
+### Instant attach
 
 - **Slash commands no longer show "Processing".** `/memory`, `/bots`, `/help` and friends are answered without the model; the turn indicator and heartbeat are raised only when a command actually falls through to a model turn. (`/memory` opens a menu that stays open as long as you use it — with the spinner up it looked like a hung agent.)
 - **`mercury` attaches instantly to a running daemon.** The daemon binds its web listener *first* at boot (channels and bots come after), an unauthenticated loopback `/api/health` answers with pid/version/booting, and the launcher polls every 250 ms instead of 750 ms. A port owned by another process (an old global install, another Mercury) is now reported in one line — *Port 6174 is owned by another Mercury (PID …) — stop it or set web.port* — instead of a 15-second wait followed by a pointless restart. The web server also retries a busy port for 5 s, so a restart right after a stop no longer loses the dashboard.
 
-## Unreleased — bots in your pocket (ADR-023)
+### Bots in your pocket (ADR-023)
 
 - **Onboarding from Telegram.** `/bots create <id> "Name" "Description"` in Telegram (or the web chat) now runs the same flow as the TUI: your next message is the persona (keep as-is or convert to the template), then permissions tier, solo vs fleet, and the daily budget — each a tap on Telegram's native buttons that settle in place. Every reply lands in the chat that asked; nothing is lost to the TUI-only bot thread any more.
 - **Telegram controls.** `/bots` and `/bot` are in Telegram's command menu; the roster arrives with buttons — Stop/Start, Run and Runs per bot, plus Cost, Outputs, Doctor and Stop all for the fleet. A tap runs the slash command behind it as if you had typed it (same permissions, same reply). `/bots outputs` carries a 📎 button per delivered file.
 - **Files, not paths.** A task asked for from Telegram (or any remote chat) comes back with its delivered files attached. `/bots fetch <id> [name|latest]` sends one on demand.
 - **`/bots doctor`** runs the fleet health check from any chat; **`/bots help`** lists the commands. The TUI's slash completion, the busy-mode `/help`, and the docs now list every `/bots` subcommand.
 
-## Unreleased — bots stay online
+### Bots stay online
 
 - **Idle, never dead.** A routine that keeps producing nothing is cooled down instead of parked: 6 hours, doubling to 24, then it resumes by itself (`/bots start` resumes it now). Budget pauses lift at midnight and queued work is pumped then.
 - **Declared cadence is honoured.** A schedule in `bot.yaml` runs as written; the 30-minute floor applies only to routines a bot creates for itself.
 - **Doctor `stale` check** flags a bot whose routine has not fired in twice its cadence; the roster shows when a cooled-down routine resumes.
 
-## Unreleased — see what the bots cost and did (ADR-022)
+### See what the bots cost and did (ADR-022)
 
 - **`/bots cost [days]`** — token spend per bot and per fleet: today against the cap, the window's runs, failures, deliveries and empty runs. Also `GET /api/bots-cost`.
 - **`/bots show <id> [runId]`** — what a run actually did: the tool trace, delivered files, the reply, and a flag when the reply claimed more than the trace shows. Also `GET /api/bots/:id/runs[/:runId]`.
@@ -36,7 +52,7 @@
 - **Onboarding budget presets** — `light` (1M/day), `standard` (the default, 5M), `heavy` (20M), a number, or `none`; the step also tells you where the bot's results will appear.
 - `GET /api/bots/:id/tasks` lists a lead's delegated tasks.
 
-## Unreleased — fleets that coordinate (ADR-021)
+### Fleets that coordinate (ADR-021)
 
 Wave 2 of the bots work: how a lead hands out work and gets it back, how a bot remembers, and how a fleet's standard job runs without a lead turn between every step.
 
@@ -46,7 +62,7 @@ Wave 2 of the bots work: how a lead hands out work and gets it back, how a bot r
 - **Cheaper crew.** `bots.fleets.crewProvider` routes crew bots without a provider of their own to a cheaper lane; leads keep the default.
 - `/bots tasks <leadId>` shows a lead's open and recent tasks from the TUI.
 
-## Unreleased — bots that do work (ADR-020)
+### Bots that do work (ADR-020)
 
 An audit of eleven days of real fleets found bots spending 617M input tokens (a median turn of 750k, the largest 6.6M), failing 38% of runs, and mostly writing notes about earlier runs. This wave gives every bot turn a governor, every routine a gate, every run an outcome verdict, and every owner a folder they can find.
 
@@ -61,7 +77,7 @@ An audit of eleven days of real fleets found bots spending 617M input tokens (a 
 - **Journal v2.** Real turn start, steps, tool calls, peak prompt size, outcome and delivered paths per run, plus a compact transcript per run (last 50 kept). `/bots journal` shows them; `mercury bots doctor` flags bots whose unattended runs mostly produce nothing, paused routines, and write access to the whole home directory.
 - Bot file tools and shell commands now resolve relative paths inside the bot's workspace, never the daemon's working directory. The roster scan ignores profile copies in `sandbox/` and `outputs/`.
 
-## Unreleased — ink 8
+### Ink 8
 
 Mercury's terminal renderer moves from a heavily patched ink 5.2.1 to ink 8.0.0, which now does most of that work itself.
 
@@ -71,11 +87,11 @@ Mercury's terminal renderer moves from a heavily patched ink 5.2.1 to ink 8.0.0,
 - **Smaller patch** — four Mercury hunks remain (Static `itemKey`, freeze gate, live-region guard, cursor anchor); the rest are upstream. See `docs/ink-patch.md` and ADR-019.
 - React 19.3.
 
-## 1.3.1 — Honest Mercury
+### Honest Mercury — the 1.3.1 line (never published; folded into 1.4.0)
 
 The release where Mercury stops pretending. Chat answers instead of forcing tool rounds, "done" means a check actually passed, every channel shows the same evidence, and the terminal UI takes paste, Esc and IME like a real editor. Built from a full audit (`ROADMAP.md`); every change below is covered by tests, including a replay eval harness that drives the real agent loop.
 
-### Conversation and feedback
+#### Conversation and feedback
 
 - **Chat is no longer forced through tool rounds** — the Mercury Code narration guard and verification gate ran in plain chat, so "make me a workout plan" could trigger up to ten tool-only rounds and end with "I couldn't get started". Both now run in execute mode only.
 - **Done means verified** — a build/test/typecheck counts as evidence only when it exits clean (timeouts and kills are failures) and runs after the last edit; otherwise the task pauses with "the last check didn't pass" instead of "Task complete". Streamed turns now reach this gate too (they reported no finish reason and skipped it).
@@ -84,7 +100,7 @@ The release where Mercury stops pretending. Chat answers instead of forcing tool
 - **`/new`** on every channel — fresh conversation, memory kept (#38).
 - **Telegram prompts** — timeouts say what they defaulted to, taps settle the card, keyboards are removed (#23).
 
-### Context, memory and speed
+#### Context, memory and speed
 
 - **Context window v2** — history is budgeted by tokens and includes a compact per-turn tool trace, so the next turn knows what was read and written. Retrieved memory goes into a per-turn system block instead of fake dialogue.
 - **Prompt caching** — the stable system prompt carries an Anthropic cache marker and no longer changes every minute.
@@ -93,27 +109,27 @@ The release where Mercury stops pretending. Chat answers instead of forcing tool
 - **Long builds** — `run_command` reports progress so a 10-minute build is not killed as a stalled provider, and stops its child when the turn is interrupted.
 - **Tool results** — read from the AI SDK v6 `output` field, so failing-loop detection works.
 
-### Terminal UI
+#### Terminal UI
 
 - **Paste** — multi-line and bracketed paste; Shift+Enter inserts a newline.
 - **Esc interrupts a turn; Ctrl+C clears input**, double-tap to quit.
 - **Concurrent prompts queue** instead of overwriting each other.
 - **Smoother streaming** — fence-aligned tail rendering, one shared tick, async git header, correct repaint on resize; grapheme-aware cursor for emoji and CJK; history persists to `~/.mercury/history`.
 
-### Platforms
+#### Platforms
 
 - **Windows** — service install via Task Scheduler XML with an HKCU Run fallback (#13); graceful stop and upgrade; wizard no longer exits silently on closed stdin (#64); update check over HTTPS.
 - **Termux** — detected on `android`; `mercury service install` writes a Termux:Boot script.
 - **Bots** — retried jobs can no longer run twice; a fleet lead's synthesis reaches its thread; "needs you" survives restarts.
 
-### Engineering
+#### Engineering
 
 - **Agent split** — command handlers moved to `src/core/commands/`; one step handler instead of four copies; `agent.ts` from 8,362 to about 5,000 lines.
 - **Replay eval harness** (`npm run eval`) in CI.
 - **CI** — binary smoke tests per OS (built, run and discarded, never published), installer and script checks, Node 24, linux-arm64, ESLint ratchet (provisional baseline), vendored-Ink integrity check.
 
 
-### Security
+#### Security
 
 - **Argv-lane auto-approval** (ADR-016) — auto-approved commands no longer go through a shell or `PATH`: they must tokenize to plain argv, use an allowlisted program with an allowed flag set, stay inside the workspace, and run via `execFile` on a binary resolved from pinned system directories with a minimal environment (#103). Everything else is shown to the user for approval. Some read-only one-liners (pipelines, `&&` chains) now prompt; see `SECURITY.md`.
 - **Reads are authorised against the real file** — symlink targets must be in scope, hard-linked files prompt, and `read_file` verifies the opened file is the one that was checked (#104).
@@ -124,7 +140,7 @@ The release where Mercury stops pretending. Chat answers instead of forcing tool
 - **SSRF guard** — unchanged; see the 1.2.3 entry below (hardened in 1.3.0 by #121 and #124; response record in `docs/security/ssrf-108-response.md`).
 - **Disclosure process** — `SECURITY.md` added (private reporting, response targets, scope); issue-closure and advisory drafts in `docs/security/2026-10-backlog-closure.md`.
 
-### Fixed
+#### Fixed
 
 - **SQLite in the standalone binaries and on toolchain-less installs** (ROADMAP P1.9, #96, ADR-018) — the binaries bundled better-sqlite3's JavaScript but never its native addon, so every SQLite probe failed inside them: Second Brain was silently disabled and bots/boards fell back to JSON. A shared driver (`src/utils/sqlite-driver.ts`) now selects **better-sqlite3 → bun:sqlite → node:sqlite → JSON**: binaries use Bun's embedded engine, Node ≥ 22.13 installs work without a compiler via `node:sqlite`, and the better-sqlite3 path is untouched. Second Brain, the bots queue, boards and the cloud pool-search cache all go through it; the pool cache now degrades to uncached instead of throwing when no engine loads. New `mercury doctor --storage` prints the active backend (with why the others were rejected), every database file, its size and row counts, and warns loudly when storage is JSON-only. `MERCURY_SQLITE_BACKEND=better-sqlite3|bun:sqlite|node:sqlite|json` forces a backend. Contract tests run the same assertions against every engine the process can load (`src/utils/sqlite-driver.test.ts`).
 - **Patched ink is bundled, not post-installed** (ROADMAP P2.4, ADR-017) — the TUI's ink fixes no longer depend on `postinstall`: `vendor/ink` (stock ink 5.2.1 + the patch set, regenerated by `scripts/vendor-ink.cjs`) is bundled into `dist`, so `--ignore-scripts` installs, Termux and the standalone binaries all run the patched renderer. `mercury doctor` reports "Ink TUI patch: vendored". Hunk-by-hunk rationale: `docs/ink-patch.md`.
