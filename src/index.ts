@@ -87,6 +87,7 @@ import { initCloudTokenStore } from './cloud/token-store.js';
 import { clearCloudRuntimeOnline, markCloudRuntimeOnline } from './cloud/runtime-status.js';
 import { startWebServer, stopWebServer, updateStatus as updateWebStatus, setUserMemory as setWebUserMemory, setWebChannel as setWebWebChannel, setScheduler as setWebScheduler, setAgentSupervisor as setWebSupervisor, setBackgroundTaskManager as setWebBgTasks, setSpotifyClient as setWebSpotify, setProgrammingMode as setWebProgrammingMode, setModelSwitchCallback as setWebModelSwitch, setCurrentProviderCallback as setWebCurrentProvider, setKanbanSupervisor as setWebKanban, setKanbanBoardManager as setWebBoardManager, setKanbanProviders as setWebKanbanProviders, setIDEProviders as setWebIDEProviders, setSessionRepository as setWebSessions, setSessionSyncEnabledCallback as setWebSessionSyncEnabled, setBotManager as setWebBotManager, setBotsWebhookSecret, setShutdownHandler } from './web/server.js';
 import { isWebAuthInitialized, setWebPassword, writeAttachToken } from './web/auth.js';
+import { startLoopLagMonitor } from './utils/loop-lag.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 let pkgVersion: string;
@@ -2239,14 +2240,31 @@ async function healRuntimeAndBoot(): Promise<void> {
   console.log(chalk.yellow('  Runtime is not responding — restarting it...'));
   await stopForegroundRuntime();
   await stopDaemon();
-  autoDaemonize();
+  await bootDaemonThenAttach();
+}
+
+/**
+ * The daemon is the runtime; the terminal attaches to it. Only when no
+ * daemon can run here (Termux, unsupported platform) does the terminal
+ * become the runtime itself.
+ */
+async function bootDaemonThenAttach(): Promise<void> {
+  if (!autoDaemonize()) {
+    await runAgent();
+    return;
+  }
+  const result = await runAttach();
+  if (result === 'attached') return;
+  // The daemon came up but we could not attach (web disabled, port taken):
+  // a terminal for the main agent only — runAgent() sees the live daemon
+  // and leaves channels, bots and the port to it.
   await runAgent();
 }
 
-function autoDaemonize(): void {
+function autoDaemonize(): boolean {
   const daemon = getDaemonStatus();
   if (daemon.running && daemon.pid) {
-    return;
+    return true;
   }
 
   console.log(chalk.dim('  Setting up background mode...'));
@@ -2275,6 +2293,7 @@ function autoDaemonize(): void {
     console.log(chalk.yellow('  Background mode not available. Run `mercury start` to set it up.'));
   }
   console.log('');
+  return getDaemonStatus().running;
 }
 
 function runPlatformDoctor(): void {
@@ -2328,6 +2347,13 @@ async function runAgent(isDaemon: boolean = false): Promise<void> {
   // launchd/systemd units carry a pinned PATH; Task Scheduler cannot.
   if (isDaemon) pinDaemonPathOnWindows();
   registerRuntimeProcess(runtimeMode);
+  // ONE runtime owns channels, bots and the web port. A foreground runtime
+  // beside a live daemon (mercury code, a recovery boot) is a terminal for
+  // the main agent only: a second fleet in the TUI process ran every bot
+  // turn on the thread that paints keystrokes, and a second Telegram poller
+  // made Telegram answer 409 to both. (ADR-024)
+  const daemonOwnsRuntime = !isDaemon && getDaemonStatus().running;
+  startLoopLagMonitor();
 
   // Crash forensics: V8 fatal errors (heap OOM etc.) print a native stack
   // that scrolls away with the TUI. Ask V8 to keep a stack trace for the
@@ -2403,6 +2429,7 @@ async function runAgent(isDaemon: boolean = false): Promise<void> {
     logger.info(`${name} is waking up (daemon mode)...`);
   }
 
+  if (daemonOwnsRuntime) logger.info({ daemonPid: getDaemonStatus().pid }, 'Background daemon owns channels, bots and web — this terminal runs the main agent only');
   const tokenBudget = new TokenBudget(config);
 
   // Initialize the shared cloud token store before providers so the
@@ -2474,7 +2501,7 @@ async function runAgent(isDaemon: boolean = false): Promise<void> {
     logger.warn(`Second brain disabled: ${SECOND_BRAIN_UNAVAILABLE_MESSAGE}`);
   }
 
-  const channels = new ChannelRegistry(config);
+  const channels = new ChannelRegistry(config, { cliOnly: daemonOwnsRuntime });
   const webChannel = new WebChannel(config.identity.name);
   channels.register('web', webChannel);
   const capabilities = new CapabilityRegistry(skillLoader, scheduler, tokenBudget, undefined, userMemory ?? undefined);
@@ -2592,6 +2619,7 @@ async function runAgent(isDaemon: boolean = false): Promise<void> {
   );
 
   agent.setSkillLoader(skillLoader);
+  agent.terminalOnly = daemonOwnsRuntime;
 
   if (supervisor) {
     agent.setSupervisor(supervisor);
@@ -2599,7 +2627,7 @@ async function runAgent(isDaemon: boolean = false): Promise<void> {
 
   // Mercury Bots: fleet manager runs outside the main message queue.
   let botManager: BotManager | undefined;
-  if (config.bots?.enabled) {
+  if (config.bots?.enabled && !daemonOwnsRuntime) {
     const bot = new BotManager({
       config,
       providers,
@@ -3564,7 +3592,9 @@ async function runAgent(isDaemon: boolean = false): Promise<void> {
     console.log(chalk.green(`  ${name} is live. Type a message and press Enter.`));
     console.log(chalk.dim('  Ctrl+C to exit · /help for commands'));
 
-    if (config.web.enabled) {
+    if (daemonOwnsRuntime) {
+      console.log(chalk.dim(`  Web, channels and bots are served by the background daemon (PID ${getDaemonStatus().pid}).`));
+    } else if (config.web.enabled) {
       startWebServer();
       // Rotate the machine-local attach token for this boot so second
       // terminals can connect without the web login flow.
@@ -3782,8 +3812,7 @@ program
       await attachOrHeal();
       return;
     }
-    autoDaemonize();
-    await runAgent();
+    await bootDaemonThenAttach();
   });
 
 program
@@ -4917,6 +4946,8 @@ program
       console.log('');
       return;
     }
+    // Mercury Code needs the in-process TUI. Beside the daemon it just
+    // spawned, runAgent() is a terminal for the main agent only (ADR-024).
     autoDaemonize();
     await runAgent();
   });

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — one runtime (ADR-024)
+
+- **The terminal no longer runs a second copy of Mercury.** Launching `mercury` with no daemon used to spawn the daemon *and* boot a full runtime in the terminal — Telegram, the scheduler and every bot ran twice, and the second copy ran on the thread that paints your keystrokes. That was the typing lag, and the Telegram "terminated by other getUpdates" (409) conflicts. Now the terminal spawns the daemon and attaches to it; a foreground runtime beside a live daemon (`mercury code`, recovery) is a terminal for the main agent only — no bots, no channels, no web port.
+- **Attach waits for a booting daemon** (token not written yet, token rotated at bind) instead of failing on the first read.
+- **Event-loop stall monitor**: `/api/health` reports `loopLag` (p99 / worst stall over the last 10 s) and stalls ≥250 ms are logged with a warning, so lag is a number, not a feeling.
+
 ## Unreleased — instant attach
 
 - **Slash commands no longer show "Processing".** `/memory`, `/bots`, `/help` and friends are answered without the model; the turn indicator and heartbeat are raised only when a command actually falls through to a model turn. (`/memory` opens a menu that stays open as long as you use it — with the spinner up it looked like a hung agent.)

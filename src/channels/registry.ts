@@ -11,8 +11,14 @@ import { logger } from '../utils/logger.js';
 export class ChannelRegistry {
   private channels: Map<ChannelType, Channel> = new Map();
 
-  constructor(config: MercuryConfig) {
+  /**
+   * @param opts.cliOnly — a foreground runtime beside a live daemon: the daemon
+   *   owns Telegram/Signal/Discord/Slack (a second poller on the same token
+   *   fights it — Telegram answers 409 to both), so only the terminal is wired.
+   */
+  constructor(config: MercuryConfig, opts: { cliOnly?: boolean } = {}) {
     this.register('cli', new CLIChannel(config.identity.name));
+    if (opts.cliOnly) return;
 
     if (config.channels.telegram.enabled && config.channels.telegram.botToken) {
       this.register('telegram', new TelegramChannel(config));
