@@ -1,7 +1,9 @@
 # Changelog
 
-## 1.3.2 — hotfix: /code from the default launch
+## 1.3.2 — hotfix: /code, the launch pad, and /stop from the default launch
 
+- **Launch pad on `mercury`.** The default launch attaches to the daemon (ADR-024) and the attach screen had dropped the launch pad — the wordmark, provider/skills/web/budget rows and tip the main TUI opens with. It is back, fed by real runtime state, above the session picker.
+- **`/stop` then a command.** `/stop` aborts asynchronously; a slash command typed before the turn finished unwinding was answered "Agent is busy…". The launcher now waits for the stop to complete (up to 5 s) and runs the command normally.
 - **`/code` works again from `mercury`.** Since 1.3.1 the default launch attaches to the daemon, and `/code` typed there was forwarded to the daemon's web channel — which has no terminal to switch into — so it printed "Programming mode: Off". The attach TUI now hands the terminal to Mercury Code (`/code` or `/code <dir>`), exactly what `mercury code` does; the runtime keeps running in the background. `/code plan|auto|off` inside the attach TUI explain where to run them.
 
 ## 1.3.1 — Steady Mercury
