@@ -4896,6 +4896,21 @@ serviceCmd
 
     console.log(chalk.dim(`  Latest: v${latestVersion}`));
 
+    // Never remove a working install for one this Node cannot run: the old
+    // package is gone before `npm i -g` prints its engines warning.
+    if (!process.versions.bun) {
+      let required = '';
+      try { required = execSync(`npm view @cosmicstack/mercury-agent@${latestVersion} engines.node`, { encoding: 'utf-8' }).trim(); } catch { /* unknown — proceed */ }
+      const need = Number((required.match(/(\d+)/) || [])[1] || 0);
+      const have = Number(process.versions.node.split('.')[0]);
+      if (need && have < need) {
+        console.log(chalk.red(`  ✗ v${latestVersion} needs Node.js ${need}+ — this is Node ${process.version}. Nothing was changed.`));
+        console.log(chalk.dim(`    Upgrade Node first:  nvm install ${need} && nvm alias default ${need}`));
+        console.log(chalk.dim('    Then reinstall:      npm i -g @cosmicstack/mercury-agent'));
+        console.log('');
+        return;
+      }
+    }
     if (latestVersion === pkgVersion) {
       console.log(chalk.green(`  ✓ Already on the latest version (v${pkgVersion})`));
       console.log('');
