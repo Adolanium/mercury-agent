@@ -100,10 +100,18 @@ export function createSseParser(): SseParser {
   };
 }
 
+export interface RuntimeHealth {
+  pid: number | null;
+  version: string;
+  booting: boolean;
+}
+
 export class AttachClient {
   constructor(
     private readonly baseUrl: string,
     private readonly token: string,
+    /** Pids a healthy answer may come from (foreground + daemon); any other pid means a foreign process owns the port. */
+    private readonly expectedPids: number[] = [],
   ) {}
 
   private headers(): Record<string, string> {
@@ -117,14 +125,35 @@ export class AttachClient {
     });
   }
 
-  /** Cheap authenticated GET to verify the runtime + token before opening the TUI. */
-  async healthCheck(timeoutMs = 3000): Promise<void> {
+  /**
+   * Is the runtime we expect answering on this port? Errors are typed by
+   * message: 'booting' (ours, not ready — retry), 'auth' (token rotated),
+   * 'foreign:<pid>:<version>' (another process owns the port — never
+   * retry, never restart), anything else = not listening yet.
+   */
+  async healthCheck(timeoutMs = 2000): Promise<RuntimeHealth> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const res = await this.request('/api/chat/models', { signal: controller.signal });
-      if (res.status === 401) throw new Error('auth');
+      const res = await this.request('/api/health', { signal: controller.signal });
+      if (res.status === 404) {
+        // Runtime older than /api/health: fall back to the authenticated probe.
+        const legacy = await this.request('/api/chat/models', { signal: controller.signal });
+        if (legacy.status === 401) throw new Error('auth');
+        if (!legacy.ok) throw new Error(`HTTP ${legacy.status}`);
+        return { pid: null, version: '', booting: false };
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = await res.json() as Partial<RuntimeHealth>;
+      const health: RuntimeHealth = { pid: typeof body.pid === 'number' ? body.pid : null, version: String(body.version ?? ''), booting: body.booting === true };
+      if (health.pid !== null && this.expectedPids.length > 0 && !this.expectedPids.includes(health.pid)) {
+        throw new Error(`foreign:${health.pid}:${health.version}`);
+      }
+      if (health.booting) throw new Error('booting');
+      // The listener is ours; make sure the token we read is the one it wrote.
+      const authed = await this.request('/api/chat/models', { signal: controller.signal });
+      if (authed.status === 401) throw new Error('auth');
+      return health;
     } finally {
       clearTimeout(timer);
     }
@@ -285,6 +314,8 @@ export interface AttachTarget {
   baseUrl: string;
   token: string;
   pid: number | null;
+  /** Every live runtime pid (foreground and daemon) — a health answer from any other pid is a foreign process. */
+  pids: number[];
 }
 
 const RUNTIME_BOOT_GRACE_MS = 15_000;
@@ -300,7 +331,8 @@ export function findAttachTarget(): AttachTarget | null {
   if (pid == null) return null;
   const token = readAttachToken();
   if (!token) return null; // runtime started before attach tokens existed, or web disabled
-  return { baseUrl: `http://127.0.0.1:${getWebPort()}`, token, pid };
+  const pids = [foreground.running ? foreground.pid : null, daemon.running ? daemon.pid : null].filter((p): p is number => typeof p === 'number');
+  return { baseUrl: `http://127.0.0.1:${getWebPort()}`, token, pid, pids };
 }
 
 /**
@@ -310,6 +342,10 @@ export function findAttachTarget(): AttachTarget | null {
  * the grace window expires. An `auth` failure is not retryable — the token
  * rotated, which means the runtime restarted while we were reading it.
  */
+export function isFinalHealthFailure(message: string): boolean {
+  return message === 'auth' || message.startsWith('foreign:');
+}
+
 export async function waitForRuntimeHealth(
   client: Pick<AttachClient, 'healthCheck'>,
   graceMs: number,
@@ -321,9 +357,9 @@ export async function waitForRuntimeHealth(
       return { ok: true };
     } catch (err) {
       const message = String((err as Error)?.message || err);
-      if (message === 'auth') return { ok: false, message };
+      if (isFinalHealthFailure(message)) return { ok: false, message };
       if (Date.now() >= deadline) return { ok: false, message };
-      await new Promise(resolve => setTimeout(resolve, 750));
+      await new Promise(resolve => setTimeout(resolve, 250));
     }
   }
 }
@@ -361,15 +397,34 @@ export async function runAttach(opts: AttachRunOptions = {}): Promise<AttachResu
     return 'unavailable';
   }
 
-  const client = new AttachClient(target.baseUrl, target.token);
+  let client = new AttachClient(target.baseUrl, target.token, target.pids);
   try {
     await client.healthCheck();
   } catch (firstErr) {
-    // Not up yet — either booting or broken. Give it the boot-grace window.
-    console.log(chalk.dim('  Waiting for the runtime to respond...'));
-    const health = await waitForRuntimeHealth(client, RUNTIME_BOOT_GRACE_MS);
+    let message = String((firstErr as Error)?.message || firstErr);
+    if (message === 'auth') {
+      // The runtime rotates its token at boot; we may have read the old one.
+      const fresh = readAttachToken();
+      if (fresh && fresh !== target.token) {
+        client = new AttachClient(target.baseUrl, fresh, target.pids);
+        try { await client.healthCheck(); message = ''; } catch (again) { message = String((again as Error)?.message || again); }
+      }
+    }
+    let health: { ok: boolean; message?: string } = { ok: message === '' , message };
+    if (!health.ok && !isFinalHealthFailure(message)) {
+      // Not up yet — booting. Poll until the listener answers.
+      console.log(chalk.dim(message === 'booting' ? '  Runtime is booting — attaching as soon as it is up...' : '  Waiting for the runtime to respond...'));
+      health = await waitForRuntimeHealth(client, RUNTIME_BOOT_GRACE_MS);
+    }
     if (health.ok === false) {
-      const message = String((firstErr as Error)?.message || firstErr);
+      message = health.message ?? message;
+      if (message.startsWith('foreign:')) {
+        const [, pid, version] = message.split(':');
+        console.error(`  Port ${new URL(target.baseUrl).port} is owned by another Mercury (PID ${pid}${version ? `, v${version}` : ''}) — the runtime you launched (PID ${target.pid}) has no web listener.`);
+        console.error(`  Stop the other one (kill ${pid}) or set web.port in mercury.yaml, then run \`mercury\` again. Restarting would not help.`);
+        if (opts.exitOnFailure) process.exitCode = 1;
+        return 'unavailable';
+      }
       if (message === 'auth') {
         console.error('  The attach token rotated — the runtime restarted since the token was read.');
         console.error('  Run `mercury attach` again.');

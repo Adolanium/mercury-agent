@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — instant attach
+
+- **`mercury` attaches instantly to a running daemon.** The daemon binds its web listener *first* at boot (channels and bots come after), an unauthenticated loopback `/api/health` answers with pid/version/booting, and the launcher polls every 250 ms instead of 750 ms. A port owned by another process (an old global install, another Mercury) is now reported in one line — *Port 6174 is owned by another Mercury (PID …) — stop it or set web.port* — instead of a 15-second wait followed by a pointless restart. The web server also retries a busy port for 5 s, so a restart right after a stop no longer loses the dashboard.
+
 ## Unreleased — bots in your pocket (ADR-023)
 
 - **Onboarding from Telegram.** `/bots create <id> "Name" "Description"` in Telegram (or the web chat) now runs the same flow as the TUI: your next message is the persona (keep as-is or convert to the template), then permissions tier, solo vs fleet, and the daily budget — each a tap on Telegram's native buttons that settle in place. Every reply lands in the chat that asked; nothing is lost to the TUI-only bot thread any more.

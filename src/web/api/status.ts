@@ -1,4 +1,8 @@
 import { Hono } from 'hono';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { isLoopbackRequest } from '../middleware.js';
 
 export interface AgentStatus {
   running: boolean;
@@ -35,6 +39,28 @@ export function getStatus(): AgentStatus {
 }
 
 const status = new Hono();
+
+let runtimeVersion = '';
+function versionString(): string {
+  if (runtimeVersion) return runtimeVersion;
+  try {
+    runtimeVersion = process.env.MERCURY_CHANNEL_VERSION
+      || JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'package.json'), 'utf8')).version
+      || '';
+  } catch { runtimeVersion = ''; }
+  return runtimeVersion;
+}
+
+/**
+ * Liveness for `mercury attach` — no auth, loopback only, answers the
+ * moment the listener is bound (before channels and bots have booted). The
+ * pid lets a launcher tell "my runtime, still booting" from "some other
+ * process owns this port" without a restart.
+ */
+status.get('/api/health', (c) => {
+  if (!isLoopbackRequest(c)) return c.json({ error: 'Not found' }, 404);
+  return c.json({ ok: true, pid: process.pid, version: versionString(), state: currentStatus.state, booting: currentStatus.state === 'booting' });
+});
 
 status.get('/api/status', (c) => {
   const s = getStatus();
