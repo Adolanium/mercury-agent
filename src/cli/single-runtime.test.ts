@@ -5,7 +5,8 @@ import { dirname, join } from 'node:path';
 import { ChannelRegistry } from '../channels/registry.js';
 import { getDefaultConfig, type MercuryConfig } from '../utils/config.js';
 
-const index = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'index.ts'), 'utf8');
+// CRLF-normalised: Windows checkouts convert line endings and the contracts below match across lines.
+const index = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'index.ts'), 'utf8').replace(/\r\n/g, '\n');
 
 /**
  * ONE runtime owns the fleet (ADR-024). Launching `mercury` with no daemon
