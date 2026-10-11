@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, writeFileSync, unlinkSync, realpathSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, writeFileSync, unlinkSync, realpathSync, readFileSync } from 'node:fs';
 import { dirname, join, posix, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
@@ -120,7 +120,7 @@ function getDistPath(): string {
  * for standalone (bun --compile) binaries it is just `<mercury> start --daemon`
  * because `process.argv[1]` is a bun-virtual path that must not be persisted.
  */
-function getServiceLaunchArgs(): string[] {
+export function getServiceLaunchArgs(): string[] {
   if (isStandaloneBinary()) {
     return [process.execPath, 'start', '--daemon'];
   }
@@ -135,6 +135,76 @@ function getServiceLaunchArgs(): string[] {
  * `'android'` on real devices) and other unsupported platforms print a hint
  * and return false so the caller can still daemonize for this session.
  */
+/** ProgramArguments of a LaunchAgent plist, in order. */
+export function parseLaunchAgentArgs(plist: string): string[] {
+  const block = plist.match(/<key>ProgramArguments<\/key>\s*<array>([\s\S]*?)<\/array>/);
+  if (!block) return [];
+  return [...block[1].matchAll(/<string>([\s\S]*?)<\/string>/g)].map((m) => m[1]
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&'));
+}
+
+/** The words of a systemd ExecStart= line (double quotes, \" inside). */
+export function parseSystemdExecStart(unit: string): string[] {
+  const line = unit.split(/\r?\n/).find((l) => l.startsWith('ExecStart='));
+  if (!line) return [];
+  const rest = line.slice('ExecStart='.length).trim();
+  const words: string[] = [];
+  let i = 0;
+  while (i < rest.length) {
+    if (rest[i] === ' ') { i++; continue; }
+    let word = '';
+    if (rest[i] === '"') {
+      i++;
+      while (i < rest.length && rest[i] !== '"') { if (rest[i] === '\\' && rest[i + 1] === '"') { word += '"'; i += 2; } else { word += rest[i++]; } }
+      i++;
+    } else {
+      while (i < rest.length && rest[i] !== ' ') word += rest[i++];
+    }
+    words.push(word);
+  }
+  return words;
+}
+
+/** What the installed login service launches, or null when none / unknown platform. */
+export function installedServiceArgs(): string[] | null {
+  try {
+    if (isTermux()) return null;
+    if (process.platform === 'darwin') {
+      const p = join(homedir(), 'Library', 'LaunchAgents', 'com.cosmicstack.mercury.plist');
+      return existsSync(p) ? parseLaunchAgentArgs(readFileSync(p, 'utf-8')) : null;
+    }
+    if (process.platform === 'linux') {
+      const p = join(homedir(), '.config', 'systemd', 'user', 'mercury.service');
+      return existsSync(p) ? parseSystemdExecStart(readFileSync(p, 'utf-8')) : null;
+    }
+  } catch { /* unreadable — treat as unknown */ }
+  return null;
+}
+
+/** The program part of a launch argv (everything before `start --daemon`). */
+function programOf(args: string[]): string {
+  const end = args.indexOf('start');
+  return (end === -1 ? args : args.slice(0, end)).join(' ');
+}
+
+/**
+ * A login service that launches a DIFFERENT install than the one running
+ * now. After a reinstall (npm → binary, stable → dev, a new Node under nvm)
+ * the old plist/unit keeps resurrecting the old daemon on every login, and
+ * the new build can never bind its port. Null when none, current, or unknown.
+ */
+export function serviceDrift(): { installed: string; expected: string } | null {
+  const installed = installedServiceArgs();
+  if (!installed || installed.length === 0) return null;
+  const expected = getServiceLaunchArgs();
+  const a = programOf(installed);
+  const b = programOf(expected);
+  const same = (x: string, y: string) => { try { return realpathSync(x) === realpathSync(y); } catch { return x === y; } };
+  const wa = a.split(' '); const wb = b.split(' ');
+  if (wa.length === wb.length && wa.every((w, i) => same(w, wb[i]))) return null;
+  return { installed: a, expected: b };
+}
+
 export function installService(): boolean {
   const platform = process.platform;
 
@@ -738,6 +808,11 @@ function installMac(): void {
   const logPath = join(opts.mercuryHome, 'daemon.log');
   const plist = buildLaunchAgentPlist(getServiceLaunchArgs(), opts);
 
+  // A loaded label ignores a rewritten plist, and KeepAlive would keep the
+  // OLD install's daemon alive — unload first, then load the new file.
+  if (existsSync(plistPath)) {
+    try { execSync(`launchctl unload ${plistPath}`, { stdio: 'pipe' }); } catch { /* not loaded */ }
+  }
   writeFileSync(plistPath, plist, 'utf-8');
 
   try {
@@ -798,6 +873,11 @@ function showMacStatus(): void {
     const output = execSync('launchctl list | grep com.cosmicstack.mercury', { encoding: 'utf-8' }).trim();
     console.log(`  ${chalk.green('Service installed and loaded')}`);
     console.log(chalk.dim(`  ${output}`));
+    const drift = serviceDrift();
+    if (drift) {
+      console.log(chalk.yellow(`  ⚠ The service launches a different install: ${drift.installed}`));
+      console.log(chalk.yellow(`    This build is: ${drift.expected} — run \`mercury service install\` to re-point it.`));
+    }
   } catch {
     console.log(`  ${chalk.yellow('Service installed but not loaded')}`);
     console.log(chalk.dim(`  Plist: ${plistPath}`));
@@ -823,7 +903,8 @@ function installLinux(): void {
   try {
     execSync('systemctl --user daemon-reload', { stdio: 'inherit' });
     execSync('systemctl --user enable mercury.service', { stdio: 'inherit' });
-    execSync('systemctl --user start mercury.service', { stdio: 'inherit' });
+    // restart, not start: a running unit keeps the OLD ExecStart until restarted.
+    execSync('systemctl --user restart mercury.service', { stdio: 'inherit' });
   } catch (err) {
     console.log(chalk.yellow('  systemd commands failed. Try running manually:'));
     console.log(chalk.dim('    systemctl --user daemon-reload'));

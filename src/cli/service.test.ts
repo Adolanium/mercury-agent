@@ -349,3 +349,20 @@ describe('service install/uninstall/status on Termux (fake HOME, platform androi
     expect(existsSync(termuxBootScriptPath(home))).toBe(false);
   });
 });
+
+describe('login service drift (what the installed service actually launches)', () => {
+  it('parses ProgramArguments back out of a LaunchAgent plist, entities included', async () => {
+    const { buildLaunchAgentPlist, parseLaunchAgentArgs } = await import('./service.js');
+    const args = ['/Users/x/.nvm/versions/node/v22.18.0/bin/node', '/Users/x/lib/node_modules/@cosmicstack/mercury-agent/dist/index.js', 'start', '--daemon'];
+    const plist = buildLaunchAgentPlist(args, { mercuryHome: '/Users/x/.mercury', userHome: '/Users/x', pathEnv: '/usr/bin:/bin' } as never);
+    expect(parseLaunchAgentArgs(plist)).toEqual(args);
+    expect(parseLaunchAgentArgs('<plist/>')).toEqual([]);
+  });
+
+  it('parses a systemd ExecStart= line with quoted words', async () => {
+    const { buildSystemdUnit, parseSystemdExecStart } = await import('./service.js');
+    const args = ['/home/x/.local/bin/mercury', 'start', '--daemon'];
+    expect(parseSystemdExecStart(buildSystemdUnit(args, { mercuryHome: '/home/x/.mercury', userHome: '/home/x', pathEnv: '/usr/bin' } as never))).toEqual(args);
+    expect(parseSystemdExecStart('ExecStart="/opt/My Apps/mercury" start --daemon')).toEqual(['/opt/My Apps/mercury', 'start', '--daemon']);
+  });
+});

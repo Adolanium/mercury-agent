@@ -77,7 +77,7 @@ import { ask, InputClosedError } from './cli/ask.js';
 import { startBackground, stopDaemon, showLogs, getDaemonStatus, registerRuntimeProcess, releaseRuntimeProcess, restartDaemon, tryAutoDaemonize, isStandaloneBinary, getForegroundRuntimeStatus, stopForegroundRuntime } from './cli/daemon.js';
 import { runUninstall } from './cli/uninstall.js';
 import { runAttach } from './cli/attach.js';
-import { installService, uninstallService, showServiceStatus, isServiceInstalled, pinDaemonPathOnWindows } from './cli/service.js';
+import { installService, uninstallService, showServiceStatus, isServiceInstalled, pinDaemonPathOnWindows, serviceDrift } from './cli/service.js';
 import { detectInkPatch, describeInkPatch, inkPatchFixCommand } from './ui/ink-patch-check.js';
 import { runWithWatchdog } from './cli/watchdog.js';
 import { setGitHubToken } from './utils/github.js';
@@ -2274,7 +2274,15 @@ function autoDaemonize(): boolean {
   // the wizard flow completes on phones too.
   let serviceInstalled = false;
   try {
-    serviceInstalled = isServiceInstalled() || installService();
+    // A service left behind by a previous install (npm global, an older
+    // binary) resurrects THAT daemon on every login — the new build then
+    // never owns the port. Re-point it before starting anything.
+    const drift = serviceDrift();
+    if (drift) {
+      console.log(chalk.yellow(`  Login service launches an older install: ${drift.installed}`));
+      console.log(chalk.yellow(`  Re-pointing it to this build: ${drift.expected}`));
+    }
+    serviceInstalled = (isServiceInstalled() && !drift) || installService();
   } catch {
     console.log(chalk.dim('  Service install skipped (can run `mercury service install` later).'));
   }
@@ -2319,6 +2327,10 @@ function runPlatformDoctor(): void {
   console.log(`  SSH session:        ${sshSession ? chalk.yellow('yes') : chalk.green('no')}`);
   console.log(`  CI environment:     ${ci ? chalk.yellow('yes') : chalk.green('no')}`);
   console.log(`  Daemon:             ${daemon.running ? chalk.green(`running (PID: ${daemon.pid})`) : chalk.dim('not running')}`);
+  {
+    const drift = serviceDrift();
+    console.log(`  Login service:      ${!isServiceInstalled() ? chalk.dim('not installed') : drift ? chalk.red(`STALE — launches ${drift.installed} (run mercury service install)`) : chalk.green('points at this install')}`);
+  }
   console.log(`  Spotify inline art: ${canInlineArt ? chalk.green('supported (iTerm local)') : chalk.dim('disabled/fallback mode')}`);
   const inkPatch = detectInkPatch();
   console.log(`  Ink TUI patch:      ${inkPatch.patched ? chalk.green(describeInkPatch(inkPatch)) : chalk.red(describeInkPatch(inkPatch))}`);

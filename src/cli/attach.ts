@@ -1,4 +1,5 @@
 import { getForegroundRuntimeStatus, getDaemonStatus } from './daemon.js';
+import { serviceDrift } from './service.js';
 import { getWebPort, readAttachToken } from '../web/auth.js';
 
 /**
@@ -442,7 +443,12 @@ export async function runAttach(opts: AttachRunOptions = {}): Promise<AttachResu
       if (message.startsWith('foreign:')) {
         const [, pid, version] = message.split(':');
         console.error(`  Port ${new URL(target.baseUrl).port} is owned by another Mercury (PID ${pid}${version ? `, v${version}` : ''}) — the runtime you launched (PID ${target.pid}) has no web listener.`);
-        console.error(`  Stop the other one (kill ${pid}) or set web.port in mercury.yaml, then run \`mercury\` again. Restarting would not help.`);
+        const drift = serviceDrift();
+        if (drift) {
+          console.error(`  Your login service starts that older install (${drift.installed}) on every login — run \`mercury service install\` to point it at this build, then \`mercury\` again.`);
+        } else {
+          console.error(`  Stop the other one (kill ${pid}) or set web.port in mercury.yaml, then run \`mercury\` again. Restarting would not help.`);
+        }
         if (opts.exitOnFailure) process.exitCode = 1;
         return 'unavailable';
       }
