@@ -544,6 +544,12 @@ export class Agent {
   supervisor?: import('../core/supervisor.js').SubAgentSupervisor;
   botManager?: import('../bots/bot-manager.js').BotManager;
   /** Bot awaiting a persona from the next message (post-create setup flow). */
+  /**
+   * A terminal beside a live daemon (ADR-024): the daemon owns persisted
+   * schedules, interrupted-work recovery and undelivered replies — running
+   * them here too would fire every cron twice and replay work twice.
+   */
+  terminalOnly = false;
   pendingPersonaFor: string | null = null;
   /** The chat whose next message is the persona (Telegram/web/Discord — channels without a bot thread). */
   pendingPersonaChannelId: string | null = null;
@@ -1987,14 +1993,18 @@ export class Agent {
   async wake(): Promise<void> {
     this.lifecycle.transition('onboarding');
     this.lifecycle.transition('idle');
-    this.scheduler.restorePersistedTasks();
-    this.scheduler.startHeartbeat();
+    if (!this.terminalOnly) {
+      this.scheduler.restorePersistedTasks();
+      this.scheduler.startHeartbeat();
+    }
     await this.channels.startAll();
     this.running = true;
 
-    const recovered = this.workLedger.recoverInterrupted();
-    for (const entry of recovered) this.queueMessage(entry.message, entry.key);
-    await this.replayUndeliveredResponses();
+    if (!this.terminalOnly) {
+      const recovered = this.workLedger.recoverInterrupted();
+      for (const entry of recovered) this.queueMessage(entry.message, entry.key);
+      await this.replayUndeliveredResponses();
+    }
     this.startOutboxRetry();
     void this.processQueue();
 

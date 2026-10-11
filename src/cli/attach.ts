@@ -346,21 +346,44 @@ export function isFinalHealthFailure(message: string): boolean {
   return message === 'auth' || message.startsWith('foreign:');
 }
 
+type HealthProbe = Pick<AttachClient, 'healthCheck'>;
+
+/**
+ * `client` may be a factory: a fresh client per attempt re-reads the attach
+ * token, which a booting daemon rotates at bind time — then 'auth' is
+ * retried until the grace window ends instead of failing on the first read.
+ */
 export async function waitForRuntimeHealth(
-  client: Pick<AttachClient, 'healthCheck'>,
+  client: HealthProbe | (() => HealthProbe | null),
   graceMs: number,
 ): Promise<{ ok: boolean; message?: string }> {
   const deadline = Date.now() + graceMs;
+  const factory = typeof client === 'function';
   for (;;) {
     try {
-      await client.healthCheck();
+      const probe = factory ? (client as () => HealthProbe | null)() : (client as HealthProbe);
+      if (!probe) throw new Error('no attach token yet');
+      await probe.healthCheck();
       return { ok: true };
     } catch (err) {
       const message = String((err as Error)?.message || err);
-      if (isFinalHealthFailure(message)) return { ok: false, message };
+      if (message.startsWith('foreign:')) return { ok: false, message };
+      if (message === 'auth' && !factory) return { ok: false, message };
       if (Date.now() >= deadline) return { ok: false, message };
       await new Promise(resolve => setTimeout(resolve, 250));
     }
+  }
+}
+
+/** A runtime pid is alive but has not written its attach token yet (booting). */
+async function waitForAttachTarget(graceMs: number): Promise<AttachTarget | null> {
+  const deadline = Date.now() + graceMs;
+  for (;;) {
+    const target = findAttachTarget();
+    if (target) return target;
+    const alive = getForegroundRuntimeStatus().running || getDaemonStatus().running;
+    if (!alive || Date.now() >= deadline) return null;
+    await new Promise(resolve => setTimeout(resolve, 250));
   }
 }
 
@@ -384,7 +407,7 @@ export async function runAttach(opts: AttachRunOptions = {}): Promise<AttachResu
   const { AttachTui } = await import('../ui/attach-tui.js');
   const chalk = (await import('chalk')).default;
 
-  const target = findAttachTarget();
+  const target = await waitForAttachTarget(RUNTIME_BOOT_GRACE_MS);
   if (!target) {
     const runtimeRunning = getForegroundRuntimeStatus().running || getDaemonStatus().running;
     if (!runtimeRunning) {
@@ -397,24 +420,22 @@ export async function runAttach(opts: AttachRunOptions = {}): Promise<AttachResu
     return 'unavailable';
   }
 
+  // A fresh client per attempt: the token file is re-read, so a daemon that
+  // rotates its token while booting is caught up with instead of refused.
+  const freshClient = (): AttachClient | null => {
+    const token = readAttachToken();
+    return token ? new AttachClient(target.baseUrl, token, target.pids) : null;
+  };
   let client = new AttachClient(target.baseUrl, target.token, target.pids);
   try {
     await client.healthCheck();
   } catch (firstErr) {
     let message = String((firstErr as Error)?.message || firstErr);
-    if (message === 'auth') {
-      // The runtime rotates its token at boot; we may have read the old one.
-      const fresh = readAttachToken();
-      if (fresh && fresh !== target.token) {
-        client = new AttachClient(target.baseUrl, fresh, target.pids);
-        try { await client.healthCheck(); message = ''; } catch (again) { message = String((again as Error)?.message || again); }
-      }
-    }
-    let health: { ok: boolean; message?: string } = { ok: message === '' , message };
-    if (!health.ok && !isFinalHealthFailure(message)) {
-      // Not up yet — booting. Poll until the listener answers.
+    let health: { ok: boolean; message?: string } = { ok: false, message };
+    if (!message.startsWith('foreign:')) {
       console.log(chalk.dim(message === 'booting' ? '  Runtime is booting — attaching as soon as it is up...' : '  Waiting for the runtime to respond...'));
-      health = await waitForRuntimeHealth(client, RUNTIME_BOOT_GRACE_MS);
+      health = await waitForRuntimeHealth(freshClient, RUNTIME_BOOT_GRACE_MS);
+      if (health.ok) client = freshClient() ?? client;
     }
     if (health.ok === false) {
       message = health.message ?? message;

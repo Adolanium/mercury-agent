@@ -62,4 +62,19 @@ describe('waitForRuntimeHealth (attach boot-grace retry)', () => {
     expect(result.ok).toBe(true);
     expect(client.calls()).toBe(4);
   });
+
+  it('with a client factory, a rotated token (auth) is retried until the fresh token works', async () => {
+    let n = 0;
+    const factory = () => clientWith(async () => { n++; if (n < 3) throw new Error('auth'); });
+    const result = await waitForRuntimeHealth(factory, 5_000);
+    expect(result.ok).toBe(true);
+    expect(n).toBe(3);
+  });
+
+  it('a factory that has no token yet keeps waiting instead of failing', async () => {
+    let n = 0;
+    const result = await waitForRuntimeHealth(() => (++n < 3 ? null : clientWith(async () => {})), 5_000);
+    expect(result.ok).toBe(true);
+    expect(n).toBe(3);
+  });
 });
