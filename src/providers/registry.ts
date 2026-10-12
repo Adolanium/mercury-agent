@@ -48,6 +48,10 @@ export class ProviderRegistry {
   private providers: Map<string, BaseProvider> = new Map();
   private defaultName: string;
   private lastSuccessful: string | null = null;
+  /** Providers that answered 401 this process: a wrong key does not fix itself between turns. */
+  private authFailed?: Set<string>;
+  private warnedUnusableDefault = false;
+  private get rejected(): Set<string> { return (this.authFailed ??= new Set<string>()); }
 
   private constructor(defaultName: string) {
     this.defaultName = defaultName;
@@ -124,6 +128,27 @@ export class ProviderRegistry {
   updateApiKey(name: string, apiKey: string): void {
     const provider = this.providers.get(name) as (BaseProvider & { updateToken?: (token: string) => void }) | undefined;
     provider?.updateToken?.(apiKey);
+    this.rejected.delete(name);
+  }
+
+  /** The provider rejected its key (401). It is skipped for defaults, fallbacks and bots until the key changes. */
+  markAuthFailure(name: string): void {
+    if (this.rejected.has(name)) return;
+    this.rejected.add(name);
+    logger.warn({ provider: name }, 'Provider rejected its API key — skipping it until the key is updated (mercury doctor)');
+  }
+
+  /** Registered, has credentials, and has not been rejected for them. */
+  isUsable(name: string): boolean {
+    const provider = this.providers.get(name);
+    // Test doubles may omit isAvailable; a registered provider without the
+    // method is treated as available.
+    const available = typeof provider?.isAvailable === "function" ? provider.isAvailable() : !!provider;
+    return !!provider && available && !this.rejected.has(name);
+  }
+
+  getUsable(name: string | undefined): BaseProvider | undefined {
+    return name && this.isUsable(name) ? this.providers.get(name) : undefined;
   }
 
   getDefault(): BaseProvider {
@@ -132,13 +157,25 @@ export class ProviderRegistry {
     // failure silently moved every following turn — often to a weaker
     // model — until restart. The fallback chain still handles outages per
     // turn; lastSuccessful is kept for diagnostics only.
+    //
+    // "Leads" means: when it can actually answer. A default with no key, or
+    // one whose key was rejected, hands over to the first usable provider —
+    // a bot created from a phone must never fail every turn because the
+    // configured default has a typo in its key.
     const provider = this.providers.get(this.defaultName);
-    if (!provider) {
-      const first = this.providers.values().next().value;
-      if (!first) throw new Error('No LLM providers available — configure API keys');
-      return first;
+    if (provider && this.isUsable(this.defaultName)) return provider;
+    const usable = [...this.providers.entries()].find(([name]) => this.isUsable(name))?.[1];
+    if (usable) {
+      if (!this.warnedUnusableDefault) {
+        this.warnedUnusableDefault = true;
+        logger.warn({ default: this.defaultName, using: usable.name }, 'Default provider is not usable (no key, or key rejected) — using the first usable provider');
+      }
+      return usable;
     }
-    return provider;
+    if (provider) return provider;
+    const first = this.providers.values().next().value;
+    if (!first) throw new Error('No LLM providers available — configure API keys');
+    return first;
   }
 
   getFallbackIterator(preferredName?: string): IterableIterator<BaseProvider> {
@@ -147,8 +184,8 @@ export class ProviderRegistry {
     const defaultProvider = preferredProvider || this.getDefault();
     ordered.push(defaultProvider);
     const rest: BaseProvider[] = [];
-    for (const [, provider] of this.providers) {
-      if (provider !== defaultProvider) {
+    for (const [name, provider] of this.providers) {
+      if (provider !== defaultProvider && !this.rejected.has(name)) {
         rest.push(provider);
       }
     }

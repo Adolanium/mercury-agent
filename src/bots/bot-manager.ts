@@ -819,8 +819,17 @@ export class BotManager {
       // a failure that will retry is not an escalation; one headed for the
       // DLQ is (the flag is durable via the row — the constructor rehydrates
       // it from the newest journal row on restart).
+      // A rejected key is permanent for THAT provider, not for the bot:
+      // remember it, and if another usable provider exists the next attempt
+      // runs there (resolveProvider skips rejected providers).
+      let authSwitch = false;
+      const usedProvider = turn.input.provider?.name;
+      if (output.status === 'failed' && output.reasonCode === 'provider_auth' && usedProvider) {
+        this.providers.markAuthFailure?.(usedProvider);
+        authSwitch = resolveProvider(this.providers, manifest, this.config).name !== usedProvider;
+      }
       const willRetry = output.status === 'failed' && !!output.reasonCode
-        && isTransientFailure(output.reasonCode) && job.attempts + 1 < MAX_TRANSIENT_ATTEMPTS;
+        && (isTransientFailure(output.reasonCode) || authSwitch) && job.attempts + 1 < MAX_TRANSIENT_ATTEMPTS;
       const turnLimited = output.status === 'failed' && isTurnLimitFailure(output.reasonCode);
       const routineKey = job.trigger === 'cron' ? (job.routineId ?? `bot:${botId}:cron`) : undefined;
       const record: BotRunRecord = {
@@ -2095,15 +2104,16 @@ export class BotManager {
 
 function resolveProvider(providers: ProviderRegistry, manifest: BotManifest, config?: MercuryConfig) {
   const requested = manifest.model?.provider;
-  const provider = requested ? providers.get(requested) : undefined;
+  const getUsable = typeof providers.getUsable === 'function' ? providers.getUsable.bind(providers) : (name?: string) => (name ? providers.get(name) : undefined);
+  const provider = getUsable(requested);
   if (provider) return provider;
   if (requested) {
-    logger.warn({ botId: manifest.id, requested }, 'Bot provider not registered — falling back to default');
+    logger.warn({ botId: manifest.id, requested }, 'Bot provider not registered or not usable (no key / key rejected) — falling back to default');
   }
   // Crew lane (ADR-021): stage work on a cheaper provider when the fleet
   // config names one and the crew bot has no choice of its own.
   const crewProvider = manifest.parent ? config?.bots?.fleets?.crewProvider : undefined;
-  const crewLane = crewProvider ? providers.get(crewProvider) : undefined;
+  const crewLane = getUsable(crewProvider);
   if (crewLane) return crewLane;
   return providers.getDefault();
 }

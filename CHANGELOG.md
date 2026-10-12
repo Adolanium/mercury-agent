@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.3 — hotfix: bots always get a provider that works
+
+- **A bot never fails on a provider that cannot answer.** A new bot (from Telegram, the TUI or the web) runs on the default LLM; if the configured default has no key or its key is rejected (401), Mercury uses the first usable provider instead, and a provider that rejects its key is remembered and skipped — for bots, the main agent's fallback chain and the default — until the key is changed. A bot turn that hit a bad key now retries on another provider instead of dead-lettering.
+- **`mercury doctor` flags keys that cannot be right** (e.g. an OpenAI key that starts with `2sk-` instead of `sk-`) before anything is tried.
+
 ## 1.3.2 — hotfix: /code, the launch pad, and /stop from the default launch
 
 - **Launch pad on `mercury`.** The default launch attaches to the daemon (ADR-024) and the attach screen had dropped the launch pad — the wordmark, provider/skills/web/budget rows and tip the main TUI opens with. It is back, fed by real runtime state, above the session picker.
