@@ -392,6 +392,67 @@ jobs:
           grep -q 'Checksum mismatch' "$RUNNER_TEMP/tampered.log"
           test ! -e "$MERCURY_INSTALL/bin/mercury"
 
+  installer-windows:
+    name: Installer dry run (install.ps1, Windows PowerShell 5.1, local release dir)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build a fake release directory (real stub exe) and serve it as application/octet-stream
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $rel = Join-Path $env:RUNNER_TEMP 'fake-release\v9.9.9'
+          New-Item -ItemType Directory -Force -Path (Join-Path $rel 'web') | Out-Null
+          # A real .exe for the post-install smoke (--version). csc ships with the .NET Framework on every Windows runner.
+          $src = Join-Path $env:RUNNER_TEMP 'stub.cs'
+          'class P { static int Main(string[] a) { System.Console.WriteLine("9.9.9"); return 0; } }' | Set-Content -Path $src -Encoding ASCII
+          $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          & $csc /nologo /out:(Join-Path $rel 'mercury-win-x64.exe') $src
+          '<!doctype html><title>stub dashboard</title>' | Set-Content -Path (Join-Path $rel 'web\index.html') -Encoding ASCII
+          tar -C $rel -czf (Join-Path $rel 'web.tar.gz') web
+          $lines = foreach ($a in 'mercury-win-x64.exe', 'web.tar.gz') { "{0}  {1}" -f (Get-FileHash -Algorithm SHA256 (Join-Path $rel $a)).Hash.ToLower(), $a }
+          # LF line endings, no BOM: what the release pipeline publishes.
+          [IO.File]::WriteAllText((Join-Path $rel 'checksums.txt'), (($lines -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding($false)))
+          Get-Content (Join-Path $rel 'checksums.txt')
+          # Serve everything as application/octet-stream — GitHub's content type for release assets,
+          # which makes Windows PowerShell 5.1 return byte[] from Invoke-WebRequest (#155 follow-up).
+          $server = Join-Path $env:RUNNER_TEMP 'serve.py'
+          @'
+          import http.server, os, sys
+          class H(http.server.SimpleHTTPRequestHandler):
+              def guess_type(self, path):
+                  return 'application/octet-stream'
+          os.chdir(sys.argv[1])
+          http.server.ThreadingHTTPServer(('127.0.0.1', 8765), H).serve_forever()
+          '@ -replace '^          ', '' | Set-Content -Path $server -Encoding ASCII
+          Start-Process -FilePath python -ArgumentList $server, (Join-Path $env:RUNNER_TEMP 'fake-release') -WindowStyle Hidden
+          $ok = $false
+          foreach ($i in 1..30) { try { Invoke-WebRequest -Uri http://127.0.0.1:8765/v9.9.9/checksums.txt -UseBasicParsing | Out-Null; $ok = $true; break } catch { Start-Sleep -Milliseconds 500 } }
+          if (-not $ok) { throw 'fake release server did not come up' }
+
+      - name: Run install.ps1 from disk under Windows PowerShell 5.1
+        shell: powershell
+        env:
+          MERCURY_VERSION: 9.9.9
+          MERCURY_DOWNLOAD_BASE: http://127.0.0.1:8765
+          MERCURY_INSTALL: ${{ runner.temp }}\mercury-prefix
+          MERCURY_NO_PATH: '1'
+          MERCURY_NO_PAUSE: '1'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          "PSVersion: $($PSVersionTable.PSVersion)"
+          $log = Join-Path $env:RUNNER_TEMP 'install.log'
+          # From disk (not irm | iex): also proves the file parses without a BOM under the ANSI code page.
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install.ps1 2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) { throw "install.ps1 exited $LASTEXITCODE" }
+          if (-not (Select-String -Path $log -Pattern 'Checksums verified' -Quiet)) { throw 'no "Checksums verified" in output' }
+          if (-not (Select-String -Path $log -Pattern 'Smoke test passed' -Quiet)) { throw 'no "Smoke test passed" in output' }
+          $exe = Join-Path $env:MERCURY_INSTALL 'bin\mercury.exe'
+          if (-not (Test-Path $exe)) { throw "missing $exe" }
+          if ((& $exe --version) -ne '9.9.9') { throw 'installed exe does not report 9.9.9' }
+          if (-not (Test-Path (Join-Path $env:MERCURY_INSTALL 'bin\web\index.html'))) { throw 'web assets missing' }
+
   termux:
     name: Termux (Android, x86_64)
     runs-on: ubuntu-latest

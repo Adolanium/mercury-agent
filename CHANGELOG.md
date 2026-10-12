@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.5 — hotfix: the Windows installer on Windows PowerShell 5.1
+
+- **`irm mercuryagent.sh/install.ps1 | iex` failed with "checksums.txt must contain exactly one checksum for mercury-win-x64.exe"** on stock Windows PowerShell 5.1 — and the window closed before you could read it. GitHub serves `checksums.txt` as `application/octet-stream`, for which PowerShell 5.1 returns a `byte[]` from `Invoke-WebRequest`; the installer now decodes it (PowerShell 7 was unaffected). A failure now waits for Enter before closing the window (`MERCURY_NO_PAUSE=1` for automation).
+- **Running the saved script (`powershell -File install.ps1`) failed to parse** under PowerShell 5.1: the file had UTF-8 characters and no BOM, so the ANSI code page turned a `✓` into a quote. The installers are ASCII-only now.
+- CI runs the Windows installer under PowerShell 5.1 against a local release served as `application/octet-stream`.
+
 ## 1.3.4 — hotfix: binaries for CPUs without AVX2 (#155)
 
 - **"Illegal instruction (core dumped)" on older x86-64.** Bun's default x64 build uses AVX2; Intel CPUs before Haswell (2013) and some VMs crash at start. Releases now also ship **`mercury-linux-x64-baseline`** and **`mercury-win-x64-baseline.exe`**. The installers pick the baseline build when `/proc/cpuinfo` has no `avx2`, and switch to it automatically if the default build dies with an illegal instruction during the post-install smoke test. `MERCURY_ASSET=<asset name>` forces a build.

@@ -4,7 +4,7 @@
 #
 # Environment variables:
 #   $env:MERCURY_VERSION   Version to install (e.g. "1.1.9"). Default: latest.
-#                          (Stable channel only — dev tracks the latest dev
+#                          (Stable channel only - dev tracks the latest dev
 #                          build.)
 #   $env:MERCURY_CHANNEL   Distribution channel: "stable" (default) or "dev".
 #   $env:MERCURY_INSTALL   Install prefix.    Default: $HOME\.mercury
@@ -12,18 +12,29 @@
 #                          Binary lands at $env:MERCURY_INSTALL\bin\mercury.exe.
 #                          (mercury-dev.exe on the dev channel.)
 #   $env:MERCURY_NO_PATH   If "1", skip modifying user PATH.
+#   $env:MERCURY_DOWNLOAD_BASE  Base URL the release assets are fetched from
+#                          (default: GitHub Releases). Used by CI.
+#   $env:MERCURY_NO_PAUSE  If "1", a failure exits without waiting for Enter.
 
 #Requires -Version 5
 $ErrorActionPreference = 'Stop'
 
 $Repo     = 'cosmicstack-labs/mercury-agent'
-$GhDl     = "https://github.com/$Repo/releases/download"
+$GhDl     = if ($env:MERCURY_DOWNLOAD_BASE) { $env:MERCURY_DOWNLOAD_BASE.TrimEnd('/') } else { "https://github.com/$Repo/releases/download" }
 
 # ----- helpers ---------------------------------------------------------------
 
-function Write-Info  ([string]$msg) { Write-Host "→ $msg" -ForegroundColor Green }
+function Write-Info  ([string]$msg) { Write-Host "-> $msg" -ForegroundColor Green }
 function Write-Warn2 ([string]$msg) { Write-Host "! $msg" -ForegroundColor Yellow }
-function Die         ([string]$msg) { Write-Host "x $msg" -ForegroundColor Red; exit 1 }
+function Die ([string]$msg) {
+    Write-Host "x $msg" -ForegroundColor Red
+    # "irm ... | iex" from a fresh console closes the window on exit, so the
+    # error was unreadable. Wait for Enter when a person is watching.
+    if ($env:MERCURY_NO_PAUSE -ne '1' -and [Environment]::UserInteractive -and $Host.Name -eq 'ConsoleHost') {
+        try { $null = Read-Host 'Press Enter to close' } catch { }
+    }
+    exit 1
+}
 
 function Get-MercuryArch {
     $arch = $env:PROCESSOR_ARCHITECTURE
@@ -117,11 +128,11 @@ function Update-UserPath ([string]$BinDir) {
 $IsDev = ($env:MERCURY_CHANNEL -eq 'dev')
 
 Write-Host ''
-Write-Host '☿ Mercury installer' -ForegroundColor White
-Write-Host '   Soul-driven AI agent · https://mercuryagent.sh'
+Write-Host 'Mercury installer' -ForegroundColor White
+Write-Host '   Soul-driven AI agent - https://mercuryagent.sh'
 Write-Host ''
 if ($IsDev) {
-    Write-Warn2 'Dev channel — unstable preview builds.'
+    Write-Warn2 'Dev channel - unstable preview builds.'
     Write-Host ("  Installs as {0}\bin\mercury-dev.exe (coexists with stable)." -f (Join-Path $HOME '.mercury-dev'))
     Write-Host ''
 }
@@ -171,7 +182,12 @@ try {
     $checksumsUrl = "$releaseDir/checksums.txt"
     Write-Info 'Downloading checksums.txt ...'
     try {
-        $checksums = (Invoke-WebRequest -Uri $checksumsUrl -UseBasicParsing).Content
+        # Windows PowerShell 5.1 returns a byte[] in .Content for
+        # application/octet-stream (what GitHub serves checksums.txt as);
+        # splitting that yields the literal "System.Byte[]" and no checksum
+        # ever matches. Decode it ourselves; PowerShell 7 already hands a string.
+        $raw = (Invoke-WebRequest -Uri $checksumsUrl -UseBasicParsing).Content
+        $checksums = if ($raw -is [byte[]]) { [System.Text.Encoding]::UTF8.GetString($raw) } else { [string]$raw }
     } catch {
         Die "Failed to download required checksums from $checksumsUrl"
     }
@@ -189,7 +205,7 @@ try {
     $archiveEntries = @(tar -tzf $webTmp)
     if ($LASTEXITCODE -ne 0) { Die 'Failed to inspect web.tar.gz' }
     foreach ($entry in $archiveEntries) {
-        # AppleDouble sidecars (._*, macOS tar's xattr artifact — invisible to
+        # AppleDouble sidecars (._*, macOS tar's xattr artifact - invisible to
         # bsdtar, listed by GNU tar) are inert; the extraction stage discards
         # them. Traversal attempts stay fatal.
         if (($entry -notmatch '^web(/|$)' -and $entry -notmatch '^\._') -or $entry -match '(^|/)\.\.(/|$)') {
@@ -270,7 +286,7 @@ Write-Info "Smoke test passed: $binName --version -> $smoke"
 $pathUpdated = Update-UserPath -BinDir $binDir
 
 Write-Host ''
-Write-Host "✓ Mercury $versionLabel is ready." -ForegroundColor Green
+Write-Host "OK Mercury $versionLabel is ready." -ForegroundColor Green
 Write-Host ''
 
 if ($pathUpdated) {
@@ -286,6 +302,6 @@ if ($pathUpdated) {
     Write-Host "   $binPath              # first run launches setup wizard"
 }
 if ($IsDev) {
-    Write-Warn2 'Dev channel — preview builds, may break. Re-run this script to update.'
+    Write-Warn2 'Dev channel - preview builds, may break. Re-run this script to update.'
 }
 Write-Host ''

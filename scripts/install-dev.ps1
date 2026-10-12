@@ -3,7 +3,7 @@
 #   irm https://mercuryagent.sh/install-dev.ps1 | iex
 #
 # Installs the rolling `mercury-dev-latest` GitHub pre-release as
-# mercury-dev.exe under ~\.mercury-dev — it coexists with a stable install
+# mercury-dev.exe under ~\.mercury-dev - it coexists with a stable install
 # (mercury.exe under ~\.mercury) on the same machine. Re-run to update.
 #
 # This is a thin wrapper around the stable installer with
