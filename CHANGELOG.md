@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.6 — hotfix: `mercury upgrade` is a no-op when already current
+
+- **`mercury upgrade` / `mercury-dev upgrade` re-installed (and restarted the daemon) even on the latest build.** They now resolve the channel's newest version first — stable from `/releases/latest`, dev from the rolling `mercury-dev-latest` release — and stop with "Already on the latest version" without touching the daemon or the binary. `--force` reinstalls anyway.
+
 ## 1.3.5 — hotfix: the Windows installer on Windows PowerShell 5.1
 
 - **`irm mercuryagent.sh/install.ps1 | iex` failed with "checksums.txt must contain exactly one checksum for mercury-win-x64.exe"** on stock Windows PowerShell 5.1 — and the window closed before you could read it. GitHub serves `checksums.txt` as `application/octet-stream`, for which PowerShell 5.1 returns a `byte[]` from `Invoke-WebRequest`; the installer now decodes it (PowerShell 7 was unaffected). A failure now waits for Enter before closing the window (`MERCURY_NO_PAUSE=1` for automation).

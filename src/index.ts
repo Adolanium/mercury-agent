@@ -4832,9 +4832,25 @@ serviceCmd
   program
   .command('upgrade')
   .description('Upgrade Mercury to the latest version')
-  .action(async () => {
+  .option('--force', 'Reinstall even when already on the latest version')
+  .action(async (opts: { force?: boolean }) => {
     console.log('');
     console.log(chalk.cyan(`  Mercury ${chalk.white(`v${pkgVersion}`)}`));
+    // Already current? Say so and touch nothing — not the daemon, not the
+    // binary. (This used to stop the daemon and re-run the installer
+    // unconditionally: "upgrade" on the latest build was a restart.)
+    if (!opts.force) {
+      const { fetchLatestVersion } = await import('./cli/latest-version.js');
+      const channel = isDevBuild(pkgVersion) ? 'dev' : 'stable';
+      const latest = await fetchLatestVersion(channel);
+      if (latest && latest === pkgVersion) {
+        console.log(chalk.green(`  ✓ Already on the latest ${channel === 'dev' ? 'dev build' : 'version'} (v${pkgVersion}). Nothing to do.`));
+        console.log(chalk.dim('  Use mercury upgrade --force to reinstall anyway.'));
+        console.log('');
+        return;
+      }
+      if (latest) console.log(chalk.dim(`  Latest on the ${channel} channel: v${latest}`));
+    }
     // A dev binary upgrades itself in place on the same channel (re-running
     // the dev installer below); npm builds take the npm stable track.
     if (isDevBuild(pkgVersion)) {
