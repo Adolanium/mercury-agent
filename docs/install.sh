@@ -15,13 +15,32 @@
 #                     The binary lands at $MERCURY_INSTALL/bin/mercury.
 #                     (mercury-dev on the dev channel.)
 #   MERCURY_NO_PATH   If set to "1", skip modifying shell rc files.
+#   MERCURY_DOWNLOAD_BASE
+#                     Base URL the release assets are fetched from. Default:
+#                     https://github.com/<repo>/releases/download — the
+#                     installer appends /v<version>/ (or the dev tag). Used by
+#                     CI to run this script against a local release directory.
 #
 # Windows users: use install.ps1 instead.
 
 set -eu
 
 REPO="cosmicstack-labs/mercury-agent"
-GITHUB_DL="https://github.com/${REPO}/releases/download"
+GITHUB_DL="${MERCURY_DOWNLOAD_BASE:-https://github.com/${REPO}/releases/download}"
+
+# ----- helpers ---------------------------------------------------------------
+
+c_red()    { printf '\033[31m%s\033[0m'  "$1"; }
+c_green()  { printf '\033[32m%s\033[0m'  "$1"; }
+c_yellow() { printf '\033[33m%s\033[0m'  "$1"; }
+c_bold()   { printf '\033[1m%s\033[0m'   "$1"; }
+
+info()  { printf '%s %s\n' "$(c_green '→')"  "$1"; }
+warn()  { printf '%s %s\n' "$(c_yellow '!')" "$1" >&2; }
+err()   { printf '%s %s\n' "$(c_red 'x')"    "$1" >&2; }
+die()   { err "$1"; exit 1; }
+
+have() { command -v "$1" >/dev/null 2>&1; }
 
 # ----- channel ---------------------------------------------------------------
 #
@@ -50,20 +69,6 @@ case "$CHANNEL" in
     ;;
 esac
 
-# ----- helpers ---------------------------------------------------------------
-
-c_red()    { printf '\033[31m%s\033[0m'  "$1"; }
-c_green()  { printf '\033[32m%s\033[0m'  "$1"; }
-c_yellow() { printf '\033[33m%s\033[0m'  "$1"; }
-c_bold()   { printf '\033[1m%s\033[0m'   "$1"; }
-
-info()  { printf '%s %s\n' "$(c_green '→')"  "$1"; }
-warn()  { printf '%s %s\n' "$(c_yellow '!')" "$1" >&2; }
-err()   { printf '%s %s\n' "$(c_red 'x')"    "$1" >&2; }
-die()   { err "$1"; exit 1; }
-
-have() { command -v "$1" >/dev/null 2>&1; }
-
 # Detect OS in Mercury's release naming (macos | linux).
 detect_os() {
   uname_s=$(uname -s 2>/dev/null || echo unknown)
@@ -74,6 +79,20 @@ detect_os() {
       die "This installer doesn't support Windows shells. Use install.ps1 in PowerShell instead." ;;
     *) die "Unsupported operating system: $uname_s" ;;
   esac
+}
+
+# Linux x64 only: Bun's default x64 build uses AVX2. CPUs without it (Intel
+# before Haswell/2013, some VMs) crash with "Illegal instruction" (#155) —
+# the baseline build runs on any x86-64. MERCURY_CPUINFO exists for tests.
+cpu_has_avx2() {
+  cpuinfo=${MERCURY_CPUINFO:-/proc/cpuinfo}
+  [ -r "$cpuinfo" ] || return 0   # unknown → assume a modern CPU
+  grep -q -w avx2 "$cpuinfo"
+}
+
+# True when checksums.txt lists the asset (older releases have no baseline build).
+has_asset() {
+  awk -v a="$2" '$2 == a { found=1 } END { exit found ? 0 : 1 }' "$1"
 }
 
 # Detect arch in Mercury's release naming (arm64 | x64). We don't ship 32-bit.
@@ -172,10 +191,13 @@ maybe_update_path() {
   fi
 
   mkdir -p "$(dirname "$rc")"
+  # The literal `$PATH` must land in the rc file unexpanded (SC2016 is the point).
   case "$rc" in
     *config.fish)
+      # shellcheck disable=SC2016
       printf '\n%s\nset -gx PATH %s $PATH\n' "$marker" "$bin_dir" >> "$rc" ;;
     *)
+      # shellcheck disable=SC2016
       printf '\n%s\nexport PATH="%s:$PATH"\n' "$marker" "$bin_dir" >> "$rc" ;;
   esac
   info "Added $bin_dir to PATH in $(basename "$rc")"
@@ -210,7 +232,6 @@ Install the supported Node.js package instead:
     release_dir="${GITHUB_DL}/${RELEASE_TAG}"
     version_label="dev (rolling ${RELEASE_TAG})"
   else
-    release_dir="${GITHUB_DL}/v${version}"
     if [ -z "$version" ]; then
       info "Resolving latest version from GitHub..."
       version=$(resolve_latest_version)
@@ -237,6 +258,15 @@ Install the supported Node.js package instead:
   checksum_url="${release_dir}/checksums.txt"
   info "Downloading checksums.txt ..."
   fetch_to "$checksum_url" "$checksums_tmp" || die "Failed to download required checksums from $checksum_url"
+  # Pick the build this CPU can run. MERCURY_ASSET forces one (support use).
+  if [ -n "${MERCURY_ASSET:-}" ]; then
+    asset="$MERCURY_ASSET"
+  elif [ "$os" = "linux" ] && [ "$arch" = "x64" ] && ! cpu_has_avx2 && has_asset "$checksums_tmp" "mercury-linux-x64-baseline"; then
+    info "This CPU has no AVX2 — using the baseline build"
+    asset="mercury-linux-x64-baseline"
+  fi
+  url="${release_dir}/${asset}"
+  binary_tmp="$tmp_dir/$asset"
   expected_binary=$(checksum_for "$checksums_tmp" "$asset")
   expected_web=$(checksum_for "$checksums_tmp" "web.tar.gz")
 
@@ -288,6 +318,31 @@ Install the supported Node.js package instead:
 
   info "Installed to $bin_path"
 
+  # Post-install smoke: the binary must at least report its version. A
+  # wrong-arch download, a glibc mismatch or a quarantined binary fails
+  # here with a readable message instead of at first use.
+  smoke_out=$("$bin_path" --version 2>&1); smoke_status=$?
+  # SIGILL (exit 132) on the default build = a CPU without AVX2 that
+  # /proc/cpuinfo did not reveal: switch to the baseline build in place.
+  if [ "$smoke_status" -ne 0 ] && [ "$os" = "linux" ] && [ "$arch" = "x64" ] && [ "$asset" != "mercury-linux-x64-baseline" ] \
+     && { [ "$smoke_status" -eq 132 ] || printf '%s' "$smoke_out" | grep -qi 'illegal instruction'; } \
+     && has_asset "$checksums_tmp" "mercury-linux-x64-baseline"; then
+    info "This CPU cannot run the default build (illegal instruction) — switching to the baseline build"
+    asset="mercury-linux-x64-baseline"
+    fetch_to "${release_dir}/${asset}" "$tmp_dir/$asset" || die "Failed to download ${release_dir}/${asset}"
+    [ "$(sha256_file "$tmp_dir/$asset")" = "$(checksum_for "$checksums_tmp" "$asset")" ] || die "Checksum mismatch for $asset"
+    mv "$tmp_dir/$asset" "$bin_path"
+    chmod +x "$bin_path"
+    smoke_out=$("$bin_path" --version 2>&1); smoke_status=$?
+  fi
+  if [ "$smoke_status" -eq 0 ]; then
+    info "Smoke test passed: $BIN_NAME --version → $smoke_out"
+  else
+    err "The installed binary failed to run: $bin_path --version"
+    printf '%s\n' "$smoke_out" | sed 's/^/    /' >&2
+    die "Mercury ${version_label} is installed but not runnable on ${os}-${arch}. Please report this at https://github.com/${REPO}/issues (include the lines above)."
+  fi
+
   rm -rf "$tmp_dir"
   trap - EXIT INT TERM
 
@@ -301,10 +356,14 @@ Install the supported Node.js package instead:
     printf '    source %s\n\n' "$(shell_rc_file)"
   fi
 
+  if [ "${PATH_UPDATED:-0}" = "1" ]; then
+    launch_hint="$BIN_NAME"
+  else
+    launch_hint="$bin_path"
+  fi
   printf 'Get started:\n'
   printf '   %s --help\n' "$bin_path"
-  printf '   %s              # first run launches setup wizard\n\n' \
-    "$([ "${PATH_UPDATED:-0}" = "1" ] && echo "$BIN_NAME" || echo "$bin_path")"
+  printf '   %s              # first run launches setup wizard\n\n' "$launch_hint"
 
   if [ "$CHANNEL" = "dev" ]; then
     printf '%s Dev channel — preview builds, may break. Run to check:\n' "$(c_yellow 'NOTE:')"

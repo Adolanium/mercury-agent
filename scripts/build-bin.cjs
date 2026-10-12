@@ -82,8 +82,13 @@ const ALL_TARGETS = [
   { id: 'bun-darwin-arm64', out: 'mercury-macos-arm64' },
   { id: 'bun-darwin-x64',   out: 'mercury-macos-x64' },
   { id: 'bun-linux-x64',    out: 'mercury-linux-x64' },
+  // Bun's x64 targets emit AVX2; CPUs without it (pre-2013 Intel, some VMs)
+  // die with "Illegal instruction" (#155). The baseline builds run anywhere;
+  // the installers pick them when the CPU lacks avx2 or the default crashes.
+  { id: 'bun-linux-x64-baseline',   out: 'mercury-linux-x64-baseline' },
   { id: 'bun-linux-arm64',  out: 'mercury-linux-arm64' },
   { id: 'bun-windows-x64',  out: 'mercury-win-x64.exe' },
+  { id: 'bun-windows-x64-baseline', out: 'mercury-win-x64-baseline.exe' },
 ];
 
 function hostTarget() {

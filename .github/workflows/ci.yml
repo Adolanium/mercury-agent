@@ -286,9 +286,17 @@ jobs:
           echo "mercury stub: $*"
           STUB
           chmod +x "$rel/mercury-linux-x64"
+          # The no-AVX2 build (#155): the installer must pick it from /proc/cpuinfo
+          # or after an illegal-instruction crash of the default build.
+          cat > "$rel/mercury-linux-x64-baseline" <<'STUB'
+          #!/bin/sh
+          if [ "${1:-}" = "--version" ]; then echo "9.9.9-baseline"; exit 0; fi
+          echo "mercury baseline stub: $*"
+          STUB
+          chmod +x "$rel/mercury-linux-x64-baseline"
           echo '<!doctype html><title>stub dashboard</title>' > "$rel/web/index.html"
           tar -C "$rel" -czf "$rel/web.tar.gz" web
-          (cd "$rel" && sha256sum mercury-linux-x64 web.tar.gz > checksums.txt)
+          (cd "$rel" && sha256sum mercury-linux-x64 mercury-linux-x64-baseline web.tar.gz > checksums.txt)
           cat "$rel/checksums.txt"
           echo "REL_ROOT=$RUNNER_TEMP/fake-release" >> "$GITHUB_ENV"
 
@@ -331,6 +339,41 @@ jobs:
           grep -q 'Smoke test passed' "$RUNNER_TEMP/install-dev.log"
           test -x "$MERCURY_INSTALL/bin/mercury-dev"
           [ "$("$MERCURY_INSTALL/bin/mercury-dev" --version)" = "9.9.9" ]
+
+      - name: The baseline build is chosen when /proc/cpuinfo has no avx2 (#155)
+        env:
+          MERCURY_VERSION: 9.9.9
+          MERCURY_DOWNLOAD_BASE: http://127.0.0.1:8765
+          MERCURY_INSTALL: ${{ runner.temp }}/mercury-baseline
+          MERCURY_NO_PATH: '1'
+          MERCURY_CPUINFO: ${{ runner.temp }}/cpuinfo-noavx2
+        run: |
+          set -euo pipefail
+          printf 'flags\t\t: fpu sse sse2 ssse3 sse4_1 sse4_2 avx\n' > "$RUNNER_TEMP/cpuinfo-noavx2"
+          sh scripts/install.sh 2>&1 | tee "$RUNNER_TEMP/install-baseline.log"
+          grep -q 'no AVX2' "$RUNNER_TEMP/install-baseline.log"
+          grep -q 'Smoke test passed' "$RUNNER_TEMP/install-baseline.log"
+          [ "$("$MERCURY_INSTALL/bin/mercury" --version)" = "9.9.9-baseline" ]
+
+      - name: An illegal-instruction crash of the default build falls back to baseline (#155)
+        env:
+          MERCURY_VERSION: 9.9.9
+          MERCURY_DOWNLOAD_BASE: http://127.0.0.1:8765
+          MERCURY_INSTALL: ${{ runner.temp }}/mercury-sigill
+          MERCURY_NO_PATH: '1'
+        run: |
+          set -euo pipefail
+          # The runner has AVX2, so cpuinfo says "default build" — which then dies with SIGILL.
+          cat > "$REL_ROOT/v9.9.9/mercury-linux-x64" <<'STUB'
+          #!/bin/sh
+          kill -ILL $$
+          STUB
+          chmod +x "$REL_ROOT/v9.9.9/mercury-linux-x64"
+          (cd "$REL_ROOT/v9.9.9" && sha256sum mercury-linux-x64 mercury-linux-x64-baseline web.tar.gz > checksums.txt)
+          sh scripts/install.sh 2>&1 | tee "$RUNNER_TEMP/install-sigill.log"
+          grep -q 'switching to the baseline build' "$RUNNER_TEMP/install-sigill.log"
+          grep -q 'Smoke test passed' "$RUNNER_TEMP/install-sigill.log"
+          [ "$("$MERCURY_INSTALL/bin/mercury" --version)" = "9.9.9-baseline" ]
 
       - name: A tampered checksum must abort the install
         env:

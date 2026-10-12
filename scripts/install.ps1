@@ -149,6 +149,8 @@ if ($arch -ne 'x64') {
 }
 
 $asset = "mercury-win-x64.exe"
+# MERCURY_ASSET forces a build (support use); mercury-win-x64-baseline.exe runs on CPUs without AVX2.
+if ($env:MERCURY_ASSET) { $asset = $env:MERCURY_ASSET }
 $url   = "$releaseDir/$asset"
 
 $prefix = $env:MERCURY_INSTALL
@@ -237,6 +239,33 @@ finally {
 }
 
 Write-Info "Installed to $binPath"
+
+# Post-install smoke. A CPU without AVX2 cannot run the default build and
+# dies with STATUS_ILLEGAL_INSTRUCTION (0xC000001D, #155): switch to the
+# baseline build in place.
+$smoke = & $binPath --version 2>&1
+$smokeExit = $LASTEXITCODE
+if ($smokeExit -ne 0 -and $asset -ne 'mercury-win-x64-baseline.exe' -and ($smokeExit -eq -1073741795 -or $smokeExit -eq 3221225501)) {
+    Write-Info 'This CPU cannot run the default build (illegal instruction) - switching to the baseline build'
+    $asset = 'mercury-win-x64-baseline.exe'
+    $tmp2 = Join-Path $env:TEMP ("mercury-" + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $tmp2 | Out-Null
+    try {
+        $expected = Get-RequiredChecksum -Checksums $checksums -Asset $asset
+        $dl = Join-Path $tmp2 $asset
+        Save-VerifiedAsset -Uri "$releaseDir/$asset" -Path $dl -ExpectedHash $expected -Asset $asset
+        Remove-Item $binPath -Force
+        Move-Item -Path $dl -Destination $binPath -Force
+        $smoke = & $binPath --version 2>&1
+        $smokeExit = $LASTEXITCODE
+    } finally {
+        Remove-Item $tmp2 -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+if ($smokeExit -ne 0) {
+    Die "Mercury $versionLabel is installed but not runnable on this machine: $smoke  (please report this at https://github.com/$Repo/issues)"
+}
+Write-Info "Smoke test passed: $binName --version -> $smoke"
 
 $pathUpdated = Update-UserPath -BinDir $binDir
 

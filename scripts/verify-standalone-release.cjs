@@ -11,8 +11,10 @@ const assets = [
   'mercury-macos-arm64',
   'mercury-macos-x64',
   'mercury-linux-x64',
+  'mercury-linux-x64-baseline',
   'mercury-linux-arm64',
   'mercury-win-x64.exe',
+  'mercury-win-x64-baseline.exe',
   'web.tar.gz',
 ];
 
