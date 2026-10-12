@@ -71,3 +71,36 @@ describe('ProviderRegistry fallback order', () => {
     expect(new Set(names).size).toBe(names.length);
   });
 });
+
+describe('usable providers (a bot always gets a provider that can answer)', () => {
+  function fake(name: string, available = true) {
+    return { name, isAvailable: () => available, getModel: () => 'm', getModelInstance: () => ({}) } as never;
+  }
+  function registryWith(defaultName: string, providers: Array<[string, boolean]>) {
+    const r = Object.create(ProviderRegistry.prototype) as ProviderRegistry;
+    Object.assign(r, { providers: new Map(providers.map(([n, a]) => [n, fake(n, a)])), defaultName, lastSuccessful: null, authFailed: new Set(), warnedUnusableDefault: false });
+    return r;
+  }
+
+  it('a default without credentials hands over to the first usable provider', () => {
+    const r = registryWith('openai', [['openai', false], ['ollamaCloud', true]]);
+    expect(r.getDefault().name).toBe('ollamaCloud');
+    expect(r.isUsable('openai')).toBe(false);
+  });
+
+  it('a rejected key takes the provider out of defaults and fallbacks until the key changes', () => {
+    const r = registryWith('openai', [['openai', true], ['anthropic', true]]);
+    expect(r.getDefault().name).toBe('openai');
+    r.markAuthFailure('openai');
+    expect(r.getDefault().name).toBe('anthropic');
+    expect([...r.getFallbackIterator()].map((p) => p.name)).toEqual(['anthropic']);
+    expect(r.getUsable('openai')).toBeUndefined();
+    r.updateApiKey('openai', 'sk-new');
+    expect(r.getDefault().name).toBe('openai');
+  });
+
+  it('with nothing usable the configured default is still returned (its error is the honest one)', () => {
+    const r = registryWith('openai', [['openai', false]]);
+    expect(r.getDefault().name).toBe('openai');
+  });
+});

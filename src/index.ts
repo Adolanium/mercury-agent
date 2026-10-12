@@ -3969,6 +3969,12 @@ program
   .option('--platform', 'Show platform compatibility diagnostics')
   .option('--storage', 'Show SQLite backend, database files and row counts')
   .action(async (opts) => {
+    {
+      // Keys that cannot be right — say so before anything is tried.
+      const { checkKeyShapes } = await import('./providers/key-shape.js');
+      const warnings = checkKeyShapes(loadConfig().providers as unknown as Record<string, { apiKey?: string; enabled?: boolean }>);
+      for (const w of warnings) console.log(chalk.yellow(`  ⚠ ${w.provider} API key looks wrong: ${w.problem}. Fix it with \`mercury doctor\` → providers, or in ~/.mercury/mercury.yaml.`));
+    }
     if (opts.platform) {
       runPlatformDoctor();
       return;
