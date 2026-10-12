@@ -45,7 +45,8 @@ providers.post('/api/providers/:name', async (c) => {
   if (body.enabled !== undefined) p.enabled = body.enabled;
 
   saveConfig(config);
-  return c.json({ success: true });
+  // Keys and models are read at boot — the save is durable, not live.
+  return c.json({ success: true, restartRequired: true });
 });
 
 providers.post('/api/providers/:name/test', async (c) => {

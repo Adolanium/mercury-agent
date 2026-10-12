@@ -24,6 +24,8 @@ import { useThemeStore } from "@/stores/theme";
 interface Feedback {
   type: "success" | "error";
   message: string;
+  /** The save is durable but the runtime reads it at boot — offer the restart. */
+  restart?: boolean;
 }
 
 function FeedbackBanner({ feedback }: { feedback: Feedback | null }) {
@@ -50,6 +52,15 @@ function FeedbackBanner({ feedback }: { feedback: Feedback | null }) {
               <XCircle className="h-4 w-4 shrink-0" />
             )}
             {feedback.message}
+            {feedback.restart && (
+              <button
+                type="button"
+                className="ml-auto rounded-md border border-emerald-500/40 px-2 py-0.5 text-xs hover:bg-emerald-500/10"
+                onClick={() => { void api.config.restart().then(() => window.setTimeout(() => window.location.reload(), 6000)); }}
+              >
+                Restart Mercury
+              </button>
+            )}
           </div>
         </motion.div>
       )}
@@ -142,8 +153,8 @@ export function SettingsPage() {
   const saveIdentity = async () => {
     setIdentitySaving(true);
     try {
-      await api.config.update({ identity, defaultProvider, tokenBudget });
-      showIdentityFb({ type: "success", message: "Settings saved" });
+      const saved = await api.config.update({ identity, defaultProvider, tokenBudget });
+      showIdentityFb({ type: "success", message: saved.restartRequired ? "Saved — restart Mercury to apply" : "Settings saved", restart: !!saved.restartRequired });
     } catch (e) {
       showIdentityFb({
         type: "error",

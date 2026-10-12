@@ -126,7 +126,7 @@ export function ProvidersPage() {
         model: f.model,
         enabled: f.enabled,
       });
-      showFeedback(name, "success", "Configuration saved");
+      showFeedback(name, "success", "Saved — restart Mercury to apply (Settings → Restart Mercury, or `mercury restart`)");
       updateForm(name, { apiKey: "", saving: false });
       fetchProviders();
     } catch (e) {

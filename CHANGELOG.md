@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.9 — hotfix: `mercury doctor` and dashboard saves take effect
+
+- **`mercury doctor` applies what you changed.** Providers, keys and channels are read at boot, so a reconfigure that only wrote the file looked like it did nothing until a manual `mercury restart`. Doctor now restarts the running daemon when the configuration actually changed (the Telegram/Discord commands already did this).
+- **Dashboard saves say "restart to apply" and offer a Restart button** (Settings → Restart Mercury), backed by a loopback-only `POST /api/restart`.
+
 ## 1.3.8 — hotfix: live reply rendering and spinners in the attach TUI
 
 - **No more cyan bar beside a streaming reply.** The attach TUI (what `mercury` opens) drew the live reply with a cyan `│` strip that disappeared once the reply settled. The live tail now renders exactly like the settled block — same `MERCURY:` header, indent and markdown.
