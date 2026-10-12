@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.7 — hotfix: first-run setup exited at the mode menu
+
+- **The setup wizard quit silently at "Choose your mode"** (1.3.1 – 1.3.6, every platform, binaries and npm). The shared readline used for the name questions released itself a tick later and paused stdin *after* the arrow-key menu had taken it over; nothing was reading the terminal, so the process ran out of work and exited 0. The menu now releases the readline synchronously before it owns stdin. Reproduced and verified under a pseudo-terminal.
+
 ## 1.3.6 — hotfix: `mercury upgrade` is a no-op when already current
 
 - **`mercury upgrade` / `mercury-dev upgrade` re-installed (and restarted the daemon) even on the latest build.** They now resolve the channel's newest version first — stable from `/releases/latest`, dev from the rolling `mercury-dev-latest` release — and stop with "Already on the latest version" without touching the daemon or the binary. `--force` reinstalls anyway.
