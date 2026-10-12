@@ -190,6 +190,10 @@ jobs:
           echo "--version → $out"
           [ "$out" = "$expected" ] || { echo "::error::--version printed '$out', expected '$expected'"; exit 1; }
 
+      - name: First-run wizard under a pseudo-terminal (must not exit at the mode menu)
+        if: runner.os != 'Windows'
+        run: python3 scripts/smoke-wizard-pty.py "${{ steps.bin.outputs.path }}"
+
       - name: Smoke --help
         shell: bash
         run: |
