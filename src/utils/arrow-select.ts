@@ -1,4 +1,5 @@
 import readline from 'node:readline';
+import { closeAsk } from '../cli/ask.js';
 import chalk from 'chalk';
 
 export interface ArrowSelectOption {
@@ -28,6 +29,12 @@ export async function selectWithArrowKeys(
     return options[0]?.value ?? '';
   }
 
+  // The shared question readline (ask.ts) releases itself on a deferred
+  // setImmediate, and readline.close() pauses stdin. Taking over stdin here
+  // and letting that release land afterwards left nothing reading the
+  // terminal: the event loop drained and the wizard exited 0 at the menu.
+  // Release it now, synchronously, before we own stdin.
+  closeAsk();
   readline.emitKeypressEvents(process.stdin);
 
   const stdin = process.stdin;
