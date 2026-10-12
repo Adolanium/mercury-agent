@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync, existsSync, statSync, chmodSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve as pathResolve } from 'node:path';
 import { Command } from 'commander';
@@ -872,6 +873,15 @@ function printSlackAccessState(config: MercuryConfig): void {
   console.log(`  Admins:         ${admins.length > 0 ? chalk.green(admins.map(formatSlackUser).join(', ')) : chalk.dim('none')}`);
   console.log(`  Members:        ${members.length > 0 ? chalk.green(members.map(formatSlackUser).join(', ')) : chalk.dim('none')}`);
   console.log(`  Pending:        ${pending.length > 0 ? chalk.yellow(pendingSummary) : chalk.dim('none')}`);
+}
+
+/** Content hash of mercury.yaml — `mercury doctor` restarts the daemon only when it changed. */
+function configFingerprint(): string {
+  try {
+    return createHash('sha256').update(readFileSync(join(getMercuryHome(), 'mercury.yaml'))).digest('hex');
+  } catch {
+    return '';
+  }
 }
 
 function restartDaemonIfRunning(message?: string): void {
@@ -3983,10 +3993,17 @@ program
       runStorageDoctor();
       return;
     }
+    // The daemon reads providers, keys and channels at boot: a reconfigure
+    // that only wrote the file looked like it did nothing until a manual
+    // `mercury restart`. Restart it ourselves when something changed.
+    const before = configFingerprint();
     if (isSetupComplete()) {
       await configure(loadConfig());
     } else {
       await configure();
+    }
+    if (configFingerprint() !== before) {
+      restartDaemonIfRunning('Applying your changes — restarting the background Mercury...');
     }
   });
 

@@ -90,7 +90,9 @@ export const auth = {
 // ── Config ──
 export const config = {
   get: () => get<AppConfig>("/api/config"),
-  update: (data: Partial<AppConfig>) => put<{ success: boolean }>("/api/config", data),
+  update: (data: Partial<AppConfig>) => put<{ success: boolean; restartRequired?: boolean }>("/api/config", data),
+  /** Apply saved configuration: the runtime reads providers/keys at boot. */
+  restart: () => post<{ ok: boolean; message: string }>("/api/restart"),
 };
 
 // ── Providers ──

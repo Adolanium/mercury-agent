@@ -1,6 +1,11 @@
 import { Hono } from 'hono';
 import { readAttachToken } from '../auth.js';
 import { isLoopbackRequest } from '../middleware.js';
+import { spawnDetachedRestart } from '../../cli/daemon.js';
+
+let restartSpawner: () => boolean = spawnDetachedRestart;
+/** Test seam. */
+export function setRestartSpawner(fn: () => boolean): void { restartSpawner = fn; }
 
 /**
  * Local, authenticated shutdown for `mercury stop` / `restart` / `upgrade`.
@@ -28,6 +33,22 @@ function bearerToken(header: string | undefined): string | null {
   const match = /^Bearer\s+(.+)$/i.exec(header.trim());
   return match ? match[1].trim() : null;
 }
+
+/**
+ * Apply saved configuration by restarting the runtime. Loopback only — the
+ * dashboard runs on this machine; the auth guard has already admitted the
+ * session (or attach token). Providers, channels and keys are read at boot,
+ * so this is how a dashboard save actually takes effect.
+ */
+lifecycle.post('/api/restart', (c) => {
+  if (!isLoopbackRequest(c)) {
+    return c.json({ error: 'Restart is only accepted from this machine' }, 403);
+  }
+  if (!restartSpawner()) {
+    return c.json({ error: 'Could not start the restart helper — run `mercury restart` in a terminal' }, 503);
+  }
+  return c.json({ ok: true, pid: process.pid, message: 'Restarting — back in a few seconds' }, 202);
+});
 
 lifecycle.post('/api/shutdown', (c) => {
   if (!isLoopbackRequest(c)) {

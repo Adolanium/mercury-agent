@@ -25,7 +25,8 @@ config.put('/api/config', async (c) => {
   if (body.defaultProvider !== undefined) cfg.providers.default = body.defaultProvider;
   if (body.tokenBudget !== undefined) cfg.tokens.dailyBudget = body.tokenBudget;
   saveConfig(cfg);
-  return c.json({ success: true });
+  // Providers and keys are read at boot — the save is durable, not live.
+  return c.json({ success: true, restartRequired: true });
 });
 
 export default config;

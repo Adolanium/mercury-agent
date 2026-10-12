@@ -45,6 +45,23 @@ export function buildDaemonSpawnArgs(): { command: string; args: string[] } {
   return { command: process.execPath, args: [script, 'start', '--daemon'] };
 }
 
+/**
+ * Restart the daemon from INSIDE it (dashboard "Restart Mercury"): the
+ * process cannot stop and restart itself, so a detached `mercury restart`
+ * does it after we reply. Returns false when the entry script is unknown.
+ */
+export function spawnDetachedRestart(): boolean {
+  try {
+    const { command, args } = buildDaemonSpawnArgs();
+    const restartArgs = [...args.slice(0, -2), 'restart'];
+    const child = spawn(command, restartArgs, { detached: true, stdio: 'ignore', env: { ...process.env }, windowsHide: process.platform === 'win32' });
+    child.unref();
+    return !!child.pid;
+  } catch {
+    return false;
+  }
+}
+
 const PID_FILE = 'daemon.pid';
 const FOREGROUND_PID_FILE = 'foreground.pid';
 const LOG_FILE = 'daemon.log';
