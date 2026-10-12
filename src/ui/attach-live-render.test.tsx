@@ -1,0 +1,56 @@
+process.env.CI = '0';
+import { describe, expect, it } from 'vitest';
+import React from 'react';
+import { EventEmitter } from 'node:events';
+import { VtScreen } from './vt-screen.js';
+
+class FakeStdout extends EventEmitter { isTTY = true; constructor(public screen: VtScreen) { super(); } get columns() { return this.screen.columns; } get rows() { return this.screen.rows; } write(c: string) { this.screen.write(c); return true; } }
+class FakeStdin extends EventEmitter { isTTY = true; private q: string[] = []; setEncoding() {} setRawMode() {} resume() {} pause() {} ref() {} unref() {} read() { return this.q.shift() ?? null; } push(c: string) { this.q.push(c); this.emit('readable'); } }
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * The attach TUI is the default launch (ADR-024). Its live reply used to be
+ * drawn with a cyan "│" bar that vanished when the reply settled, and its
+ * "working…" glyph never animated.
+ */
+describe('attach TUI live rendering', () => {
+  it('streams a reply without a side bar, under a MERCURY header, with an animating spinner', async () => {
+    const { render } = await import('ink');
+    const { AttachTui } = await import('./attach-tui.js');
+    let emit: ((e: { type: string; data: Record<string, unknown> }) => void) | null = null;
+    const client = {
+      getBaseUrl: () => 'http://127.0.0.1:6174',
+      listThreads: async () => [],
+      listSkills: async () => [],
+      listBots: async () => [],
+      currentModel: async () => ({ name: 'anthropic', model: 'x' }),
+      budget: async () => null,
+      createThread: async () => ({ id: 't1', shortId: 't1', alias: 'new', title: 'New' }),
+      streamEvents: async (_id: string, onEvent: (e: { type: string; data: Record<string, unknown> }) => void) => { emit = onEvent; await new Promise(() => {}); },
+      send: async () => ({ ok: true }),
+      resolvePermission: async () => true,
+    } as never;
+    const screen = new VtScreen(100, 30); const stdin = new FakeStdin();
+    const app = render(<AttachTui client={client} pid={1} version="1.3.8" onExit={() => {}} />, { stdout: new FakeStdout(screen) as never, stdin: stdin as never, exitOnCtrlC: false, patchConsole: false } as never);
+    await sleep(300);
+    stdin.push('\r'); // "new session" is the only pick row
+    await sleep(300);
+    expect(emit).not.toBeNull();
+    emit!({ type: 'thinking', data: {} });
+    await sleep(150);
+    const a = screen.text().join('\n');
+    expect(a).toContain('working…');
+    const glyphA = a.match(/([⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]) working/)?.[1];
+    await sleep(350);
+    const glyphB = screen.text().join('\n').match(/([⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]) working/)?.[1];
+    expect(glyphA).toBeDefined();
+    expect(glyphB).not.toBe(glyphA);
+    emit!({ type: 'text_delta', data: { text: 'Here is the reply, still streaming.' } });
+    await sleep(200);
+    const b = screen.text().join('\n');
+    expect(b).toContain('MERCURY:');
+    expect(b).toContain('Here is the reply, still streaming.');
+    expect(b).not.toContain('│ Here');
+    app.unmount();
+  }, 20000);
+});

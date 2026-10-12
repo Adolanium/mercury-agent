@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.8 — hotfix: live reply rendering and spinners in the attach TUI
+
+- **No more cyan bar beside a streaming reply.** The attach TUI (what `mercury` opens) drew the live reply with a cyan `│` strip that disappeared once the reply settled. The live tail now renders exactly like the settled block — same `MERCURY:` header, indent and markdown.
+- **Working/step indicators animate.** The attach TUI showed a frozen `⠋ working…` and static `→` steps; they now run on the shared 100 ms ticker like the main TUI.
+
 ## 1.3.7 — hotfix: first-run setup exited at the mode menu
 
 - **The setup wizard quit silently at "Choose your mode"** (1.3.1 – 1.3.6, every platform, binaries and npm). The shared readline used for the name questions released itself a tick later and paused stdin *after* the arrow-key menu had taken it over; nothing was reading the terminal, so the process ran out of work and exited 0. The menu now releases the readline synchronously before it owns stdin. Reproduced and verified under a pseudo-terminal.

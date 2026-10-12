@@ -1,6 +1,7 @@
 import React from 'react';
 import { parseAttachHandoff } from './attach-handoff.js';
 import { LaunchPad } from './launch-pad.js';
+import { useTick, spinnerFrame } from './tick-store.js';
 import { rotateTip } from './tips.js';
 import type { TuiState } from '../channels/cli.js';
 import { Box, Text, Spacer, Static, useApp, useInput } from 'ink';
@@ -138,6 +139,11 @@ export function AttachTui({ client, pid, version, onExit, onHandoff }: { client:
   const [provider, setProvider] = React.useState<{ name: string; model: string } | null>(null);
   const [tokenInfo, setTokenInfo] = React.useState<{ used: number; budget: number } | null>(null);
   const launchTip = React.useMemo(() => rotateTip('chat')?.tip ?? null, []);
+  // One shared 100 ms ticker drives every spinner while something is in flight.
+  // (A hook: it must run on every render, before the pick-screen return.)
+  const busy = streaming || steps.some((s) => !s.done);
+  const tick = useTick(busy);
+  const frame = spinnerFrame(tick);
   const [notice, setNotice] = React.useState<string | null>(null);
 
   const [input, setInput] = React.useState('');
@@ -515,7 +521,12 @@ export function AttachTui({ client, pid, version, onExit, onHandoff }: { client:
   }
 
   const providerLabel = provider && provider.name ? `${provider.name}${provider.model ? ` ${provider.model}` : ''}` : 'connected';
-  const tailLines = streamTail.length > 0 ? streamTail.split('\n').slice(-ATTACH_STREAM_TAIL_MAX_LINES) : [];
+  // The live tail looks exactly like the settled block it becomes: the same
+  // MERCURY header and indent, the same markdown pass (an unclosed fence is
+  // closed for rendering only). It used to be drawn with a cyan "│" bar that
+  // vanished when the reply settled — the strip people saw in chat.
+  const fenceSafeTail = (streamTail.match(/```/g) || []).length % 2 === 1 ? streamTail + '\n```' : streamTail;
+  const tailLines = streamTail.length > 0 ? renderMarkdown(fenceSafeTail).split('\n').slice(-ATTACH_STREAM_TAIL_MAX_LINES) : [];
 
   return (
     <Box flexDirection="column" flexShrink={0}>
@@ -524,18 +535,21 @@ export function AttachTui({ client, pid, version, onExit, onHandoff }: { client:
       </Static>
       {tailLines.length > 0 && (
         <Box flexDirection="column" flexShrink={0}>
-          {tailLines.map((line, idx) => (
-            <Box key={`t:${idx}`} paddingX={2}>
-              <Text color="cyan">│ </Text><Text>{line || ' '}</Text>
-            </Box>
-          ))}
+          <Box flexShrink={0}><Text bold color="cyan">MERCURY:</Text></Box>
+          <Box marginLeft={2} flexDirection="column" flexShrink={0}>
+            {tailLines.map((line, idx) => (
+              <Box key={`t:${idx}`} flexShrink={0}>
+                <Text>{line.length > 0 ? line : ' '}</Text>
+              </Box>
+            ))}
+          </Box>
         </Box>
       )}
       {steps.length > 0 && (
         <Box flexDirection="column" paddingX={2} flexShrink={0}>
           {steps.map((step) => (
             <Box key={step.key}>
-              <Text color={step.done ? 'green' : 'cyan'}>{step.done ? '✓' : '→'}</Text>
+              <Text color={step.done ? 'green' : 'cyan'}>{step.done ? '✓' : frame}</Text>
               <Text dimColor> {step.label}</Text>
             </Box>
           ))}
@@ -543,7 +557,7 @@ export function AttachTui({ client, pid, version, onExit, onHandoff }: { client:
       )}
       {streaming && tailLines.length === 0 && steps.length === 0 && (
         <Box paddingX={2} flexShrink={0}>
-          <Text color="cyan">⠋</Text><Text dimColor> working…</Text>
+          <Text color="cyan">{frame}</Text><Text dimColor> working…</Text>
         </Box>
       )}
       {prompt && <AttachPromptView prompt={prompt} activeIdx={promptIdx} />}
