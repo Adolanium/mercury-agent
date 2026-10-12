@@ -408,7 +408,9 @@ jobs:
           $src = Join-Path $env:RUNNER_TEMP 'stub.cs'
           'class P { static int Main(string[] a) { System.Console.WriteLine("9.9.9"); return 0; } }' | Set-Content -Path $src -Encoding ASCII
           $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
-          & $csc /nologo /out:(Join-Path $rel 'mercury-win-x64.exe') $src
+          $outArg = '/out:' + (Join-Path $rel 'mercury-win-x64.exe')
+          & $csc /nologo $outArg $src
+          if ($LASTEXITCODE -ne 0) { throw "csc failed ($LASTEXITCODE)" }
           '<!doctype html><title>stub dashboard</title>' | Set-Content -Path (Join-Path $rel 'web\index.html') -Encoding ASCII
           tar -C $rel -czf (Join-Path $rel 'web.tar.gz') web
           $lines = foreach ($a in 'mercury-win-x64.exe', 'web.tar.gz') { "{0}  {1}" -f (Get-FileHash -Algorithm SHA256 (Join-Path $rel $a)).Hash.ToLower(), $a }

@@ -5,6 +5,7 @@
 - **`irm mercuryagent.sh/install.ps1 | iex` failed with "checksums.txt must contain exactly one checksum for mercury-win-x64.exe"** on stock Windows PowerShell 5.1 — and the window closed before you could read it. GitHub serves `checksums.txt` as `application/octet-stream`, for which PowerShell 5.1 returns a `byte[]` from `Invoke-WebRequest`; the installer now decodes it (PowerShell 7 was unaffected). A failure now waits for Enter before closing the window (`MERCURY_NO_PAUSE=1` for automation).
 - **Running the saved script (`powershell -File install.ps1`) failed to parse** under PowerShell 5.1: the file had UTF-8 characters and no BOM, so the ANSI code page turned a `✓` into a quote. The installers are ASCII-only now.
 - CI runs the Windows installer under PowerShell 5.1 against a local release served as `application/octet-stream`.
+- **install.sh (1.3.4) died with "Illegal instruction" instead of switching to the baseline build** when the default build crashed in the smoke test (`set -e` on a failing command substitution). Fixed; the CPU-detection path that picks baseline up front was unaffected.
 
 ## 1.3.4 — hotfix: binaries for CPUs without AVX2 (#155)
 

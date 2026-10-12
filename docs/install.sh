@@ -321,7 +321,9 @@ Install the supported Node.js package instead:
   # Post-install smoke: the binary must at least report its version. A
   # wrong-arch download, a glibc mismatch or a quarantined binary fails
   # here with a readable message instead of at first use.
-  smoke_out=$("$bin_path" --version 2>&1); smoke_status=$?
+  # `if` form: under set -e a failing command substitution exits the script
+  # (the 1.3.4 installer died with "Illegal instruction" instead of switching builds).
+  if smoke_out=$("$bin_path" --version 2>&1); then smoke_status=0; else smoke_status=$?; fi
   # SIGILL (exit 132) on the default build = a CPU without AVX2 that
   # /proc/cpuinfo did not reveal: switch to the baseline build in place.
   if [ "$smoke_status" -ne 0 ] && [ "$os" = "linux" ] && [ "$arch" = "x64" ] && [ "$asset" != "mercury-linux-x64-baseline" ] \
@@ -333,7 +335,7 @@ Install the supported Node.js package instead:
     [ "$(sha256_file "$tmp_dir/$asset")" = "$(checksum_for "$checksums_tmp" "$asset")" ] || die "Checksum mismatch for $asset"
     mv "$tmp_dir/$asset" "$bin_path"
     chmod +x "$bin_path"
-    smoke_out=$("$bin_path" --version 2>&1); smoke_status=$?
+    if smoke_out=$("$bin_path" --version 2>&1); then smoke_status=0; else smoke_status=$?; fi
   fi
   if [ "$smoke_status" -eq 0 ]; then
     info "Smoke test passed: $BIN_NAME --version → $smoke_out"
