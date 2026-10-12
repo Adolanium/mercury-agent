@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.4 — hotfix: binaries for CPUs without AVX2 (#155)
+
+- **"Illegal instruction (core dumped)" on older x86-64.** Bun's default x64 build uses AVX2; Intel CPUs before Haswell (2013) and some VMs crash at start. Releases now also ship **`mercury-linux-x64-baseline`** and **`mercury-win-x64-baseline.exe`**. The installers pick the baseline build when `/proc/cpuinfo` has no `avx2`, and switch to it automatically if the default build dies with an illegal instruction during the post-install smoke test. `MERCURY_ASSET=<asset name>` forces a build.
+
 ## 1.3.3 — hotfix: bots always get a provider that works
 
 - **A bot never fails on a provider that cannot answer.** A new bot (from Telegram, the TUI or the web) runs on the default LLM; if the configured default has no key or its key is rejected (401), Mercury uses the first usable provider instead, and a provider that rejects its key is remembered and skipped — for bots, the main agent's fallback chain and the default — until the key is changed. A bot turn that hit a bad key now retries on another provider instead of dead-lettering.

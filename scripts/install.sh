@@ -81,6 +81,20 @@ detect_os() {
   esac
 }
 
+# Linux x64 only: Bun's default x64 build uses AVX2. CPUs without it (Intel
+# before Haswell/2013, some VMs) crash with "Illegal instruction" (#155) —
+# the baseline build runs on any x86-64. MERCURY_CPUINFO exists for tests.
+cpu_has_avx2() {
+  cpuinfo=${MERCURY_CPUINFO:-/proc/cpuinfo}
+  [ -r "$cpuinfo" ] || return 0   # unknown → assume a modern CPU
+  grep -q -w avx2 "$cpuinfo"
+}
+
+# True when checksums.txt lists the asset (older releases have no baseline build).
+has_asset() {
+  awk -v a="$2" '$2 == a { found=1 } END { exit found ? 0 : 1 }' "$1"
+}
+
 # Detect arch in Mercury's release naming (arm64 | x64). We don't ship 32-bit.
 detect_arch() {
   uname_m=$(uname -m 2>/dev/null || echo unknown)
@@ -244,6 +258,15 @@ Install the supported Node.js package instead:
   checksum_url="${release_dir}/checksums.txt"
   info "Downloading checksums.txt ..."
   fetch_to "$checksum_url" "$checksums_tmp" || die "Failed to download required checksums from $checksum_url"
+  # Pick the build this CPU can run. MERCURY_ASSET forces one (support use).
+  if [ -n "${MERCURY_ASSET:-}" ]; then
+    asset="$MERCURY_ASSET"
+  elif [ "$os" = "linux" ] && [ "$arch" = "x64" ] && ! cpu_has_avx2 && has_asset "$checksums_tmp" "mercury-linux-x64-baseline"; then
+    info "This CPU has no AVX2 — using the baseline build"
+    asset="mercury-linux-x64-baseline"
+  fi
+  url="${release_dir}/${asset}"
+  binary_tmp="$tmp_dir/$asset"
   expected_binary=$(checksum_for "$checksums_tmp" "$asset")
   expected_web=$(checksum_for "$checksums_tmp" "web.tar.gz")
 
@@ -298,7 +321,21 @@ Install the supported Node.js package instead:
   # Post-install smoke: the binary must at least report its version. A
   # wrong-arch download, a glibc mismatch or a quarantined binary fails
   # here with a readable message instead of at first use.
-  if smoke_out=$("$bin_path" --version 2>&1); then
+  smoke_out=$("$bin_path" --version 2>&1); smoke_status=$?
+  # SIGILL (exit 132) on the default build = a CPU without AVX2 that
+  # /proc/cpuinfo did not reveal: switch to the baseline build in place.
+  if [ "$smoke_status" -ne 0 ] && [ "$os" = "linux" ] && [ "$arch" = "x64" ] && [ "$asset" != "mercury-linux-x64-baseline" ] \
+     && { [ "$smoke_status" -eq 132 ] || printf '%s' "$smoke_out" | grep -qi 'illegal instruction'; } \
+     && has_asset "$checksums_tmp" "mercury-linux-x64-baseline"; then
+    info "This CPU cannot run the default build (illegal instruction) — switching to the baseline build"
+    asset="mercury-linux-x64-baseline"
+    fetch_to "${release_dir}/${asset}" "$tmp_dir/$asset" || die "Failed to download ${release_dir}/${asset}"
+    [ "$(sha256_file "$tmp_dir/$asset")" = "$(checksum_for "$checksums_tmp" "$asset")" ] || die "Checksum mismatch for $asset"
+    mv "$tmp_dir/$asset" "$bin_path"
+    chmod +x "$bin_path"
+    smoke_out=$("$bin_path" --version 2>&1); smoke_status=$?
+  fi
+  if [ "$smoke_status" -eq 0 ]; then
     info "Smoke test passed: $BIN_NAME --version → $smoke_out"
   else
     err "The installed binary failed to run: $bin_path --version"
