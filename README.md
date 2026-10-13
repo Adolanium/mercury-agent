@@ -1,12 +1,12 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/img/readme-hero-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="docs/img/readme-hero-light.png">
-    <img alt="Mercury Agent" src="docs/img/readme-hero-light.png" width="520">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/cosmicstack-labs/mercury-agent/main/docs/img/readme-hero-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/cosmicstack-labs/mercury-agent/main/docs/img/readme-hero-light.png">
+    <img alt="Mercury Agent" src="https://raw.githubusercontent.com/cosmicstack-labs/mercury-agent/main/docs/img/readme-hero-light.png" width="520">
   </picture>
 </p>
 
-<h3 align="center">A personal AI agent that lives on your machine, asks before it acts, and remembers what matters.</h3>
+<h3 align="center">The soul-driven AI agent that lives on your machine.<br/>It asks before it acts, remembers what matters, and keeps working when you walk away.</h3>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@cosmicstack/mercury-agent"><img src="https://img.shields.io/npm/v/@cosmicstack/mercury-agent?color=0ea5e9&label=npm" alt="npm version"></a>
@@ -33,9 +33,18 @@
 
 ---
 
-Mercury is an open-source AI agent you run yourself. It works from your terminal, Telegram, Discord, Slack, Signal and a local web dashboard, all backed by one runtime on your machine. It can read and write files, run commands, use git and GitHub, browse the web and schedule work, and every one of those actions goes through a permission system you control. It keeps a structured long-term memory in a local SQLite database, stays inside a daily token budget, and keeps running in the background after you close the terminal.
+**Most AI agents forget you by morning, run whatever the model decides, and stop the moment you close the laptop. Mercury doesn't.**
 
-On top of the agent you talk to, Mercury ships **Mercury Code**, a full-screen coding environment for working inside a repository, and **Mercury Bots**, a fleet of persistent specialist agents that work on their own schedule and deliver files you can open.
+Mercury is an open-source agent with a personality you write yourself, a memory that stays on your disk, and a permission system that sits between the model and your machine. Message it from your terminal, Telegram, Discord, Slack or Signal and you reach the same agent, with the same memory, running as one background process you own.
+
+It reads and writes your files, runs commands, ships code through git and GitHub, researches the web and keeps a schedule. Every one of those actions is checked against rules you set, and every turn stays inside a daily token budget.
+
+Then it goes further:
+
+- **Mercury Code** turns it into a careful pair programmer inside your repository, one that only says "done" after the tests pass.
+- **Mercury Bots** gives it a team. Persistent specialists research, write and ship on their own schedule, then drop finished files in a folder you can open, or straight into your Telegram chat.
+
+Install it in one line. Talk to it from anywhere. It is still there tomorrow, and it still remembers.
 
 ## At a glance
 

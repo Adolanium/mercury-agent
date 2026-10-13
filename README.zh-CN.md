@@ -1,12 +1,12 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/img/readme-hero-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="docs/img/readme-hero-light.png">
-    <img alt="Mercury Agent" src="docs/img/readme-hero-light.png" width="520">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/cosmicstack-labs/mercury-agent/main/docs/img/readme-hero-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/cosmicstack-labs/mercury-agent/main/docs/img/readme-hero-light.png">
+    <img alt="Mercury Agent" src="https://raw.githubusercontent.com/cosmicstack-labs/mercury-agent/main/docs/img/readme-hero-light.png" width="520">
   </picture>
 </p>
 
-<h3 align="center">运行在你自己机器上的个人 AI Agent：行动前先征求同意，记得真正重要的事。</h3>
+<h3 align="center">以灵魂驱动、运行在你自己机器上的 AI Agent。<br/>行动前先征求同意，记得真正重要的事，你离开后依然在工作。</h3>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@cosmicstack/mercury-agent"><img src="https://img.shields.io/npm/v/@cosmicstack/mercury-agent?color=0ea5e9&label=npm" alt="npm version"></a>
@@ -33,9 +33,18 @@
 
 ---
 
-Mercury 是一个由你自己运行的开源 AI Agent。你可以通过终端、Telegram、Discord、Slack、Signal 以及本地 Web 控制台与它对话，它们都连接到你机器上的同一个运行时。Mercury 可以读写文件、执行命令、使用 git 和 GitHub、浏览网页、安排定时任务，而每一个动作都要经过由你掌控的权限系统。它把结构化的长期记忆保存在本地 SQLite 数据库中，遵守每日 Token 预算，并且在你关闭终端之后继续在后台运行。
+**大多数 AI Agent 第二天就忘了你，模型说什么就执行什么，合上笔记本就停止工作。Mercury 不会。**
 
-除了与你对话的主 Agent，Mercury 还提供 **Mercury Code**（在代码仓库中工作的全屏编程环境）和 **Mercury Bots**（一组按自己的节奏工作、并交付可直接打开的文件的常驻专家 Agent）。
+Mercury 是一个开源 Agent：人格由你亲手书写，记忆保存在你自己的磁盘上，模型与你的机器之间隔着一套权限系统。无论你从终端、Telegram、Discord、Slack 还是 Signal 给它发消息，面对的都是同一个 Agent、同一份记忆，运行在一个属于你的后台进程里。
+
+它能读写你的文件、执行命令、通过 git 和 GitHub 交付代码、上网调研、管理日程。每一个动作都会对照你设定的规则检查，每一轮对话都控制在每日 Token 预算之内。
+
+而且不止于此：
+
+- **Mercury Code** 让它成为你代码仓库里一位谨慎的结对程序员，只有测试真正通过后才会说"完成"。
+- **Mercury Bots** 给了它一支团队。常驻的专家 Agent 按自己的节奏调研、写作、交付，再把完成的文件放进你能打开的文件夹，或直接发到你的 Telegram。
+
+一行命令安装，随处与它对话。明天它依然在，依然记得你。
 
 ## 一览
 
