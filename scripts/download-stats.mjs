@@ -7,17 +7,17 @@
  *               counted: every install also fetches checksums.txt and
  *               web.tar.gz, which would triple-count one install.
  *
- * Writes a shields.io endpoint document (docs/badges/downloads.json,
- * served by GitHub Pages at mercuryagent.sh/badges/downloads.json) plus a
- * breakdown file for humans. Usage: node scripts/download-stats.mjs [--dry-run]
+ * Writes a shields.io endpoint document (.github/badges/downloads.json, read
+ * by the badge through raw.githubusercontent.com) plus a breakdown file. Usage: node scripts/download-stats.mjs [--dry-run]
  */
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 const PKG = '@cosmicstack/mercury-agent';
 const REPO = 'cosmicstack-labs/mercury-agent';
-const OUT = 'docs/badges/downloads.json';
-const BREAKDOWN = 'docs/badges/downloads-breakdown.json';
+// .github/badges, not docs/: the website deploy replaces docs/ wholesale.
+const OUT = '.github/badges/downloads.json';
+const BREAKDOWN = '.github/badges/downloads-breakdown.json';
 const dryRun = process.argv.includes('--dry-run');
 
 const headers = { 'User-Agent': 'mercury-download-stats', Accept: 'application/vnd.github+json' };
