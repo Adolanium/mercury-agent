@@ -1,38 +1,73 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/img/card-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="docs/img/card-light.png">
-    <img alt="Mercury — Soul-Driven AI Agent" src="docs/img/card-light.png" width="600">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/img/readme-hero-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/img/readme-hero-light.png">
+    <img alt="Mercury Agent" src="docs/img/readme-hero-light.png" width="520">
   </picture>
 </p>
 
+<h3 align="center">A personal AI agent that lives on your machine, asks before it acts, and remembers what matters.</h3>
+
 <p align="center">
-  <strong>Soul-driven AI agent with permission-hardened tools, token budgets, and multi-channel access.</strong>
+  <a href="https://www.npmjs.com/package/@cosmicstack/mercury-agent"><img src="https://img.shields.io/npm/v/@cosmicstack/mercury-agent?color=0ea5e9&label=npm" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/@cosmicstack/mercury-agent"><img src="https://img.shields.io/npm/dt/@cosmicstack/mercury-agent?color=0ea5e9&label=downloads" alt="total npm downloads"></a>
+  <a href="https://github.com/cosmicstack-labs/mercury-agent/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/cosmicstack-labs/mercury-agent/ci.yml?branch=main&label=CI" alt="CI"></a>
+  <a href="https://github.com/cosmicstack-labs/mercury-agent/stargazers"><img src="https://img.shields.io/github/stars/cosmicstack-labs/mercury-agent?style=flat&color=f59e0b" alt="GitHub stars"></a>
+  <a href="https://nodejs.org/"><img src="https://img.shields.io/node/v/@cosmicstack/mercury-agent?color=16a34a" alt="node"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/cosmicstack-labs/mercury-agent?color=64748b" alt="MIT license"></a>
+  <a href="https://discord.gg/5emMpMJy5J"><img src="https://img.shields.io/badge/discord-join-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
 </p>
 
 <p align="center">
-  Remembers what matters. Asks before it acts. Runs 24/7 from CLI, Telegram, Discord, Slack, Signal, or Web. ~50 built-in tools, Mercury Code, the Mercury Bots fleet, Kanban boards, extensible skills, SQLite-backed Second Brain memory.
-</p>
-
-<p align="center">
-  <a href="https://www.npmjs.com/package/@cosmicstack/mercury-agent"><img src="https://img.shields.io/npm/v/@cosmicstack/mercury-agent" alt="npm"></a>
-  <a href="https://github.com/cosmicstack-labs/mercury-agent"><img src="https://img.shields.io/github/license/cosmicstack-labs/mercury-agent" alt="license"></a>
-  <a href="https://nodejs.org/"><img src="https://img.shields.io/node/v/@cosmicstack/mercury-agent" alt="node"></a>
-</p>
-
-<p align="center">
-  <strong>🔖 Current Stable: v1.3.9 — Steady Mercury</strong>
-</p>
-
-<p align="center">
-  English | <a href="README.zh-CN.md">简体中文</a>
+  <a href="https://mercuryagent.sh">Website</a> ·
+  <a href="https://mercuryagent.sh/docs">Docs</a> ·
+  <a href="#quickstart">Quickstart</a> ·
+  <a href="CHANGELOG.md">Changelog</a> ·
+  <a href="https://discord.gg/5emMpMJy5J">Discord</a> ·
+  <a href="README.zh-CN.md">简体中文</a>
 </p>
 
 ---
 
-## Quick Start
+Mercury is an open-source AI agent you run yourself. It works from your terminal, Telegram, Discord, Slack, Signal and a local web dashboard, all backed by one runtime on your machine. It can read and write files, run commands, use git and GitHub, browse the web and schedule work, and every one of those actions goes through a permission system you control. It keeps a structured long-term memory in a local SQLite database, stays inside a daily token budget, and keeps running in the background after you close the terminal.
 
-**One-liner install (no Node.js required)** — downloads the latest standalone binary for your OS:
+On top of the agent you talk to, Mercury ships **Mercury Code**, a full-screen coding environment for working inside a repository, and **Mercury Bots**, a fleet of persistent specialist agents that work on their own schedule and deliver files you can open.
+
+## At a glance
+
+| | |
+|---|---|
+| **Install** | One-line installer with no Node.js required, or `npm i -g @cosmicstack/mercury-agent` on Node.js 22+ |
+| **Runs on** | macOS, Linux, Windows, and Android via Termux |
+| **Talk to it from** | Terminal UI, Telegram, Discord, Slack, Signal, and a local web dashboard |
+| **Models** | DeepSeek, OpenAI, Anthropic, Grok, Ollama (cloud and local), LM Studio, any OpenAI-compatible endpoint, Mercury Cloud, and more, with automatic fallback |
+| **Safety** | Shell blocklist, per-folder read/write scopes, approval prompts, SSRF-guarded fetches, secret redaction in logs |
+| **Memory** | Second Brain: typed, deduplicated facts in SQLite with full-text search, all on your disk |
+| **Tools** | About 50 built in (files, shell, git, GitHub, web, scheduler, memory, sub-agents) plus installable skills |
+| **Always on** | Background daemon with crash recovery and a login service on every OS |
+| **License** | MIT |
+
+## Why Mercury
+
+Most agents can read files, run commands and fetch pages. The differences are in what happens around those actions, and that is where Mercury puts its effort.
+
+**It asks before it acts.** File access is scoped per folder, shell commands pass through a blocklist and an approval step, and outbound requests are checked against private address ranges. You choose per session whether Mercury asks every time or runs freely, and members of a shared Telegram or Discord channel cannot widen their own access.
+
+**It remembers you without being told to.** After each conversation Mercury extracts a few durable facts (preferences, goals, projects, decisions) with confidence scores, resolves conflicts with what it already knows, and recalls the relevant ones before the next answer. Everything lives in a SQLite file under `~/.mercury`, and `/memory` lets you inspect, pause or clear it.
+
+**It respects a budget.** A daily token budget is enforced on every turn. When usage climbs, Token Saver mode trims context and can route routine work to a cheaper model. `/budget` shows where you stand.
+
+**It is one runtime, not a collection of scripts.** A single background process owns your channels, your bots and the web dashboard. Running `mercury` in a terminal attaches to that process instantly, so closing the terminal never stops a running task or a bot.
+
+**It writes code like a careful engineer.** Mercury Code plans and builds in one flow, shows a live checklist, asks once before large changes, and only reports success after a build, test or typecheck actually passes.
+
+**It works while you are away.** Mercury Bots are persistent specialists with their own persona, model, memory, permissions and daily budget. They run on schedules, hand work to each other, and deliver finished files to `~/Documents/Mercury/<Bot name>/`. You can manage the whole fleet from Telegram with buttons.
+
+**You own the personality.** Mercury's character is defined by plain Markdown files (`soul.md`, `persona.md`, `taste.md`, `heartbeat.md`) that you can edit.
+
+## Quickstart
+
+**1. Install.** The installer downloads a standalone binary for your OS and CPU and verifies its checksum. No Node.js needed.
 
 ```bash
 # macOS / Linux
@@ -40,496 +75,321 @@ curl -fsSL https://mercuryagent.sh/install.sh | sh
 ```
 
 ```powershell
-# Windows
+# Windows (PowerShell)
 irm https://mercuryagent.sh/install.ps1 | iex
 ```
 
-Or via npm if you already have **Node.js 22+** (required since 1.3.1 — binaries carry their own runtime):
-
-```bash
-npx @cosmicstack/mercury-agent
-```
-
-Or install the npm package globally:
+Prefer npm? Mercury needs **Node.js 22 or newer** on that path.
 
 ```bash
 npm i -g @cosmicstack/mercury-agent
+```
+
+**2. Run it.**
+
+```bash
 mercury
 ```
 
-First run triggers the setup wizard (name, provider, optional channels). After setup, Mercury opens the Ink TUI startup screen and asks for your permission mode (`Ask Me` or `Allow All`) before chat starts.
+The first run starts a short setup wizard: your name, the agent's name, Mercury Cloud or your own API keys, and optional channels such as Telegram. Mercury then starts its background service and opens the terminal UI.
 
-To reconfigure later (change keys, name, settings):
+**3. Use it every day.**
 
 ```bash
-mercury doctor
-mercury doctor --platform
+mercury            # open a chat (attaches to the running Mercury)
+mercury code .     # open Mercury Code in the current repository
+mercury doctor     # change providers, keys or channels; applies immediately
+mercury status     # see what is running
 ```
 
-## Why Mercury?
+Upgrades are one command: `mercury upgrade`. It does nothing if you are already on the latest version.
 
-Every AI agent can read files, run commands, and fetch URLs. Most do it silently. **Mercury asks first — and remembers what matters.**
+## How it works
 
-- **Permission-hardened** — Shell blocklist (`sudo`, `rm -rf /`, swapped-flag `rm -fr` variants, and friends never execute). Folder-level read/write scoping per channel, per sender role. Pending approval flow with arrow-key pickers in the TUI. Ask Me or Allow All per session. Members on shared channels can't install skills — escalation paths stay with admins.
-- **Second Brain** — Persistent, structured memory with SQLite + FTS5 full-text search. 10 memory types, auto-extraction, conflict resolution, auto-consolidation. Mercury learns your preferences, goals, and habits without manual entry.
-- **Soul-driven** — Personality defined by markdown files you own (`soul.md`, `persona.md`, `taste.md`, `heartbeat.md`). No corporate wrapper.
-- **Token-aware** — Daily budget enforcement. Token Saver Mode engages automatically under pressure and trims context (tuned via `/saver`). `/budget` to check, reset, or override.
-- **Mercury Code** — A full-screen, repo-aware coding environment (`mercury code` or `/code`): plan + execute in one AUTO flow, live plan checklist, background sub-agents, `/code agent` delegation, honest completion banners with per-file diffs.
-- **Mercury Bots fleet** — Persistent specialist bots with their own persona, provider, scoped memory, and permissions. Onboard and steer from the TUI (`/bots`), the web cockpit, the HTTP API, or chat. They run fail-closed, never block the main agent, and hand work back through a deliverables inbox.
-- **Five messaging channels** — CLI, Telegram, Discord, Slack, and Signal (end-to-end encrypted via `signal-cli`).
-- **Always on** — Run as a background daemon on any OS. Auto-restarts on crash with a crash-flag report. Starts on boot. Cron scheduling, heartbeat monitoring, and proactive notifications.
-- **Extensible** — Install community skills from the registry with a single command. Schedule skills as recurring tasks. Based on the [Agent Skills](https://agentskills.io) specification. A default `web-search` skill is seeded on first run in `~/.mercury/skills/web-search/SKILL.md`.
+```mermaid
+flowchart LR
+  subgraph You
+    T[Terminal UI]
+    TG[Telegram]
+    DC[Discord / Slack / Signal]
+    W[Web dashboard]
+  end
+  subgraph Runtime["Mercury runtime (one background process)"]
+    A[Agent loop]
+    P[Permissions]
+    M[(Second Brain<br/>SQLite)]
+    B[Mercury Bots]
+    S[Scheduler]
+  end
+  LLM[LLM providers<br/>with fallback]
+  T -- attach --> A
+  TG --> A
+  DC --> A
+  W --> A
+  A --> P
+  A <--> M
+  A --> LLM
+  B --> LLM
+  S --> A
+  S --> B
+```
 
-New in this line: **Mercury Code** (completion contract, AUTO mode, live plan checklists, stall watchdog, compact-on-pressure, live thinking preview, wheel-scrollable transcripts), **Discord / Slack / Signal channels**, the **Mercury Bots fleet** with a web cockpit, **Mercury Cloud** pairing, SSRF guards on outbound fetches, randomized initial web-dashboard passwords, and secret redaction in logs.
+The runtime runs as a login service (LaunchAgent on macOS, systemd on Linux, Task Scheduler on Windows) and restarts itself after a crash. Every channel talks to the same agent, the same permissions and the same memory. The terminal is a client: `mercury` attaches to the runtime, and `mercury code` opens a coding session beside it.
 
-## Channels
+## Features
+
+### Channels
 
 | Channel | Access model | Highlights |
-|---------|--------------|------------|
-| **CLI** | Single user | Ink TUI with live streaming, `/menu` picker, permission prompts, Mercury Code screens, background task bar |
-| **Telegram** | Admin + member roles, pairing codes | HTML formatting, editable streaming messages, file uploads, typing indicators, skill installs (admin-only) |
-| **Discord** | Admin role (default: `Mercury Admin`), guild/channel scoping | Slash commands, streaming edits, rich embeds, DM + channel support, rate limiting |
-| **Slack** | Admin + member | Socket Mode (no public endpoint), streaming edits, @mention awareness, `/mercury` slash command |
-| **Signal** | Pairing codes | End-to-end encrypted via `signal-cli` bridge, group + DM modes, phone-number redaction. Linux (x64/ARM64) native; macOS needs Java 17+; Windows unsupported |
+|---|---|---|
+| **Terminal** | Single user | Full-screen UI with live streaming, a command picker (`/menu`), approval prompts, background tasks |
+| **Telegram** | Admins and members, pairing codes | Streaming replies, file delivery, inline buttons for approvals and bot control |
+| **Discord** | Admin role, guild and channel scoping | Slash commands, streaming edits, DMs and channels |
+| **Slack** | Admins and members | Socket Mode (no public endpoint), streaming edits, `/mercury` command |
+| **Signal** | Pairing codes | End-to-end encrypted through `signal-cli`, groups and DMs |
+| **Web** | Local login | Chat, Kanban, bots cockpit, memory explorer, providers and skills |
 
-All channels share one tool registry, permission system, and Second Brain — configure more than one and they route notifications by priority (Signal → Telegram → Discord → Slack → CLI).
+When more than one channel is configured, notifications go to the first available one in order: Signal, Telegram, Discord, Slack, terminal.
 
-### CLI Shortcuts
+### Mercury Code
 
-- `Ctrl+P` → switch to Plan mode · `Ctrl+X` → Execute mode · `Esc`/`Ctrl+Q` → exit workspace · `Ctrl+V` → toggle progress view (`/view` fallback)
-- `/menu` opens the arrow-key command picker.
-
-### Spotify in the TUI
-
-Keyboard shortcuts: `N` next, `P` previous, `+`/`-` volume, `Z` now playing. Inline album art is safe-gated: enable with `MERCURY_SPOTIFY_ART=1`; renders only in local iTerm sessions and falls back to text-only elsewhere.
-
-## Mercury Code
-
-Mercury Code is Mercury's full-screen programming environment — it turns the agent into a senior engineer embedded in your repo.
+A full-screen coding environment that works inside a repository.
 
 ```bash
-mercury code [dir]    # open Mercury Code in a directory
-/code                 # enter Mercury Code from the running agent
+mercury code [dir]   # from the shell
+/code                # from a running chat
 ```
 
-- **AUTO mode (default)** — plan and build in one flow. Large/consequential changes get one confirmation before code is written; everything else just happens.
-- **Completion contract** — every task ends in a verdict: verified completion (evidence-gated: a build/test/typecheck must actually run) or an honest pause naming its blocker. Tasks can't fake success or die silently.
-- **Live plan checklist** — every step visible as pending → active → done.
-- **Background delegation** — `/code agent <task>` hands coding work to a sub-agent while you keep chatting.
-- **Guardrails** — stall watchdog (3 min → pulse, 8 min → resume), compact-on-pressure memory handling, write-truncation recovery, provider fallback mid-task.
-- **Workspace IDE** — `/ws` to browse files, stage, commit (`Mercury` co-authors), and undo changes; `/code diff` shows colored working-tree diffs.
+- **AUTO mode:** plans and builds in one pass, and asks once before large or risky changes.
+- **Verified completion:** a task ends as done only when a build, test or typecheck ran and passed. Otherwise it stops and names the blocker.
+- **Live plan:** every step is shown as pending, active or done.
+- **Background work:** `/code agent <task>` hands a task to a sub-agent while you keep working.
+- **Workspace view:** `/ws` to browse, stage, commit and undo; `/code diff` for a colored diff.
 
-## Mercury Bots
+### Mercury Bots
 
-Bots are persistent, persona-scoped specialists that live alongside the main agent. Each has its own character, provider/model, scoped memory, and tool permissions — configured once at onboarding, then fully automatic. Bots fail closed (a missing permission is a denial, not a mid-run question), run as async work in the same process, and never block the main agent.
+Persistent specialist agents that run next to the main agent without blocking it.
 
-- **Onboard** via the guided wizard: `/bots` in the TUI, the web cockpit, or `POST /api/bots`
-- **Fleet nesting** — leads and crews; bundles export/import a whole fleet (personas + manifests + permissions)
-- **Surfaces** — `/bots` TUI panel, web cockpit with live SSE activity and a deliverables inbox (`outputs/<botId>/`), local HTTP API, and Mercury Cloud relay
-- **Ops hygiene** — per-bot journal, DLQ replay, retention caps on disk, `mercury bots doctor` for fleet health
+- **Onboard** with `/bots create` from the terminal, Telegram or the web dashboard: persona, permission tier, solo or fleet, daily budget.
+- **Fleets:** a lead bot delegates typed tasks to its crew, runs pipelines defined in `bot.yaml`, and gets one summary when the work is done.
+- **Deliverables:** finished files land in `~/Documents/Mercury/<Bot name>/`, with work in progress under `work/`. On Telegram, results arrive as attached files.
+- **Governed:** per-turn limits, a daily token budget per bot and per fleet, outcomes judged from what the bot actually did, routines that cool down instead of burning tokens.
+- **Operate:** `/bots` roster with Stop, Start and Run buttons on Telegram; `/bots cost`, `/bots show`, `/bots doctor`, `/bots stop all`.
 
-Full design and decision log: [BOTS-ARCHITECTURE.md](BOTS-ARCHITECTURE.md).
+Design notes: [BOTS-ARCHITECTURE.md](BOTS-ARCHITECTURE.md).
 
-## Daemon Mode
+### Second Brain
 
-**One command to make Mercury persistent:**
+- **10 memory types:** identity, preference, goal, project, habit, decision, constraint, relationship, episode, reflection.
+- **Automatic extraction** of up to three facts per conversation, with confidence, importance and durability scores.
+- **Recall** of the most relevant memories before each answer, within a fixed budget.
+- **Consolidation** every hour into a profile and an active-state summary; stale and low-confidence facts age out.
+- **Local only:** `~/.mercury/memory/second-brain/second-brain.db` (SQLite with FTS5). Turn it off with `memory.secondBrain.enabled: false`.
+
+### Permissions and safety
+
+- **Shell:** a blocklist that cannot be overridden (`sudo`, `rm -rf /` and its variants), plus approval for everything outside your allowed scopes.
+- **Files:** read and write scopes per folder, per channel and per role.
+- **Network:** `fetch_url` blocks private address ranges and caps response sizes.
+- **Modes:** *Ask Me* or *Allow All* per session, changeable with `/permissions`.
+- **Secrets:** API keys live in `~/.mercury/.env`, logs redact them, and the dashboard password is random on first run.
+
+Report a vulnerability through [SECURITY.md](SECURITY.md).
+
+### Skills
+
+Install community skills from [skills.mercuryagent.sh](https://skills.mercuryagent.sh), based on the [Agent Skills](https://agentskills.io) specification.
 
 ```bash
-mercury up
+mercury skills search prompt
+mercury skills view ai-ml/prompt-engineering    # read it before installing
+mercury skills install ai-ml/prompt-engineering
 ```
 
-This installs the system service (if not installed), starts the background daemon, and ensures Mercury is running. If Mercury is already running, `mercury up` just confirms it and shows the PID.
+Skills are community contributed and not audited, so review them first. They can also be installed from the web dashboard or, by admins, from Telegram.
 
-Crash recovery: a crash flag (`~/.mercury/.crash-flag`) records ungraceful exits and reports on next startup; the watchdog restarts crashed daemons with exponential backoff (up to 10 restarts per minute) and escalates to a hard stop with last-gasp logging.
+### Web dashboard, Kanban and scheduler
 
-### Other daemon commands
+- **Dashboard** at `http://127.0.0.1:6174`, bound to localhost: chat, bots cockpit, memory explorer, providers, skills, permissions, schedules and usage.
+- **Kanban boards** that Mercury works through card by card, in dependency order, with per-card token tracking.
+- **Scheduler:** cron schedules and one-shot delays through `schedule_task`. Results go back to the channel that created them.
 
-```bash
-mercury restart      # Restart the background process
-mercury stop         # Stop a background process
-mercury start -d     # Start in background (without service install)
-mercury attach       # Attach this terminal to an already-running runtime
-mercury logs         # View recent daemon logs
-mercury status       # Show if daemon is running
-```
+### Providers
 
-In daemon mode, Telegram becomes your primary channel — CLI input goes through `mercury attach` instead, which gives you the full TUI (chat, streaming, `/`-commands) against the existing runtime.
+Mercury tries your default provider first and falls back to the others if it fails. A provider whose key is rejected is skipped until you fix the key, and `mercury doctor` warns about keys that cannot be valid.
 
-## CLI Commands
+<details>
+<summary><b>Supported providers and default models</b></summary>
 
-| Command | Description |
-|---------|-------------|
-| `mercury up` | **Recommended.** Install service + start daemon + ensure running |
-| `mercury` | Start the agent (same as `mercury start`) |
-| `mercury start [-d]` | Start in foreground or background (daemon) |
-| `mercury attach` | Attach a terminal to an already-running runtime |
-| `mercury code [dir]` | Open the Mercury Code TUI in a directory |
-| `mercury restart` / `mercury stop` | Restart / stop the background process |
-| `mercury logs` | View recent daemon logs |
-| `mercury doctor [--platform]` | Reconfigure setup; `--platform` shows compatibility diagnostics |
-| `mercury setup` | Re-run the setup wizard |
-| `mercury status` | Show config and daemon status |
-| `mercury telegram <sub>` | list / approve / reject / remove / promote / demote / reset access |
-| `mercury signal <sub>` | approve / unpair / reset / status / register / unregister |
-| `mercury discord <sub>` | list / approve / reject / remove / reset / status |
-| `mercury slack <sub>` | list / approve / reject / remove / reset / status |
-| `mercury bots <sub>` | doctor (health check) / list / storage — fleet tooling |
-| `mercury skills <sub>` | search / browse / view / install / remove / update / doctor |
-| `mercury cloud <sub>` | connect / disconnect / status / login / models — Mercury Cloud pairing |
-| `mercury service <sub>` | install / uninstall / status (auto-start on boot) |
-| `mercury web-reset-password` | Reset the web dashboard password |
-| `mercury upgrade` | Upgrade to the latest version |
-| `mercury uninstall [--purge-data]` | Remove Mercury (optionally all data) |
-| `mercury help` | Show the full manual |
-| `mercury --verbose` | Start with debug logging |
+| Provider | Default model | Key |
+|---|---|---|
+| Mercury Cloud | `mercury-mini` | paired with `mercury cloud connect` |
+| DeepSeek | `deepseek-chat` | `DEEPSEEK_API_KEY` |
+| OpenAI | `gpt-4o-mini` | `OPENAI_API_KEY` |
+| Anthropic | `claude-sonnet-4` | `ANTHROPIC_API_KEY` |
+| Grok (xAI) | `grok-4` | `GROK_API_KEY` |
+| Atlas Cloud | `qwen/qwen3.5-flash` | `ATLASCLOUD_API_KEY` |
+| AI/ML API | `anthropic/claude-sonnet-4.6` | `AIMLAPI_API_KEY` |
+| MiMo (Xiaomi) | `mimo-v2.5-pro` | `MIMO_API_KEY` |
+| Ollama Cloud | `gpt-oss:120b` | `OLLAMA_CLOUD_API_KEY` |
+| Ollama Local | your local model | none |
+| LM Studio | your local model | none |
+| OpenAI-compatible | any | `OPENAI_COMPAT_API_KEY` and `OPENAI_COMPAT_BASE_URL` |
 
-## In-Chat Commands
+LiteLLM and GitHub Copilot endpoints are also available through `mercury doctor`.
 
-Type these during a conversation — they don't consume API tokens. Highlights (full list: `/help`):
+</details>
 
-| Command | Description |
-|---------|-------------|
-| `/menu` | Arrow-key command picker |
-| `/status` | Show config, budget, and usage |
-| `/tools`, `/skills` | List loaded tools / installed skills |
-| `/models` | List providers; `/models use <provider>` to switch (persisted) |
-| `/stream` | Toggle Telegram text streaming |
-| `/budget` | Show/override/reset/set token budget |
-| `/saver` | Token Saver Mode status, on/off, threshold, cheap-provider routing |
-| `/permissions` | Change permission mode (Ask Me / Allow All) |
-| `/view` | Toggle progress view (balanced/detailed) |
-| `/code` | Enter/exit Mercury Code (`/code chat` returns to chat) |
-| `/research [topic]` | Toggle deep research mode (web research + rich article output) |
-| `/ws` | Workspace IDE mode (open, stage, commit, undo, refresh, exit) |
-| `/bg` | Background tasks — list, current, cancel, clear, killall |
-| `/agents` | Sub-agents — list, stop, pause, resume, resource config |
-| `/memory` | View and manage Second Brain memory |
-| `/sessions` / `/session` | List, switch, archive, delete sessions |
-| `/cloud` | Mercury Cloud models (`/cloud models`, `/cloud use <id>`) |
-| `/spotify` | Connection status, auth flows, interactive player (CLI) |
-| `/bots` | Mercury Bots fleet panel — onboard, edit, journal, enable/disable |
-| `/halt` / `/stop` / `/reset` | Emergency stops: agents + queue (+ locks, + context) |
-| `/whatsnew` | What's new in this Mercury version |
-| `/unpair` | Reset channel access (Telegram, admins only) |
+## Reference
 
-## Built-in Tools
+<details>
+<summary><b>CLI commands</b></summary>
 
-~50 tools are registered dynamically based on enabled capabilities:
+| Command | What it does |
+|---|---|
+| `mercury` | Start Mercury, or attach to it if it is already running |
+| `mercury up` | Install the login service and make sure Mercury is running |
+| `mercury attach` | Attach this terminal to the running runtime |
+| `mercury code [dir]` | Open Mercury Code in a directory |
+| `mercury start [-d]` / `stop` / `restart` | Control the runtime |
+| `mercury status` / `logs` | Show status and recent logs |
+| `mercury doctor [--platform]` | Reconfigure; `--platform` prints a compatibility report |
+| `mercury setup` | Run the setup wizard again |
+| `mercury upgrade [--force]` | Upgrade to the latest version |
+| `mercury telegram` / `discord` / `slack` / `signal` | Manage channel access |
+| `mercury bots` | `doctor`, `list`, `storage` |
+| `mercury skills` | `search`, `browse`, `view`, `install`, `remove`, `update`, `doctor` |
+| `mercury cloud` | `connect`, `disconnect`, `status`, `login`, `models` |
+| `mercury service` | `install`, `uninstall`, `status` |
+| `mercury web-reset-password` | Reset the dashboard password |
+| `mercury uninstall [--purge-data]` | Remove Mercury, optionally with all data |
 
-| Category | Tools |
-|----------|-------|
-| **Filesystem** | `read_file`, `write_file`, `create_file`, `edit_file`, `list_dir`, `delete_file`, `send_file`, `approve_scope` |
-| **Shell** | `run_command`, `cd`, `approve_command` |
-| **Messaging** | `send_message` |
-| **Git** | `git_status`, `git_diff`, `git_log`, `git_add`, `git_commit`, `git_push` |
-| **GitHub** | `create_pr`, `review_pr`, `list_issues`, `create_issue`, `github_api` (auto-registered when `GITHUB_TOKEN` is set) |
-| **Web** | `fetch_url` (SSRF-guarded, private-range blocked, size-capped) |
-| **Skills** | `install_skill`, `list_skills`, `use_skill` |
-| **Scheduler** | `schedule_task`, `list_scheduled_tasks`, `cancel_scheduled_task` |
-| **Memory** | `save_memory`, `search_memory` |
-| **Budget** | `budget_status` |
-| **Spotify** | `spotify_search`, `spotify_play`, `spotify_pause`, `spotify_next`, `spotify_previous`, `spotify_now_playing`, `spotify_devices`, `spotify_queue`, `spotify_like`, `spotify_volume`, `spotify_shuffle`, `spotify_repeat`, `spotify_top_tracks`, `spotify_playlists` |
-| **Sub-agents** | `delegate_task`, `list_agents`, `stop_agent` |
-| **Bot fleet** | `dispatch_bot` (hand tasks to Mercury Bots) |
-| **Interaction** | `ask_user`, `update_plan` |
+</details>
 
-## Installing Skills
+<details>
+<summary><b>In-chat commands</b></summary>
 
-Mercury can pull community-contributed skills from the registry at
-**[skills.mercuryagent.sh](https://skills.mercuryagent.sh)** (126+ skills, no auth required).
+These run locally and do not use tokens. `/help` lists everything.
 
-```bash
-mercury skills search prompt                  # search the registry
-mercury skills browse ai-ml                   # browse by category
-mercury skills view ai-ml/prompt-engineering  # render SKILL.md in the terminal
-mercury skills view ai-ml/prompt-engineering --web   # open the registry page
-mercury skills install ai-ml/prompt-engineering      # install to ~/.mercury/skills/
-mercury skills list                           # show installed skills
-mercury skills update                         # refresh all installed skills
-mercury skills remove ai-ml/prompt-engineering
-mercury skills doctor                         # check install root + registry
-```
+| Command | What it does |
+|---|---|
+| `/menu` | Command picker |
+| `/status`, `/trace [id]` | Configuration and usage; what a turn did |
+| `/new`, `/sessions` | Fresh conversation; list and switch sessions |
+| `/models` | List providers; `/models use <provider>` to switch |
+| `/budget`, `/saver` | Token budget; Token Saver mode |
+| `/permissions` | Switch between Ask Me and Allow All |
+| `/memory` | Inspect and manage the Second Brain |
+| `/code`, `/ws` | Mercury Code; workspace view |
+| `/research [topic]` | Deep research mode |
+| `/bg`, `/agents` | Background tasks; sub-agents |
+| `/bots`, `/bot <id> <task>` | Bot fleet; give a bot a task |
+| `/tools`, `/skills` | Loaded tools; installed skills |
+| `/cloud`, `/spotify` | Mercury Cloud models; Spotify controls |
+| `/stop`, `/halt`, `/reset` | Stop work, stop everything, reset context |
+| `/whatsnew` | What changed in this version |
 
-Installed skills land at `~/.mercury/skills/<category>/<slug>/SKILL.md` and are
-picked up by the agent on the next boot — they're treated identically to
-built-in skills.
+</details>
 
-> **Review before you ship.** Skills are community-contributed and unaudited.
-> Run `mercury skills view <id>` before installing.
+<details>
+<summary><b>Built-in tools</b></summary>
 
-Overrides: `--registry <url>` (or `MERCURY_SKILLS_REGISTRY`) for self-hosted
-registries, `MERCURY_SKILLS_INSTALL_ROOT` for an alternate install path,
-`--json` for machine-readable output.
+| Area | Tools |
+|---|---|
+| Files | `read_file`, `write_file`, `create_file`, `edit_file`, `list_dir`, `delete_file`, `send_file`, `approve_scope` |
+| Shell | `run_command`, `cd`, `approve_command` |
+| Git | `git_status`, `git_diff`, `git_log`, `git_add`, `git_commit`, `git_push` |
+| GitHub | `create_pr`, `review_pr`, `list_issues`, `create_issue`, `github_api` (when `GITHUB_TOKEN` is set) |
+| Web | `fetch_url` |
+| Skills | `install_skill`, `list_skills`, `use_skill` |
+| Scheduler | `schedule_task`, `list_scheduled_tasks`, `cancel_scheduled_task` |
+| Memory | `save_memory`, `search_memory` |
+| Agents | `delegate_task`, `list_agents`, `stop_agent`, `dispatch_bot` |
+| Interaction | `ask_user`, `update_plan`, `send_message`, `budget_status` |
+| Spotify | search, playback, queue, devices, playlists and more (when connected) |
 
-**Also installable from:**
+</details>
 
-- **Web dashboard** — `http://127.0.0.1:6174/skills` has a registry installer (paste `category/slug`) and a URL installer side by side.
-- **Telegram** — `/skills`, `/skills search <q>`, `/skills view <id>`, `/skills install <id>` (admin-only). Every result includes the registry URL so you can review before installing.
+<details>
+<summary><b>Files and configuration</b></summary>
 
-See the [Skills reference](https://mercuryagent.sh/docs/reference/skills) for the full command surface, frontmatter spec, and API endpoints.
+Everything Mercury stores lives in `~/.mercury/`, never in your project.
 
-## Web Dashboard
+| Path | Contents |
+|---|---|
+| `mercury.yaml` | Main configuration: providers, channels, budget, web |
+| `.env` | API keys and tokens |
+| `soul/*.md` | Personality: soul, persona, taste, heartbeat |
+| `permissions.yaml` | Scopes and approval rules |
+| `skills/` | Installed skills |
+| `schedules.yaml` | Scheduled tasks |
+| `sessions/` | Conversations |
+| `memory/second-brain/` | Second Brain database |
+| `bots/` | Bot personas, journals, queues and permissions |
+| `boards.db` | Kanban boards |
+| `daemon.log`, `daemon.pid` | Runtime log and process id |
 
-Mercury includes a built-in web UI at `http://127.0.0.1:6174` (port via `MERCURY_PORT` or `web.port`):
+</details>
 
-```bash
-mercury doctor   # Enable web during setup
-```
+## Build from source
 
-Or set in `~/.mercury/mercury.yaml`:
-
-```yaml
-web:
-  enabled: true
-  port: 6174
-```
-
-Features: chat with SSE streaming, Kanban boards, Mercury Bots cockpit (fleet roster, onboarding wizard, deliverables inbox), Second Brain visualization, Workspace IDE, provider/skill/permission/schedule management, usage tracking, dark/light theme, WebSocket relay for Mercury Cloud.
-
-The first-run web password is **randomly generated** and displayed once so you can log in and change it (a hardcoded default from a public repo would be a known credential the moment the source ships). Reset later with `mercury web-reset-password`. Credentials are written `0600`, and the dashboard binds to localhost only.
-
-## Kanban Boards
-
-Persistent task boards with agent execution. Create boards, add cards, and let Mercury process them autonomously.
-
-- **Cards** — title, description, status (todo/doing/done/blocked), priority, labels, comments, attachments, dependencies
-- **Smart execution** — Mercury processes cards sequentially, updating status and leaving result comments
-- **Cascade execution** — process dependent cards in dependency order (web fleet step mirrors the TUI)
-- **Token budget** — per-card token tracking with auto-pause when exhausted
-- **Storage** — SQLite with per-board context, variables, and instructions
-
-Access via Web Dashboard or API (`/api/boards/*`).
-
-## Scheduler
-
-- **Recurring**: `schedule_task` with cron expressions (`0 9 * * *` for daily at 9am)
-- **One-shot**: `schedule_task` with `delay_seconds` (e.g. 15 seconds)
-- Tasks persist to `~/.mercury/schedules.yaml` and restore on restart
-- Responses route back to the channel where the task was created
-
-## Second Brain
-
-Mercury builds a structured, persistent memory that grows with every conversation. Enabled by default, it automatically extracts, stores, and recalls facts about you.
-
-- **10 memory types** — identity, preference, goal, project, habit, decision, constraint, relationship, episode, reflection
-- **Automatic extraction** — after each conversation, Mercury pulls 0–3 facts with confidence, importance, and durability scores
-- **Relevant recall** — before each message, the top matching memories (bounded budget) are injected into context
-- **Auto-consolidation** — every 60 min, Mercury builds a profile summary, active-state summary, and generates reflections from patterns
-- **Conflict resolution** — opposing memories are resolved by confidence (higher wins) or recency (newer wins)
-- **Auto-pruning** — active-scope memories go stale after 21 days; inferred memories decay; low-confidence durable memories are dismissed after 120 days
-- **Graceful on constrained devices** — when native `better-sqlite3` isn't available (old Node, Termux), Mercury degrades cleanly instead of crashing
-- **User controls** — `/memory` for overview, search, pause, resume, and clear
-- **Disable** — `SECOND_BRAIN_ENABLED=false` env var or `memory.secondBrain.enabled: false` in config
-
-All data stays on your machine in `~/.mercury/memory/second-brain/second-brain.db` (SQLite + FTS5). No cloud.
-
-## Configuration
-
-All runtime data lives in `~/.mercury/` — not in your project directory.
-
-| Path | Purpose |
-|------|---------|
-| `~/.mercury/mercury.yaml` | Main config (providers, channels, budget) |
-| `~/.mercury/.env` | API keys and tokens (loaded alongside project .env) |
-| `~/.mercury/soul/*.md` | Agent personality (soul, persona, taste, heartbeat) |
-| `~/.mercury/permissions.yaml` | Capabilities and approval rules |
-| `~/.mercury/skills/` | Installed skills |
-| `~/.mercury/schedules.yaml` | Scheduled tasks |
-| `~/.mercury/token-usage.json` | Daily token usage tracking |
-| `~/.mercury/sessions/` | Canonical session store |
-| `~/.mercury/memory/short-term/` | Per-conversation JSON files |
-| `~/.mercury/memory/long-term/` | Auto-extracted facts (JSONL) |
-| `~/.mercury/memory/episodic/` | Timestamped event log (JSONL) |
-| `~/.mercury/memory/second-brain/` | Structured memory database (SQLite + FTS5) |
-| `~/.mercury/bots/` | Mercury Bots — personas, journals, queues, permissions per bot |
-| `~/.mercury/web-config.json` | Web dashboard credentials (0600) |
-| `~/.mercury/.crash-flag` | Crash recovery report (auto-cleared) |
-| `~/.mercury/daemon.pid` | Background process PID |
-| `~/.mercury/daemon.log` | Daemon mode logs |
-| `~/.mercury/boards.db` | Kanban boards database (SQLite) |
-
-## Mercury Cloud
-
-Mercury can pair with [Mercury Cloud](https://mercuryagent.sh) for hosted chat, cross-instance relay, and cloud models:
-
-```bash
-mercury cloud connect    # terminal pairing
-mercury cloud status
-mercury cloud disconnect
-```
-
-Your local agent stays the source of truth — the cloud connection relays commands and bot activity; `mercury cloud disconnect` removes the pairing.
-
-## Provider Fallback
-
-Configure multiple LLM providers. Mercury tries them in order and falls back automatically, remembering the last successful provider:
-
-| Provider | Default Model | API Key | Notes |
-|----------|--------------|---------|-------|
-| **DeepSeek** | deepseek-chat | `DEEPSEEK_API_KEY` | Default, cost-effective |
-| **OpenAI** | gpt-4o-mini | `OPENAI_API_KEY` | Also covers OpenAI-compatible endpoints |
-| **Anthropic** | claude-sonnet-4 | `ANTHROPIC_API_KEY` | Claude Sonnet, Haiku, Opus |
-| **Grok (xAI)** | grok-4 | `GROK_API_KEY` | OpenAI-compatible endpoint |
-| **Atlas Cloud** | qwen/qwen3.5-flash | `ATLASCLOUD_API_KEY` | OpenAI-compatible |
-| **AI/ML API** | anthropic/claude-sonnet-4.6 | `AIMLAPI_API_KEY` | OpenAI-compatible aggregator |
-| **MiMo (Xiaomi)** | mimo-v2.5-pro | `MIMO_API_KEY` | + `MIMO_TOKEN_PLAN_*` subscription variant |
-| **Ollama Cloud** | gpt-oss:120b | `OLLAMA_CLOUD_API_KEY` | Remote Ollama via API |
-| **Ollama Local** | — | No key needed | Routed through OpenAI chat-compat for v1 spec stability |
-| **LM Studio** | — | No key needed | Local desktop app |
-| **OpenAI-compatible** | — | `OPENAI_COMPAT_API_KEY` | Self-hosted or third-party base URL |
-| **Mercury Cloud** | mercury-mini | `MERCURY_CLOUD_AGENT_API_KEY` | Cloud agent models via `mercury cloud` |
-
-Plus community-driven compat providers (LiteLLM, GitHub Copilot model endpoints) discoverable via `mercury doctor`.
-
-> **Custom endpoints** — anything OpenAI-compatible works via `OPENAI_COMPAT_BASE_URL` + a model name; no first-class provider needed.
-
-## Architecture
-
-- **TypeScript + Node.js 22+** — ESM, tsup build
-- **Vercel AI SDK v6** — `generateText` + `streamText`, agentic step loop, provider fallback, OpenAI-compat routing
-- **grammY** — Telegram bot with typing indicators, editable streaming, auto-retry, and file uploads
-- **discord.js / @slack/bolt / signal-cli** — Discord, Slack (Socket Mode), and E2E-encrypted Signal bridges
-- **Hono + @hono/node-server** — local web dashboard, REST API, SSE activity feeds, WS cloud relay
-- **SQLite + FTS5** — Second brain and Kanban boards with full-text search, conflict resolution, auto-consolidation
-- **JSONL** — Short-term, long-term, and episodic conversation memory
-- **Bot manager** — persona-scoped fleet with queues, journals, retention caps, and fail-closed permissions
-- **Daemon manager** — background spawn + PID file + watchdog crash recovery + crash flags
-- **System services** — macOS LaunchAgent, Linux systemd, Windows Task Scheduler (standalone-binary aware)
-- **ink + React** — terminal UI with static transcripts, live regions, mouse-scroll filtering
-- **pino** — structured logging with secret redaction
-
-## Build From Source
-
-You can build Mercury yourself from source — either the standard Node bundle (for `npm link` / local development) or a **standalone executable** that bundles the entire runtime, so end-users don't need Node.js installed at all.
-
-### Prerequisites
-
-- **Node.js ≥ 20** (for the build toolchain)
-- **[Bun](https://bun.sh) ≥ 1.3** (only required for standalone binaries; install with `curl -fsSL https://bun.sh/install | bash`)
-
-### Standard build (ESM bundle)
+Requirements: **Node.js 22+**, and [Bun](https://bun.sh) 1.3+ only if you want standalone binaries.
 
 ```bash
 git clone https://github.com/cosmicstack-labs/mercury-agent.git
 cd mercury-agent
 npm install
-npm run build           # builds dist/ via tsup + post-build (UI, static assets)
-npm start               # node dist/index.js
+npm run build        # dist/ plus the web UI
+npm test             # vitest
+node dist/index.js   # run your build
 ```
 
-### Standalone executable (no Node.js required for end users)
-
-Mercury can be compiled into a single self-contained binary using `bun build --compile`. The resulting file embeds the Bun runtime and the full Mercury bundle.
+Standalone binaries:
 
 ```bash
-npm run build:bin            # host platform only
-npm run build:bin:all        # clean release: all 5 targets plus web archive and checksums
-npm run build:bin:force      # rebuild (overwrite existing binary for the same version)
-npm run build:bin:all:force  # replace an existing release directory, then rebuild all targets
-node scripts/verify-standalone-release.cjs  # verify an already-built publishable release
+npm run build:bin       # this machine only (release/smoke/)
+npm run build:bin:all   # all targets: macOS arm64/x64, Linux x64/arm64 (+ no-AVX2 build), Windows x64 (+ no-AVX2 build)
 ```
 
-Output is **versioned** so older builds are never overwritten:
+Release binaries are unsigned. On macOS, sign with `codesign` and notarize before distributing your own builds.
 
-```
-release/
-├── latest                       → symlink to most-recent version
-├── v1.3.1/
-│   ├── mercury-macos-arm64
-│   ├── mercury-macos-x64
-│   ├── mercury-linux-x64
-│   ├── mercury-linux-arm64
-│   ├── mercury-win-x64.exe
-│   ├── web.tar.gz
-│   └── checksums.txt            (SHA-256 for downloadable binaries and web.tar.gz)
-└── smoke/                       (host-only local builds; never publish)
-```
+## Documentation
 
-The version is read from `package.json`. Host-only smoke builds are isolated from publishable releases. `build:bin:all` refuses to reuse a non-empty version directory; use `build:bin:all:force` to delete and recreate it so assets from different revisions cannot be mixed.
-
-**Cross-compilation**: Bun produces the JavaScript binaries for every target from a single host. Native addons such as `better-sqlite3` still require target-compatible packaging. `sql.js` is used by a narrow web API fallback; it is not a general substitute for all `better-sqlite3`-backed features.
-
-**macOS Gatekeeper**: unsigned binaries trigger a warning on first launch. For distribution, sign with `codesign --sign "Developer ID" release/v<version>/mercury-macos-arm64` and notarize.
-
-## License
-
-MIT © [Cosmic Stack](https://github.com/cosmicstack-labs)
-
----
-
-## Disclaimer
-
-**This is AI - it can break sometimes, please use this at your own risk.**
-
----
+| Resource | |
+|---|---|
+| [mercuryagent.sh/docs](https://mercuryagent.sh/docs) | Guides, platform setup, channel setup, reference |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | How the runtime is put together |
+| [BOTS-ARCHITECTURE.md](BOTS-ARCHITECTURE.md) | Bots, fleets and their governance |
+| [DECISIONS.md](DECISIONS.md) | Architecture decision records |
+| [CHANGELOG.md](CHANGELOG.md) | Every release |
+| [SECURITY.md](SECURITY.md) | Reporting vulnerabilities |
 
 ## Contributing
 
-We're open to contributions! Mercury is built to evolve, and we welcome help from the community. Whether it's fixing a bug, adding a tool, improving memory, or refining the soul — all quality contributions are appreciated.
+Contributions are welcome, from bug reports to new tools. Mercury is an agent that runs unattended for days, so a few principles matter more here than in a typical library:
 
-### 🎯 Agentic Expertise — Must-Have for Contributors
+- **Every external action goes through permissions.** Files, shell, network and git never bypass the permission system or the SSRF guard.
+- **Assume no human and no terminal.** Tools must behave the same on every channel.
+- **Spend tokens carefully.** Keep tool output small; it ends up in the model's context.
+- **Fail soft.** A provider outage or a missing file should produce an honest message, not a crash.
+- **Test the loop, not only the function.** A tool that works alone can still stall a multi-step turn.
 
-Mercury isn't just another open-source project — it's a **soul-driven agent** that runs 24/7, manages permissions, remembers context, and interacts across channels. If you're contributing, you must think like an agent builder, not just a library contributor. These are non-negotiable principles every contributor should internalize:
+Getting started:
 
-| Principle | What It Means |
-|-----------|---------------|
-| 🧠 **Think in loops** | Mercury operates in an agentic step loop. Your tool or feature will be called multiple times per conversation. Make it idempotent where possible. |
-| 🔐 **Permission-first** | Every action that touches the outside world (files, shell, network, git) must go through the permission system. Never assume approval. |
-| 💾 **Memory-aware** | If your feature generates facts about the user, consider hooking into the Second Brain. If it reads user data, check memory first. |
-| 📏 **Token-conscious** | Mercury has a daily token budget. Logging, verbose outputs, and large context dumps burn tokens fast. Keep it lean. |
-| 🔌 **Channel-agnostic** | Tools should work identically on every channel — CLI, Telegram, Discord, Slack, Signal. Don't assume a terminal, a keyboard, or even a human on the other end. |
-| 🔁 **Graceful degradation** | If a provider fails, a tool errors, or a file doesn't exist — Mercury should recover, not crash. Always handle edge cases. |
-| 📋 **Self-documenting** | Your tool's name and description are what Mercury reads to decide when to use it. Make them clear, specific, and action-oriented. |
-| 🧪 **Test the loop, not just the function** | A tool that works in isolation may fail in the agentic loop (e.g. returns too much data, blocks the next step). Test end-to-end. |
+1. Fork and clone the repository, then `npm install`.
+2. Make your change with tests next to it.
+3. Run `npm run lint`, `npm run typecheck` and `npm test`.
+4. Open a pull request that explains what changed and why, one change per PR.
 
-### Code Quality — Dos
-
-| Do | Why |
-|----|-----|
-| ✅ Write clean, readable TypeScript with explicit types | Mercury's codebase is type-safe — keep it that way |
-| ✅ Add JSDoc comments on public functions and tools | Helps other contributors and the agent understand intent |
-| ✅ Keep functions small and single-purpose | Easier to test, review, and reason about |
-| ✅ Use async/await over raw promises | Consistent error handling and readability |
-| ✅ Write tests for new tools and memory features | Reliability matters for a 24/7 agent |
-| ✅ Follow the existing project structure (`src/capabilities/`, `src/memory/`, `src/channels/`) | Keeps the codebase navigable |
-| ✅ Use the Agent Skills spec for new skill-based features | Ensures compatibility with the skills ecosystem |
-| ✅ Document breaking changes in PR descriptions | Helps maintainers version properly |
-
-### Code Quality — Don'ts
-
-| Don't | Why |
-|-------|-----|
-| ❌ Don't add dependencies without discussion | Mercury is lean — every dep adds surface area |
-| ❌ Don't hardcode API keys, tokens, or paths | Use config/env vars like the rest of the codebase |
-| ❌ Don't bypass the permission system, including SSRF guards | Tools must ask before acting — that's Mercury's core promise |
-| ❌ Don't introduce sync/blocking I/O in hot paths | Mercury is async-first for a reason |
-| ❌ Don't commit large binary files or secrets | Use `.gitignore` and env files |
-| ❌ Don't change the soul/persona system without discussion | It's the heart of Mercury — changes need care |
-| ❌ Don't submit untested channel or daemon changes | These are hard to debug post-merge |
-| ❌ Don't ignore the token budget system | Every tool should be mindful of token consumption |
-
-### Getting Started
-
-1. Fork the repo
-2. Run `npm install`
-3. Make your changes
-4. Run `npm run lint && npm run build` to verify it compiles (tests: `npm test`)
-5. Test with `mercury` locally
-6. Open a PR with a clear description of what you changed and why
-
-### PR Guidelines
-
-- Keep PRs focused — one feature/fix per PR
-- Include before/after behavior in the description
-- Tag related issues if applicable
-- Be responsive to review feedback
-
-### Need Help?
-
-Open an issue or reach out at [mercury@cosmicstack.org](mailto:mercury@cosmicstack.org). We're friendly.
-
----
+Questions are welcome on [Discord](https://discord.gg/5emMpMJy5J) or at [mercury@cosmicstack.org](mailto:mercury@cosmicstack.org).
 
 ## Community
 
-1. **Discord** — [Join the Mercury Agent Discord](https://discord.gg/5emMpMJy5J) for real-time chat, support, and community discussions.
+- **Discord:** [discord.gg/5emMpMJy5J](https://discord.gg/5emMpMJy5J) for help, ideas and show-and-tell.
+- **Issues:** [GitHub Issues](https://github.com/cosmicstack-labs/mercury-agent/issues) for bugs and feature requests.
+
+## License
+
+[MIT](LICENSE) © [Cosmic Stack](https://github.com/cosmicstack-labs)
+
+Mercury is an AI agent and can make mistakes. Review what it does, especially in *Allow All* mode.
