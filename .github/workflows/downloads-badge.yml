@@ -1,0 +1,37 @@
+name: Downloads badge
+
+# Refreshes docs/badges/downloads.json (npm + installer binary downloads),
+# which GitHub Pages serves at https://mercuryagent.sh/badges/downloads.json
+# for the README's shields.io endpoint badge.
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: downloads-badge
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Compute totals
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/download-stats.mjs
+      - name: Commit if changed
+        run: |
+          if git diff --quiet -- docs/badges; then echo "unchanged"; exit 0; fi
+          git config user.name "Mercury"
+          git config user.email "mercury@cosmicstack.org"
+          git add docs/badges
+          git commit -m "chore(badges): refresh download totals [skip ci]"
+          git push
