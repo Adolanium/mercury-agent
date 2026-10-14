@@ -2000,7 +2000,11 @@ export class Agent {
   }
 
   /** Public wrapper for web API model switching. */
-  async switchProvider(providerName: string): Promise<{ ok: boolean; message: string }> {
+  async switchProvider(providerName: string, model?: string): Promise<{ ok: boolean; message: string }> {
+    // Providers like Ollama Local serve many models; pin the requested one
+    // before the registry is rebuilt from config.
+    const pc = (this.config.providers as Record<string, unknown>)[providerName] as { model?: string } | undefined;
+    if (model && pc && typeof pc === 'object') pc.model = model;
     return this.switchSessionProvider(providerName);
   }
 
