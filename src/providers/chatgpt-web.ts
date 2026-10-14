@@ -1,4 +1,5 @@
 import { createOpenAI } from '@ai-sdk/openai';
+import { wrapLanguageModel } from 'ai';
 import { BaseProvider } from './base.js';
 import type { ProviderConfig } from '../utils/config.js';
 import type { LLMResponse, LLMStreamChunk } from './base.js';
@@ -192,8 +193,29 @@ export class ChatGPTWebProvider extends BaseProvider {
         },
       });
 
-      // Use the Responses API (not Chat Completions)
-      this.cachedModelInstance = client.responses(this.model as any);
+      // Use the Responses API (not Chat Completions). The codex endpoint only
+      // works with store:false (sanitiseBody forces it), so the SDK must know
+      // too: otherwise it replays earlier reasoning/tool items as
+      // `item_reference` ids, which the server rejects as "not found" on the
+      // first call after a tool runs. Requesting encrypted reasoning lets
+      // those items be sent back inline instead, as the Codex CLI does.
+      this.cachedModelInstance = wrapLanguageModel({
+        model: client.responses(this.model as any),
+        middleware: {
+          specificationVersion: 'v3',
+          transformParams: async ({ params }) => {
+            const openai = (params.providerOptions?.openai ?? {}) as { include?: string[] } & Record<string, unknown>;
+            const include = new Set<string>([...(openai.include ?? []), 'reasoning.encrypted_content']);
+            return {
+              ...params,
+              providerOptions: {
+                ...params.providerOptions,
+                openai: { ...openai, store: false, include: [...include] },
+              },
+            };
+          },
+        },
+      });
     }
 
     return this.cachedModelInstance;
