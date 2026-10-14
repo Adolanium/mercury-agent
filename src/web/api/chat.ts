@@ -227,14 +227,42 @@ async function listOllamaModels(baseUrl: string): Promise<string[]> {
   }
 }
 
+/** Models the signed-in ChatGPT plan offers; cached because the lookup is slow. */
+let chatgptModelCache: { at: number; models: string[] } | null = null;
+const CHATGPT_MODEL_TTL_MS = 10 * 60 * 1000;
+
+async function listChatGPTModels(): Promise<string[]> {
+  if (chatgptModelCache && Date.now() - chatgptModelCache.at < CHATGPT_MODEL_TTL_MS) {
+    return chatgptModelCache.models;
+  }
+  try {
+    const { getValidChatGPTSession } = await import('../../auth/chatgpt-session.js');
+    const { fetchChatGPTModels } = await import('../../auth/chatgpt-models.js');
+    const session = await getValidChatGPTSession();
+    if (!session) return [];
+    const catalog = await fetchChatGPTModels(session.accessToken, session.accountId);
+    chatgptModelCache = { at: Date.now(), models: catalog.models };
+    return catalog.models;
+  } catch {
+    return [];
+  }
+}
+
+/** Providers that serve many models list each one; others list their configured model. */
+async function listProviderModels(p: { name: string; baseUrl: string }): Promise<string[]> {
+  if (p.name === 'ollamaLocal') return listOllamaModels(p.baseUrl);
+  if (p.name === 'chatgptWeb') return [...(await listChatGPTModels())];
+  return [];
+}
+
 chat.get('/api/chat/models', async (c) => {
   const config = loadConfig();
   const active = getActiveProviders(config);
   const current = currentProviderFn ? currentProviderFn() : { name: config.providers.default || '', model: '' };
   const entries: { name: string; model: string; available: boolean; isCurrent: boolean }[] = [];
-  for (const p of active) {
-    // Ollama Local hosts many models behind one provider: list each one.
-    const models = p.name === 'ollamaLocal' ? await listOllamaModels(p.baseUrl) : [];
+  const perProvider = await Promise.all(active.map((p) => listProviderModels(p)));
+  for (const [i, p] of active.entries()) {
+    const models = perProvider[i];
     if (models.length && !models.includes(p.model)) models.unshift(p.model);
     for (const model of models.length ? models : [p.model]) {
       entries.push({
