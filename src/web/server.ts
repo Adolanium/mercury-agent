@@ -36,7 +36,8 @@ function resolveWebDir(subpath: string): string {
   // When running as a Bun --compile standalone binary, __dirname points to
   // Bun's virtual filesystem ($bunfs).  The web assets are shipped alongside
   // the binary in a `web/` directory, so resolve relative to the binary itself.
-  if (typeof (process.versions as any).bun === 'string' && __dirname.includes('$bunfs')) {
+  // On Windows the virtual root is `B:\~BUN\root` rather than `$bunfs`.
+  if (typeof (process.versions as any).bun === 'string' && (__dirname.includes('$bunfs') || __dirname.includes('~BUN'))) {
     return join(dirname(process.execPath), 'web', subpath);
   }
 
