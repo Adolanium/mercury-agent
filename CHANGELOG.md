@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **The web dashboard works on the Windows standalone binary.** Mercury looked for its `web/` folder inside the binary's virtual filesystem, because it only recognised Bun's macOS/Linux marker (`$bunfs`) and not Windows' (`~BUN`), so the dashboard reported "web UI not found". Found and fixed by @farena-ai in #189; the same check is now shared by the login page and the memory-graph fallback.
+
 ## 1.3.9 — hotfix: `mercury doctor` and dashboard saves take effect
 
 - **`mercury doctor` applies what you changed.** Providers, keys and channels are read at boot, so a reconfigure that only wrote the file looked like it did nothing until a manual `mercury restart`. Doctor now restarts the running daemon when the configuration actually changed (the Telegram/Discord commands already did this).

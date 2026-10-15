@@ -1,4 +1,5 @@
 import { readFileSync, existsSync } from 'node:fs';
+import { isBunVirtualPath } from '../../utils/bun-path.js';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import process from 'node:process';
@@ -7,8 +8,8 @@ import { getMemoryDir } from '../../utils/config.js';
 function resolveAssetPath(...segments: string[]): string {
   const __dirname = dirname(fileURLToPath(import.meta.url));
   // When running as a Bun --compile standalone binary, __dirname points to
-  // Bun's virtual filesystem ($bunfs).  Resolve assets relative to the binary.
-  if (typeof (process.versions as any).bun === 'string' && __dirname.includes('$bunfs')) {
+  // Bun's virtual filesystem (`$bunfs`, or `~BUN` on Windows). Resolve assets relative to the binary.
+  if (isBunVirtualPath(__dirname)) {
     return join(dirname(process.execPath), ...segments);
   }
   return join(__dirname, ...segments);

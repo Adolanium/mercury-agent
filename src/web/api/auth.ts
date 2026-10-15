@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { isBunVirtualPath } from '../../utils/bun-path.js';
 import { setCookie, getCookie, deleteCookie } from 'hono/cookie';
 import { existsSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
@@ -8,7 +9,8 @@ import { authenticate, createSession, destroySession, changePassword, changeUser
 
 function resolveWebDir(...segments: string[]): string {
   const __dirname = dirname(fileURLToPath(import.meta.url));
-  if (typeof (process.versions as any).bun === 'string' && __dirname.includes('$bunfs')) {
+  // Standalone binary (macOS/Linux `$bunfs`, Windows `~BUN`): assets sit next to the executable.
+  if (isBunVirtualPath(__dirname)) {
     return join(dirname(process.execPath), ...segments);
   }
   return join(__dirname, ...segments);
