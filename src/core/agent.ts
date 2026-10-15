@@ -2002,9 +2002,22 @@ export class Agent {
   /** Public wrapper for web API model switching. */
   async switchProvider(providerName: string, model?: string): Promise<{ ok: boolean; message: string }> {
     // Providers like Ollama Local serve many models; pin the requested one
-    // before the registry is rebuilt from config.
-    const pc = (this.config.providers as Record<string, unknown>)[providerName] as { model?: string } | undefined;
-    if (model && pc && typeof pc === 'object') pc.model = model;
+    // before the registry is rebuilt from config. Both values come from the
+    // web API, so validate before writing: an unchecked key such as
+    // "__proto__" would write onto Object.prototype, and the model id is
+    // persisted to mercury.yaml.
+    if (model !== undefined) {
+      if (typeof model !== 'string' || model.length === 0 || model.length > 256 || [...model].some((ch) => ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127)) {
+        return { ok: false, message: 'Invalid model id.' };
+      }
+      const providers = this.config.providers as unknown as Record<string, unknown>;
+      const configured = getActiveProviders(this.config).some((p) => p.name === providerName);
+      if (!configured || !Object.hasOwn(providers, providerName)) {
+        return { ok: false, message: `Provider \`${providerName}\` is not configured.` };
+      }
+      const pc = providers[providerName];
+      if (pc && typeof pc === 'object') (pc as { model?: string }).model = model;
+    }
     return this.switchSessionProvider(providerName);
   }
 

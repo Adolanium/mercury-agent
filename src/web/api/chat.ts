@@ -280,9 +280,12 @@ chat.post('/api/chat/models/switch', async (c) => {
   if (!modelSwitchFn) {
     return c.json({ error: 'Model switching not available' }, 503);
   }
-  const body = await c.req.json<{ provider: string; model?: string }>();
-  if (!body.provider) {
+  const body = await c.req.json<{ provider?: unknown; model?: unknown }>().catch(() => null);
+  if (!body || typeof body.provider !== 'string' || !body.provider) {
     return c.json({ error: 'provider is required' }, 400);
+  }
+  if (body.model !== undefined && typeof body.model !== 'string') {
+    return c.json({ error: 'model must be a string' }, 400);
   }
   const result = await modelSwitchFn(body.provider, body.model?.trim() || undefined);
   return c.json(result);
