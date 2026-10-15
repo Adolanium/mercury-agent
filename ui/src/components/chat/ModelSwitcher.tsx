@@ -30,8 +30,8 @@ export function ModelSwitcher({
   const setModel = useChatStore((s) => s.setModel);
 
   const loadModels = useCallback(async () => {
-    if (models) return;
-    setLoading(true);
+    // Always refetch: the Ollama model list changes as models are pulled.
+    setLoading(!models);
     try {
       const data = await api.chat.models.list();
       setModels(data);
@@ -42,20 +42,16 @@ export function ModelSwitcher({
     }
   }, [models]);
 
-  async function handleSwitch(providerName: string) {
-    setSwitching(providerName);
+  async function handleSwitch(providerName: string, model: string) {
+    setSwitching(`${providerName}::${model}`);
     try {
-      await api.chat.models.switch(providerName);
+      const res = await api.chat.models.switch(providerName, model);
+      if (!res.ok) return;
       // Refresh model list to get new current
       const data = await api.chat.models.list();
       setModels(data);
-
-      // Find the provider to get the model name
-      const p = data.providers.find((pr) => pr.name === providerName);
-      if (p) {
-        setProvider(p.name);
-        setModel(p.model);
-      }
+      setProvider(data.current?.name || providerName);
+      setModel(data.current?.model || model);
       setOpen(false);
     } catch {
       // silently fail
@@ -89,7 +85,7 @@ export function ModelSwitcher({
       </PopoverTrigger>
       <PopoverContent align="start" className="w-72 p-2">
         <p className="px-2 pb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          Providers
+          Models
         </p>
 
         {loading ? (
@@ -97,16 +93,17 @@ export function ModelSwitcher({
             <Loader2 className="h-4 w-4 animate-spin text-primary" />
           </div>
         ) : models ? (
-          <div className="flex flex-col gap-0.5">
+          <div className="flex max-h-[60vh] flex-col gap-0.5 overflow-y-auto">
             {models.providers.map((p) => {
-              const isActive = p.name === currentProvider;
-              const isSwitching = switching === p.name;
+              const key = `${p.name}::${p.model}`;
+              const isActive = p.name === currentProvider && p.model === currentModel;
+              const isSwitching = switching === key;
               return (
                 <button
-                  key={p.name}
+                  key={key}
                   disabled={!p.available || isSwitching}
                   onClick={() => {
-                    if (!isActive && p.available) handleSwitch(p.name);
+                    if (!isActive && p.available) handleSwitch(p.name, p.model);
                   }}
                   className={cn(
                     "flex items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors",
@@ -118,15 +115,15 @@ export function ModelSwitcher({
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
-                      <span className="font-medium text-foreground">
-                        {p.name}
+                      <span className="truncate font-medium text-foreground">
+                        {p.model}
                       </span>
                       {isActive && (
-                        <Check className="h-3.5 w-3.5 text-primary" />
+                        <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
                       )}
                     </div>
                     <p className="truncate text-xs text-muted-foreground">
-                      {p.model}
+                      {p.name}
                     </p>
                   </div>
                   {isSwitching ? (

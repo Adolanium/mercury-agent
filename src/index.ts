@@ -3408,7 +3408,7 @@ async function runAgent(isDaemon: boolean = false): Promise<void> {
   setWebSessionSyncEnabled(() => agent.isSessionSyncEnabled());
   setWebProgrammingMode(agent.programmingMode);
   setWebBgTasks(agent.backgroundTasks);
-  setWebModelSwitch((provider) => agent.switchProvider(provider));
+  setWebModelSwitch((provider, model) => agent.switchProvider(provider, model));
   setWebCurrentProvider(() => agent.getCurrentProvider());
   // IDE provider registry powers features like commit message generation.
   // It does not require a supervisor, so wire it up unconditionally.

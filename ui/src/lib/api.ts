@@ -117,9 +117,10 @@ export const chat = {
     post<{ resolved: boolean }>(`/api/chat/permission/${id}`, { action, targetId }),
   models: {
     list: () => get<ModelsResponse>("/api/chat/models"),
-    switch: (provider: string) =>
+    switch: (provider: string, model?: string) =>
       post<{ ok: boolean; message: string }>("/api/chat/models/switch", {
         provider,
+        model,
       }),
   },
   threads: {
@@ -483,8 +484,8 @@ export interface ToolStep {
 }
 
 export interface ModelsResponse {
-  current: string;
-  providers: { name: string; model: string; available: boolean }[];
+  current: { name: string; model: string };
+  providers: { name: string; model: string; available: boolean; isCurrent?: boolean }[];
 }
 
 export interface CodeStatus {

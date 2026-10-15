@@ -8,7 +8,7 @@ import type { SessionRepository } from '../../sessions/index.js';
 
 let webChannel: WebChannel | null = null;
 let programmingMode: ProgrammingMode | null = null;
-let modelSwitchFn: ((provider: string) => Promise<{ ok: boolean; message: string }>) | null = null;
+let modelSwitchFn: ((provider: string, model?: string) => Promise<{ ok: boolean; message: string }>) | null = null;
 let currentProviderFn: (() => { name: string; model: string }) | null = null;
 let sessions: SessionRepository | null = null;
 let sessionSyncEnabledFn: (() => boolean) | null = null;
@@ -45,7 +45,7 @@ export function setProgrammingMode(pm: ProgrammingMode): void {
   programmingMode = pm;
 }
 
-export function setModelSwitchCallback(fn: (provider: string) => Promise<{ ok: boolean; message: string }>): void {
+export function setModelSwitchCallback(fn: (provider: string, model?: string) => Promise<{ ok: boolean; message: string }>): void {
   modelSwitchFn = fn;
 }
 
@@ -216,29 +216,80 @@ chat.post('/api/chat/permission/:id', async (c) => {
 
 // ─── Models / Provider Switching ─────────────────────────────
 
-chat.get('/api/chat/models', (c) => {
+/** Every model the local Ollama server has pulled (empty if unreachable). */
+async function listOllamaModels(baseUrl: string): Promise<string[]> {
+  try {
+    const root = baseUrl.replace(/\/+$/, '').replace(/\/(v1|api)$/, '');
+    const res = await fetch(`${root}/api/tags`, { signal: AbortSignal.timeout(3000) });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { models?: { name?: string }[] };
+    return (data.models ?? []).map((m) => m.name ?? '').filter(Boolean).sort();
+  } catch {
+    return [];
+  }
+}
+
+/** Models the signed-in ChatGPT plan offers; cached because the lookup is slow. */
+let chatgptModelCache: { at: number; models: string[] } | null = null;
+const CHATGPT_MODEL_TTL_MS = 10 * 60 * 1000;
+
+async function listChatGPTModels(): Promise<string[]> {
+  if (chatgptModelCache && Date.now() - chatgptModelCache.at < CHATGPT_MODEL_TTL_MS) {
+    return chatgptModelCache.models;
+  }
+  try {
+    const { getValidChatGPTSession } = await import('../../auth/chatgpt-session.js');
+    const { fetchChatGPTModels } = await import('../../auth/chatgpt-models.js');
+    const session = await getValidChatGPTSession();
+    if (!session) return [];
+    const catalog = await fetchChatGPTModels(session.accessToken, session.accountId);
+    chatgptModelCache = { at: Date.now(), models: catalog.models };
+    return catalog.models;
+  } catch {
+    return [];
+  }
+}
+
+/** Providers that serve many models list each one; others list their configured model. */
+async function listProviderModels(p: { name: string; baseUrl: string }): Promise<string[]> {
+  if (p.name === 'ollamaLocal') return listOllamaModels(p.baseUrl);
+  if (p.name === 'chatgptWeb') return [...(await listChatGPTModels())];
+  return [];
+}
+
+chat.get('/api/chat/models', async (c) => {
   const config = loadConfig();
   const active = getActiveProviders(config);
   const current = currentProviderFn ? currentProviderFn() : { name: config.providers.default || '', model: '' };
-  return c.json({
-    current: current,
-    providers: active.map(p => ({
-      name: p.name,
-      model: p.model,
-      isCurrent: p.name === current.name,
-    })),
-  });
+  const entries: { name: string; model: string; available: boolean; isCurrent: boolean }[] = [];
+  const perProvider = await Promise.all(active.map((p) => listProviderModels(p)));
+  for (const [i, p] of active.entries()) {
+    const models = perProvider[i];
+    if (models.length && !models.includes(p.model)) models.unshift(p.model);
+    for (const model of models.length ? models : [p.model]) {
+      entries.push({
+        name: p.name,
+        model,
+        available: true,
+        isCurrent: p.name === current.name && model === current.model,
+      });
+    }
+  }
+  return c.json({ current, providers: entries });
 });
 
 chat.post('/api/chat/models/switch', async (c) => {
   if (!modelSwitchFn) {
     return c.json({ error: 'Model switching not available' }, 503);
   }
-  const body = await c.req.json<{ provider: string }>();
-  if (!body.provider) {
+  const body = await c.req.json<{ provider?: unknown; model?: unknown }>().catch(() => null);
+  if (!body || typeof body.provider !== 'string' || !body.provider) {
     return c.json({ error: 'provider is required' }, 400);
   }
-  const result = await modelSwitchFn(body.provider);
+  if (body.model !== undefined && typeof body.model !== 'string') {
+    return c.json({ error: 'model must be a string' }, 400);
+  }
+  const result = await modelSwitchFn(body.provider, body.model?.trim() || undefined);
   return c.json(result);
 });
 
