@@ -7,7 +7,7 @@ import { getMercuryHome, loadConfig, getActiveProviders } from '../../utils/conf
 import type { SessionRepository } from '../../sessions/index.js';
 import {
   getModelPref, setModelPref, humanizeModelName, modelGroupLabel,
-  reasoningLevelsFor, isReasoningLevel, type ReasoningLevel,
+  reasoningLevelsFor, effectiveReasoning, isReasoningLevel, isValidModelRef, type ReasoningLevel,
 } from '../../utils/model-prefs.js';
 
 let webChannel: WebChannel | null = null;
@@ -220,15 +220,32 @@ chat.post('/api/chat/permission/:id', async (c) => {
 
 // ─── Models / Provider Switching ─────────────────────────────
 
+/**
+ * Failed model lookups are remembered briefly so that opening the picker
+ * while Ollama is down (or ChatGPT is signed out) doesn't wait on a timeout
+ * every time.
+ */
+const LOOKUP_RETRY_MS = 30_000;
+const failedLookups = new Map<string, number>();
+
+function recentlyFailed(key: string): boolean {
+  const at = failedLookups.get(key);
+  return at !== undefined && Date.now() - at < LOOKUP_RETRY_MS;
+}
+
 /** Every model the local Ollama server has pulled (empty if unreachable). */
 async function listOllamaModels(baseUrl: string): Promise<string[]> {
+  const root = baseUrl.replace(/\/+$/, '').replace(/\/(v1|api)$/, '');
+  const lookup = `ollama:${root}`;
+  if (recentlyFailed(lookup)) return [];
   try {
-    const root = baseUrl.replace(/\/+$/, '').replace(/\/(v1|api)$/, '');
     const res = await fetch(`${root}/api/tags`, { signal: AbortSignal.timeout(3000) });
-    if (!res.ok) return [];
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = (await res.json()) as { models?: { name?: string }[] };
+    failedLookups.delete(lookup);
     return (data.models ?? []).map((m) => m.name ?? '').filter(Boolean).sort();
   } catch {
+    failedLookups.set(lookup, Date.now());
     return [];
   }
 }
@@ -241,15 +258,18 @@ async function listChatGPTModels(): Promise<string[]> {
   if (chatgptModelCache && Date.now() - chatgptModelCache.at < CHATGPT_MODEL_TTL_MS) {
     return chatgptModelCache.models;
   }
+  if (recentlyFailed('chatgpt')) return [];
   try {
     const { getValidChatGPTSession } = await import('../../auth/chatgpt-session.js');
     const { fetchChatGPTModels } = await import('../../auth/chatgpt-models.js');
     const session = await getValidChatGPTSession();
-    if (!session) return [];
+    if (!session) throw new Error('not signed in');
     const catalog = await fetchChatGPTModels(session.accessToken, session.accountId);
     chatgptModelCache = { at: Date.now(), models: catalog.models };
+    failedLookups.delete('chatgpt');
     return catalog.models;
   } catch {
+    failedLookups.set('chatgpt', Date.now());
     return [];
   }
 }
@@ -269,8 +289,8 @@ function describeModel(provider: string, model: string) {
     autoLabel: humanizeModelName(model),
     customLabel: pref.label ?? null,
     group: modelGroupLabel(provider, model),
-    reasoning: pref.reasoning ?? 'auto',
-    reasoningLevels: reasoningLevelsFor(provider),
+    reasoning: effectiveReasoning(provider, model) ?? 'auto',
+    reasoningLevels: reasoningLevelsFor(provider, model),
   };
 }
 
@@ -298,20 +318,30 @@ chat.get('/api/chat/models', async (c) => {
 
 /** Rename a model (label) and/or set its reasoning level. null / '' / 'auto' resets. */
 chat.post('/api/chat/models/prefs', async (c) => {
-  const body = await c.req.json<{ provider?: string; model?: string; label?: string | null; reasoning?: string | null }>();
-  const provider = body.provider?.trim();
-  const model = body.model?.trim();
-  if (!provider || !model) {
-    return c.json({ error: 'provider and model are required' }, 400);
+  const body = await c.req.json<Record<string, unknown>>().catch(() => null);
+  // Same id rules as /api/chat/models/switch; anything else is a 400, not a 500.
+  if (!body || !isValidModelRef(body.provider) || !isValidModelRef(body.model)) {
+    return c.json({ error: 'provider and model must be non-empty strings of at most 256 characters' }, 400);
   }
-  if (body.reasoning != null && body.reasoning !== 'auto') {
-    if (!isReasoningLevel(body.reasoning) || !reasoningLevelsFor(provider).includes(body.reasoning)) {
-      return c.json({ error: `Reasoning level '${body.reasoning}' is not supported for ${provider}` }, 400);
+  const { provider, model, label, reasoning } = body as { provider: string; model: string; label?: unknown; reasoning?: unknown };
+  if (label !== undefined && label !== null && typeof label !== 'string') {
+    return c.json({ error: 'label must be a string or null' }, 400);
+  }
+  if (reasoning !== undefined && reasoning !== null && typeof reasoning !== 'string') {
+    return c.json({ error: 'reasoning must be a string or null' }, 400);
+  }
+  // Only active providers: keeps model-prefs.json from growing unbounded.
+  if (!getActiveProviders(loadConfig()).some((p) => p.name === provider)) {
+    return c.json({ error: `Provider \`${provider}\` is not configured` }, 400);
+  }
+  if (typeof reasoning === 'string' && reasoning !== 'auto') {
+    if (!isReasoningLevel(reasoning) || !reasoningLevelsFor(provider, model).includes(reasoning)) {
+      return c.json({ error: `Reasoning level '${reasoning}' is not supported for ${model}` }, 400);
     }
   }
   setModelPref(provider, model, {
-    label: body.label,
-    reasoning: body.reasoning === undefined ? undefined : (body.reasoning as ReasoningLevel | 'auto' | null),
+    label: label as string | null | undefined,
+    reasoning: reasoning as ReasoningLevel | 'auto' | null | undefined,
   });
   return c.json({ ok: true, ...describeModel(provider, model) });
 });

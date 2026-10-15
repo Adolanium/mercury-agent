@@ -5,7 +5,7 @@ import type { ProviderConfig } from '../utils/config.js';
 import type { LLMResponse, LLMStreamChunk } from './base.js';
 import { logger } from '../utils/logger.js';
 import { aimlapiHeaders } from './aimlapi-attribution.js';
-import { applyReasoningToBody, getModelPref, reasoningLevelsFor } from '../utils/model-prefs.js';
+import { applyReasoningToBody, effectiveReasoning, providerHasReasoningControl } from '../utils/model-prefs.js';
 
 /**
  * fetch that applies the user's reasoning level for the requested model.
@@ -17,7 +17,8 @@ function withReasoningPref(providerName: string): typeof fetch {
     if (typeof init?.body === 'string') {
       try {
         const body = JSON.parse(init.body) as Record<string, unknown>;
-        const level = typeof body.model === 'string' ? getModelPref(providerName, body.model).reasoning : undefined;
+        // Only levels this model accepts (e.g. never an effort for gpt-4o).
+        const level = typeof body.model === 'string' ? effectiveReasoning(providerName, body.model) : undefined;
         if (level) {
           applyReasoningToBody(body, level);
           init = { ...init, body: JSON.stringify(body) };
@@ -47,7 +48,7 @@ export class OpenAICompatProvider extends BaseProvider {
       headers: aimlapiHeaders(config.baseUrl),
       // Only providers with a reasoning control get the hook; the rest keep
       // the SDK's default fetch untouched.
-      fetch: reasoningLevelsFor(config.name).length ? withReasoningPref(config.name) : undefined,
+      fetch: providerHasReasoningControl(config.name) ? withReasoningPref(config.name) : undefined,
     });
     this.modelInstance = useChatApi
       ? this.client.chat(config.model)

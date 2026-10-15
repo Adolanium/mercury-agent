@@ -6,7 +6,7 @@ import type { LLMResponse, LLMStreamChunk } from './base.js';
 import { getValidChatGPTSession, getChatGPTSession } from '../auth/chatgpt-auth.js';
 import { CHATGPT_BACKEND_API } from '../auth/chatgpt-session.js';
 import { logger } from '../utils/logger.js';
-import { applyReasoningToBody, getModelPref } from '../utils/model-prefs.js';
+import { applyReasoningToBody, effectiveReasoning } from '../utils/model-prefs.js';
 
 // Fields the codex endpoint does not accept
 const UNSUPPORTED_FIELDS = [
@@ -22,7 +22,7 @@ function sanitiseBody(raw: string, providerName: string): string {
   const body = JSON.parse(raw);
 
   // User-chosen reasoning level for this model (dashboard reasoning picker).
-  if (typeof body.model === 'string') applyReasoningToBody(body, getModelPref(providerName, body.model).reasoning);
+  if (typeof body.model === 'string') applyReasoningToBody(body, effectiveReasoning(providerName, body.model));
 
   // Required
   body.store = false;

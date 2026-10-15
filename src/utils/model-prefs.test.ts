@@ -1,11 +1,13 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   applyReasoningToBody,
   displayModelName,
+  effectiveReasoning,
   getModelPref,
+  isValidModelRef,
   humanizeModelName,
   modelGroupLabel,
   reasoningLevelsFor,
@@ -36,6 +38,20 @@ describe('humanizeModelName', () => {
   });
 });
 
+describe('isValidModelRef', () => {
+  it.each([
+    ['qwen3.8:27b', true],
+    ['hf.co/user/Model-GGUF:Q4_K_M', true],
+    ['', false],
+    ['x'.repeat(257), false],
+    ['tab	here', false],
+    [42, false],
+    [null, false],
+  ])('%j → %s', (value, ok) => {
+    expect(isValidModelRef(value)).toBe(ok);
+  });
+});
+
 describe('modelGroupLabel', () => {
   it('separates Ollama cloud models served through the local daemon', () => {
     expect(modelGroupLabel('ollamaLocal', 'glm-5.3:cloud')).toBe('Ollama Cloud · via this PC');
@@ -50,6 +66,14 @@ describe('reasoning', () => {
     expect(reasoningLevelsFor('ollamaLocal')).toContain('off');
     expect(reasoningLevelsFor('chatgptWeb')).toEqual(['low', 'medium', 'high']);
     expect(reasoningLevelsFor('deepseek')).toEqual([]);
+  });
+
+  it('offers OpenAI API levels only for reasoning models', () => {
+    // gpt-4o / gpt-4.1 answer 400 "Unsupported parameter" to an effort.
+    expect(reasoningLevelsFor('openai', 'gpt-4o')).toEqual([]);
+    expect(reasoningLevelsFor('openai', 'gpt-4.1-mini')).toEqual([]);
+    expect(reasoningLevelsFor('openai', 'o3-mini')).toEqual(['low', 'medium', 'high']);
+    expect(reasoningLevelsFor('openai', 'gpt-5.2')).toEqual(['low', 'medium', 'high']);
   });
 
   it('sets reasoning.effort on Responses API bodies, keeping other reasoning fields', () => {
@@ -105,6 +129,35 @@ describe('model prefs store', () => {
     setModelPref('chatgptWeb', 'gpt-6-sol', { reasoning: 'auto' });
     expect(getModelPref('chatgptWeb', 'gpt-6-sol')).toEqual({});
     expect(displayModelName('chatgptWeb', 'gpt-6-sol')).toBe('GPT-6 Sol');
+  });
+
+  it('only treats a saved level as effective while the model supports it', () => {
+    setModelPref('openai', 'gpt-4o', { reasoning: 'high' });
+    expect(effectiveReasoning('openai', 'gpt-4o')).toBeUndefined();
+    setModelPref('openai', 'o3', { reasoning: 'high' });
+    expect(effectiveReasoning('openai', 'o3')).toBe('high');
+  });
+
+  it('keeps only well-formed entries from a hand-edited file', () => {
+    writeFileSync(join(home, 'model-prefs.json'), JSON.stringify({
+      'ollamaLocal::good': { label: '  Good  ', reasoning: 'off' },
+      'ollamaLocal::bad-fields': { label: 42, reasoning: 'turbo' },
+      'ollamaLocal::mixed': { label: 'Kept', reasoning: { effort: 'high' } },
+      'no-separator': { label: 'x' },
+      '::no-provider': { label: 'x' },
+      'ollamaLocal::array': ['x'],
+    }));
+    resetModelPrefsCache();
+    expect(getModelPref('ollamaLocal', 'good')).toEqual({ label: 'Good', reasoning: 'off' });
+    expect(getModelPref('ollamaLocal', 'bad-fields')).toEqual({});
+    expect(getModelPref('ollamaLocal', 'mixed')).toEqual({ label: 'Kept' });
+    expect(getModelPref('ollamaLocal', 'array')).toEqual({});
+  });
+
+  it('survives a corrupt prefs file', () => {
+    writeFileSync(join(home, 'model-prefs.json'), '{not json');
+    resetModelPrefsCache();
+    expect(getModelPref('ollamaLocal', 'm')).toEqual({});
   });
 
   it('ignores unknown reasoning values', () => {

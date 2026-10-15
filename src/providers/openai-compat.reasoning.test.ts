@@ -68,6 +68,11 @@ describe('OpenAICompatProvider reasoning preference', () => {
     expect(await send('ollamaLocal')).not.toHaveProperty('reasoning_effort');
   });
 
+  it('never sends an effort to an OpenAI model that rejects it, even if one was saved', async () => {
+    setModelPref('openai', 'qwen3.8:27b', { reasoning: 'high' });
+    expect(await send('openai')).not.toHaveProperty('reasoning_effort');
+  });
+
   it('leaves providers without a reasoning control untouched', async () => {
     setModelPref('lmStudio', 'qwen3.8:27b', { reasoning: 'high' });
     expect(await send('lmStudio')).not.toHaveProperty('reasoning_effort');

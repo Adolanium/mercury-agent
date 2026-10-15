@@ -22,8 +22,38 @@ export interface ModelPref {
 
 const REASONING_LEVELS: readonly ReasoningLevel[] = ['off', 'low', 'medium', 'high'];
 const MAX_LABEL_LENGTH = 80;
+/** Same bound Agent.switchProvider applies to model ids. */
+const MAX_REF_LENGTH = 256;
 
 let prefs: Record<string, ModelPref> | null = null;
+
+/**
+ * A provider name or model id fit to key prefs: a non-empty string of at most
+ * 256 characters without control characters (mirrors Agent.switchProvider).
+ */
+export function isValidModelRef(value: unknown): value is string {
+  return typeof value === 'string'
+    && value.length > 0
+    && value.length <= MAX_REF_LENGTH
+    && ![...value].some((ch) => ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127);
+}
+
+/** Keep only well-formed entries and fields from a parsed prefs file. */
+function sanitize(raw: unknown): Record<string, ModelPref> {
+  const clean: Record<string, ModelPref> = Object.create(null);
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return clean;
+  for (const [entryKey, value] of Object.entries(raw)) {
+    const sep = entryKey.indexOf('::');
+    if (sep <= 0 || !isValidModelRef(entryKey.slice(0, sep)) || !isValidModelRef(entryKey.slice(sep + 2))) continue;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+    const { label, reasoning } = value as Record<string, unknown>;
+    const pref: ModelPref = {};
+    if (typeof label === 'string' && label.trim()) pref.label = label.trim().slice(0, MAX_LABEL_LENGTH);
+    if (isReasoningLevel(reasoning)) pref.reasoning = reasoning;
+    if (pref.label !== undefined || pref.reasoning !== undefined) clean[entryKey] = pref;
+  }
+  return clean;
+}
 
 function prefsPath(): string {
   return join(getMercuryHome(), 'model-prefs.json');
@@ -37,9 +67,10 @@ function load(): Record<string, ModelPref> {
   if (prefs) return prefs;
   try {
     const path = prefsPath();
-    prefs = existsSync(path) ? (JSON.parse(readFileSync(path, 'utf-8')) as Record<string, ModelPref>) : {};
+    // Hand edits must not reach the wire or the UI unchecked.
+    prefs = sanitize(existsSync(path) ? JSON.parse(readFileSync(path, 'utf-8')) : {});
   } catch {
-    prefs = {};
+    prefs = Object.create(null) as Record<string, ModelPref>;
   }
   return prefs;
 }
@@ -94,15 +125,31 @@ export function resetModelPrefsCache(): void {
 
 // ─── Reasoning ───────────────────────────────────────────────────────────────
 
+/** OpenAI API models that accept a reasoning effort: o-series and GPT-5 family. */
+const OPENAI_REASONING_MODEL = /^(o\d|gpt-5)/i;
+
+/** Providers with any reasoning control (decides whether to hook requests at all). */
+export function providerHasReasoningControl(provider: string): boolean {
+  return ['chatgptWeb', 'openai', 'ollamaLocal', 'ollamaCloud'].includes(provider);
+}
+
 /**
- * Levels a provider can honour. ChatGPT/OpenAI models may reject "none", so
- * they get no Off; Ollama maps Off to reasoning_effort "none" (thinking off).
- * Providers not listed have no reasoning control.
+ * Levels a model can honour. ChatGPT/OpenAI models may reject "none", so they
+ * get no Off; Ollama maps Off to reasoning_effort "none" (thinking off). On
+ * the OpenAI API only reasoning models accept an effort at all: gpt-4o or
+ * gpt-4.1 would answer 400 "Unsupported parameter". Anything else: none.
  */
-export function reasoningLevelsFor(provider: string): ReasoningLevel[] {
-  if (provider === 'chatgptWeb' || provider === 'openai') return ['low', 'medium', 'high'];
+export function reasoningLevelsFor(provider: string, model?: string): ReasoningLevel[] {
+  if (provider === 'chatgptWeb') return ['low', 'medium', 'high'];
+  if (provider === 'openai') return model && OPENAI_REASONING_MODEL.test(model) ? ['low', 'medium', 'high'] : [];
   if (provider === 'ollamaLocal' || provider === 'ollamaCloud') return ['off', 'low', 'medium', 'high'];
   return [];
+}
+
+/** The saved level for a model, only if that model can still honour it. */
+export function effectiveReasoning(provider: string, model: string): ReasoningLevel | undefined {
+  const level = getModelPref(provider, model).reasoning;
+  return level && reasoningLevelsFor(provider, model).includes(level) ? level : undefined;
 }
 
 /**
