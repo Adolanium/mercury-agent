@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { isBunVirtualPath } from '../utils/bun-path.js';
 import { createAdaptorServer } from '@hono/node-server';
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname, extname } from 'node:path';
@@ -36,7 +37,8 @@ function resolveWebDir(subpath: string): string {
   // When running as a Bun --compile standalone binary, __dirname points to
   // Bun's virtual filesystem ($bunfs).  The web assets are shipped alongside
   // the binary in a `web/` directory, so resolve relative to the binary itself.
-  if (typeof (process.versions as any).bun === 'string' && __dirname.includes('$bunfs')) {
+  // On Windows the virtual root is `B:\~BUN\root` rather than `$bunfs`.
+  if (isBunVirtualPath(__dirname)) {
     return join(dirname(process.execPath), 'web', subpath);
   }
 
