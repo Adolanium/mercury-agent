@@ -411,6 +411,10 @@ function ChatInput({
 
 // ─── Main Page ───────────────────────────────────────────────
 
+function newWebThreadId(): string {
+  return `web:${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export function ChatPage() {
   const { threadId: urlThreadId } = useParams<{ threadId?: string }>();
   const navigate = useNavigate();
@@ -436,9 +440,13 @@ export function ChatPage() {
   const resetSteps = useChatStore((s) => s.resetSteps);
   const bumpThreadVersion = useChatStore((s) => s.bumpThreadVersion);
 
-  // Sync URL param → active thread
+  // Sync URL param → active thread. Bare /chat starts a fresh conversation:
+  // it renders empty, so silently reusing the stored thread id appended new
+  // messages to the previous conversation.
   useEffect(() => {
-    if (urlThreadId && urlThreadId !== activeThreadId) {
+    if (!urlThreadId) {
+      handleNewThread(true);
+    } else if (urlThreadId !== activeThreadId) {
       setActiveThread(urlThreadId);
     }
   }, [urlThreadId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -493,7 +501,14 @@ export function ChatPage() {
     setWaiting(true);
 
     try {
-      await api.chat.send(content, threadId);
+      const res = await api.chat.send(content, threadId);
+      // A client-made "web:..." id is rebound to a server session id. Follow
+      // it, or the SSE stream stays on the old id and never receives this
+      // turn's replies or permission prompts.
+      if (res.sessionId && res.sessionId !== threadId) {
+        setActiveThread(res.sessionId);
+        navigate(`/chat/${res.sessionId}`, { replace: true });
+      }
       bumpThreadVersion();
       // Reload threads in background to pick up new thread
       reloadThreads();
@@ -523,12 +538,12 @@ export function ChatPage() {
     }
   }
 
-  function handleNewThread() {
-    const newId = `web:${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  function handleNewThread(replace = false) {
+    const newId = newWebThreadId();
     setActiveThread(newId);
     clearMessages();
     reloadThreads();
-    navigate(`/chat/${newId}`);
+    navigate(`/chat/${newId}`, { replace });
   }
 
   function handleSelectThread(id: string) {
@@ -571,7 +586,7 @@ export function ChatPage() {
             activeThreadId={activeThreadId}
             onSelect={handleSelectThread}
             onDelete={handleDeleteThread}
-            onNew={handleNewThread}
+            onNew={() => handleNewThread()}
             onExport={handleExportThread}
           />
         </div>
