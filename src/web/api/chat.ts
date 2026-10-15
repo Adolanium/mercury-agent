@@ -5,6 +5,10 @@ import { existsSync, readFileSync, writeFileSync, readdirSync, statSync } from '
 import { join, extname, basename, relative, resolve } from 'node:path';
 import { getMercuryHome, loadConfig, getActiveProviders } from '../../utils/config.js';
 import type { SessionRepository } from '../../sessions/index.js';
+import {
+  getModelPref, setModelPref, humanizeModelName, modelGroupLabel,
+  reasoningLevelsFor, isReasoningLevel, type ReasoningLevel,
+} from '../../utils/model-prefs.js';
 
 let webChannel: WebChannel | null = null;
 let programmingMode: ProgrammingMode | null = null;
@@ -257,11 +261,24 @@ async function listProviderModels(p: { name: string; baseUrl: string }): Promise
   return [];
 }
 
+/** What the picker needs to show a model in plain language. */
+function describeModel(provider: string, model: string) {
+  const pref = getModelPref(provider, model);
+  return {
+    label: pref.label ?? humanizeModelName(model),
+    autoLabel: humanizeModelName(model),
+    customLabel: pref.label ?? null,
+    group: modelGroupLabel(provider, model),
+    reasoning: pref.reasoning ?? 'auto',
+    reasoningLevels: reasoningLevelsFor(provider),
+  };
+}
+
 chat.get('/api/chat/models', async (c) => {
   const config = loadConfig();
   const active = getActiveProviders(config);
   const current = currentProviderFn ? currentProviderFn() : { name: config.providers.default || '', model: '' };
-  const entries: { name: string; model: string; available: boolean; isCurrent: boolean }[] = [];
+  const entries: ({ name: string; model: string; available: boolean; isCurrent: boolean } & ReturnType<typeof describeModel>)[] = [];
   const perProvider = await Promise.all(active.map((p) => listProviderModels(p)));
   for (const [i, p] of active.entries()) {
     const models = perProvider[i];
@@ -272,10 +289,31 @@ chat.get('/api/chat/models', async (c) => {
         model,
         available: true,
         isCurrent: p.name === current.name && model === current.model,
+        ...describeModel(p.name, model),
       });
     }
   }
-  return c.json({ current, providers: entries });
+  return c.json({ current: { ...current, ...describeModel(current.name, current.model) }, providers: entries });
+});
+
+/** Rename a model (label) and/or set its reasoning level. null / '' / 'auto' resets. */
+chat.post('/api/chat/models/prefs', async (c) => {
+  const body = await c.req.json<{ provider?: string; model?: string; label?: string | null; reasoning?: string | null }>();
+  const provider = body.provider?.trim();
+  const model = body.model?.trim();
+  if (!provider || !model) {
+    return c.json({ error: 'provider and model are required' }, 400);
+  }
+  if (body.reasoning != null && body.reasoning !== 'auto') {
+    if (!isReasoningLevel(body.reasoning) || !reasoningLevelsFor(provider).includes(body.reasoning)) {
+      return c.json({ error: `Reasoning level '${body.reasoning}' is not supported for ${provider}` }, 400);
+    }
+  }
+  setModelPref(provider, model, {
+    label: body.label,
+    reasoning: body.reasoning === undefined ? undefined : (body.reasoning as ReasoningLevel | 'auto' | null),
+  });
+  return c.json({ ok: true, ...describeModel(provider, model) });
 });
 
 chat.post('/api/chat/models/switch', async (c) => {

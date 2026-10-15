@@ -6,6 +6,7 @@ import type { LLMResponse, LLMStreamChunk } from './base.js';
 import { getValidChatGPTSession, getChatGPTSession } from '../auth/chatgpt-auth.js';
 import { CHATGPT_BACKEND_API } from '../auth/chatgpt-session.js';
 import { logger } from '../utils/logger.js';
+import { applyReasoningToBody, getModelPref } from '../utils/model-prefs.js';
 
 // Fields the codex endpoint does not accept
 const UNSUPPORTED_FIELDS = [
@@ -17,8 +18,11 @@ const UNSUPPORTED_FIELDS = [
 /**
  * Sanitise an outgoing request body for the ChatGPT codex/responses endpoint.
  */
-function sanitiseBody(raw: string): string {
+function sanitiseBody(raw: string, providerName: string): string {
   const body = JSON.parse(raw);
+
+  // User-chosen reasoning level for this model (dashboard reasoning picker).
+  if (typeof body.model === 'string') applyReasoningToBody(body, getModelPref(providerName, body.model).reasoning);
 
   // Required
   body.store = false;
@@ -176,7 +180,7 @@ export class ChatGPTWebProvider extends BaseProvider {
             } catch { /* ignore */ }
 
             try {
-              modifiedInit.body = sanitiseBody(init.body);
+              modifiedInit.body = sanitiseBody(init.body, this.name);
             } catch { /* pass through */ }
           }
 
