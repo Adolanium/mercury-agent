@@ -113,8 +113,8 @@ export const chat = {
     update: (data: Partial<ChatSettings>) =>
       put<ChatSettings>("/api/chat/settings", data),
   },
-  permission: (id: string, action: string) =>
-    post<{ resolved: boolean }>(`/api/chat/permission/${id}`, { action }),
+  permission: (id: string, action: string, targetId?: string) =>
+    post<{ resolved: boolean }>(`/api/chat/permission/${id}`, { action, targetId }),
   models: {
     list: () => get<ModelsResponse>("/api/chat/models"),
     switch: (provider: string) =>

@@ -110,16 +110,29 @@ function WaitingIndicator() {
 function PermissionPrompt({
   data,
 }: {
-  data: { id: string; tool?: string; description?: string };
+  data: {
+    id: string;
+    tool?: string;
+    description?: string;
+    prompt?: string;
+    options?: string[];
+    targetId?: string;
+  };
 }) {
   const [resolving, setResolving] = useState(false);
+  const [outcome, setOutcome] = useState<string | null>(null);
+
+  // The server offers yes / always / no (see WebChannel.askPermission).
+  const options = data.options?.length ? data.options : ["yes", "always", "no"];
+  const labels: Record<string, string> = { yes: "Allow", always: "Always allow", no: "Deny" };
 
   async function handle(action: string) {
     setResolving(true);
     try {
-      await api.chat.permission(data.id, action);
+      const res = await api.chat.permission(data.id, action, data.targetId);
+      setOutcome(res.resolved ? labels[action] ?? action : "expired");
     } catch {
-      // ignore
+      setOutcome("expired");
     } finally {
       setResolving(false);
     }
@@ -137,34 +150,38 @@ function PermissionPrompt({
             Tool: <span className="font-medium text-foreground">{data.tool}</span>
           </p>
         )}
-        {data.description && (
-          <p className="mt-1 text-sm text-foreground">{data.description}</p>
+        {(data.description || data.prompt) && (
+          <p className="mt-1 whitespace-pre-wrap text-sm text-foreground">
+            {data.description ?? data.prompt}
+          </p>
         )}
-        <div className="mt-3 flex items-center gap-2">
-          <Button
-            size="sm"
-            className="h-7 gap-1 text-xs"
-            disabled={resolving}
-            onClick={() => handle("allow")}
-          >
-            {resolving ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <Check className="h-3 w-3" />
-            )}
-            Allow
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 gap-1 text-xs"
-            disabled={resolving}
-            onClick={() => handle("deny")}
-          >
-            <X className="h-3 w-3" />
-            Deny
-          </Button>
-        </div>
+        {outcome ? (
+          <p className="mt-3 text-xs text-muted-foreground">
+            {outcome === "expired" ? "This request expired or was already answered." : `Answered: ${outcome}`}
+          </p>
+        ) : (
+          <div className="mt-3 flex items-center gap-2">
+            {options.map((opt) => (
+              <Button
+                key={opt}
+                size="sm"
+                variant={opt === "no" ? "outline" : "default"}
+                className="h-7 gap-1 text-xs"
+                disabled={resolving}
+                onClick={() => handle(opt)}
+              >
+                {resolving ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : opt === "no" ? (
+                  <X className="h-3 w-3" />
+                ) : (
+                  <Check className="h-3 w-3" />
+                )}
+                {labels[opt] ?? opt}
+              </Button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -718,7 +735,7 @@ export function ChatPage() {
                     if (msg.role === "system") {
                       try {
                         const parsed = JSON.parse(msg.content);
-                        if (parsed.id && (parsed.tool || parsed.description)) {
+                        if (parsed.id && (parsed.tool || parsed.description || parsed.prompt)) {
                           return <PermissionPrompt key={msg.id} data={parsed} />;
                         }
                       } catch {

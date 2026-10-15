@@ -200,12 +200,14 @@ chat.post('/api/chat/permission/:id', async (c) => {
   }
 
   const permId = c.req.param('id');
-  const body = await c.req.json<{ action: string }>();
+  const body = await c.req.json<{ action: string; targetId?: string }>();
   if (!body.action) {
     return c.json({ error: 'Action required' }, 400);
   }
 
-  const resolved = webChannel.resolveApproval(permId, body.action);
+  // Prompts are bound to the chat session that raised them; without the
+  // targetId the session check in resolveInteraction always fails.
+  const resolved = webChannel.resolveApproval(permId, body.action, body.targetId);
   if (resolved) {
     return c.json({ resolved: true });
   }
