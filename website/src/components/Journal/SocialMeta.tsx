@@ -7,8 +7,11 @@ import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
  * generated at build time by plugins/blog-social-cards.cjs at
  * /img/og<permalink>.jpg, so the path here is derived the same way.
  */
+/** Bump when the card design changes, so X, WhatsApp and LinkedIn refetch instead of showing a cached card. */
+const CARD_VERSION = '2';
+
 export function cardPath(permalink: string): string {
-  return `/img/og${permalink.replace(/\/$/, '')}.jpg`;
+  return `/img/og${permalink.replace(/\/$/, '')}.jpg?v=${CARD_VERSION}`;
 }
 
 interface Props {
@@ -28,7 +31,7 @@ export default function SocialMeta({ permalink, title, imageAlt, image, labels =
   const { siteConfig } = useDocusaurusContext();
   const abs = (p: string) => (/^https?:/.test(p) ? p : `${siteConfig.url}${p}`);
   const card = abs(image ?? cardPath(permalink));
-  const isJpeg = /\.jpe?g$/i.test(card);
+  const isJpeg = /\.jpe?g(\?|$)/i.test(card);
   const crumbs = breadcrumbs && {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',

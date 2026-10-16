@@ -79,8 +79,8 @@ function Article({ sidebar, children }: { sidebar: Props['sidebar']; children: R
         permalink={permalink}
         title={title}
         image={socialImage}
-        imageAlt={`${title}. ${category ? `${category.label} · ` : ''}${authors.map((a) => a.name).join(' & ')} · ${minutes} min read`}
-        labels={[['Written by', authors.map((a) => a.name).join(' & ') || 'Mercury'], ['Reading time', `${minutes} min read`]]}
+        imageAlt={`${title}. ${category ? `${category.label} · ` : ''}${minutes} min read. Mercury Blog`}
+        labels={[...(category ? [['Topic', category.label] as [string, string]] : []), ['Reading time', `${minutes} min read`]]}
         creators={creators}
         section={category?.label}
         breadcrumbs={[
