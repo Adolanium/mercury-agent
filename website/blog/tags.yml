@@ -1,0 +1,32 @@
+news:
+  label: News
+  permalink: /news
+  description: Releases, announcements and what changed for people running Mercury.
+engineering:
+  label: Engineering
+  permalink: /engineering
+  description: How Mercury is built, what broke, and what we changed so it does not break again.
+product:
+  label: Product
+  permalink: /product
+  description: How Mercury's features work and why they work that way.
+releases:
+  label: Releases
+  permalink: /releases
+  description: Notes on each Mercury release.
+security:
+  label: Security
+  permalink: /security
+  description: Permissions, sandboxing and how Mercury keeps an agent with real tools safe to run.
+postmortem:
+  label: Postmortem
+  permalink: /postmortem
+  description: Incidents and bugs, written up honestly.
+runtime:
+  label: Runtime
+  permalink: /runtime
+  description: The daemon, the attach client and everything that keeps Mercury running.
+cloud:
+  label: Mercury Cloud
+  permalink: /cloud
+  description: News and notes about Mercury Cloud.

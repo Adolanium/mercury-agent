@@ -1,0 +1,109 @@
+/* ── Mermaid diagrams ─────────────────────────────────────────────────── */
+.mj-diagram {
+  --d-line: var(--mx-site-line, rgba(127, 127, 127, 0.2));
+  --d-bg: color-mix(in srgb, var(--ifm-background-surface-color) 55%, var(--ifm-background-color));
+  --d-dim: color-mix(in srgb, var(--ifm-color-content) 65%, transparent);
+  --d-lead-fill: #dff1f5; --d-lead-stroke: #0b7285; --d-lead-text: #08414c;
+  --d-accent-fill: #e6f5f8; --d-accent-stroke: #4fa8ba;
+  --d-warm-fill: #fbf0e1; --d-warm-stroke: #d39a52; --d-warm-text: #5a3a12;
+  --d-violet-fill: #f0ebfb; --d-violet-stroke: #9a86d8; --d-violet-text: #3b2c6e;
+  --d-muted-fill: #f2f3f1; --d-muted-stroke: #c9cfcf; --d-muted-text: #5b6468;
+  --d-ok-fill: #e7f5ea; --d-ok-stroke: #4c9a62; --d-ok-text: #1d4a2a;
+  --d-danger-fill: #fbe9e8; --d-danger-stroke: #cf5b52; --d-danger-text: #6b1d18;
+  margin: 2.2em 0; border: 1px solid var(--d-line); border-radius: 16px; background: var(--d-bg); overflow: hidden;
+}
+[data-theme='dark'] .mj-diagram {
+  --d-lead-fill: #10313a; --d-lead-stroke: #7dd3e0; --d-lead-text: #e6f8fb;
+  --d-accent-fill: #12262d; --d-accent-stroke: #4f9fae;
+  --d-warm-fill: #2a1f12; --d-warm-stroke: #d6a061; --d-warm-text: #f6e4cc;
+  --d-violet-fill: #1f1a33; --d-violet-stroke: #9d8be0; --d-violet-text: #ebe5fb;
+  --d-muted-fill: #151a1e; --d-muted-stroke: #2c353b; --d-muted-text: #9aa6ad;
+  --d-ok-fill: #12261a; --d-ok-stroke: #57b572; --d-ok-text: #dcf3e2;
+  --d-danger-fill: #2c1514; --d-danger-stroke: #e06a60; --d-danger-text: #fbe1de;
+}
+
+.mj-diagram-head {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 10px 14px 10px 18px; border-bottom: 1px solid var(--d-line);
+  background: color-mix(in srgb, var(--ifm-background-surface-color) 80%, var(--ifm-background-color));
+}
+.mj-diagram-kind {
+  font-family: var(--ifm-font-family-monospace); font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--ifm-color-primary); padding: 3px 9px; border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--ifm-color-primary) 40%, transparent);
+}
+.mj-diagram-title { font-size: 0.92rem; font-weight: 600; color: var(--ifm-heading-color); }
+.mj-diagram-actions { margin-left: auto; display: flex; gap: 6px; }
+.mj-diagram-actions button, .mj-diagram-viewer-bar button {
+  font: inherit; font-size: 0.78rem; padding: 5px 11px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--d-line, rgba(127,127,127,.25)); background: transparent; color: var(--ifm-color-content);
+}
+.mj-diagram-actions button:hover:not(:disabled), .mj-diagram-viewer-bar button:hover { border-color: var(--ifm-heading-color); color: var(--ifm-heading-color); }
+.mj-diagram-actions button:disabled { opacity: 0.4; cursor: default; }
+
+.mj-diagram-canvas {
+  position: relative; overflow-x: auto; overflow-y: hidden; padding: 24px 16px; -webkit-overflow-scrolling: touch;
+  background-image: radial-gradient(color-mix(in srgb, var(--ifm-color-content) 14%, transparent) 1px, transparent 1px);
+  background-size: 18px 18px; background-position: -9px -9px;
+  scrollbar-width: thin;
+}
+.mj-diagram-svg { display: flex; justify-content: center; min-width: min-content; }
+.mj-diagram-svg svg { display: block; margin: 0 auto; }
+.mj-diagram-loading { height: 220px; border-radius: 12px; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--ifm-color-content) 7%, transparent), transparent); background-size: 200% 100%; animation: mj-d-shimmer 1.4s linear infinite; }
+@keyframes mj-d-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.mj-diagram-hint { padding: 0 18px 10px; font-size: 0.76rem; color: var(--d-dim); text-align: center; }
+.mj-diagram > figcaption { padding: 12px 18px 14px; border-top: 1px solid var(--d-line); font-size: 0.86rem; color: var(--d-dim); text-align: center; }
+.mj-diagram-source { margin: 0; padding: 16px 18px; font-size: 0.8rem; white-space: pre; overflow: auto; background: transparent !important; }
+
+/* shape refinements inside the SVG */
+.mj-diagram svg .node rect, .mj-diagram svg .node .label-container { rx: 10px; ry: 10px; }
+.mj-diagram svg .node rect, .mj-diagram svg .node polygon, .mj-diagram svg .node circle, .mj-diagram svg .node path { stroke-width: 1.3px; }
+.mj-diagram svg .cluster rect { rx: 14px; ry: 14px; stroke-dasharray: 4 4; stroke-width: 1px; }
+.mj-diagram svg .cluster-label, .mj-diagram svg .cluster text { font-family: var(--ifm-font-family-monospace); font-size: 12px; letter-spacing: 0.04em; }
+.mj-diagram svg .edgePath .path, .mj-diagram svg .flowchart-link { stroke-width: 1.4px; }
+.mj-diagram svg .edgeLabel p { font-size: 13px; }
+.mj-diagram svg .edgeLabel rect, .mj-diagram svg .labelBkg { rx: 5px; ry: 5px; }
+.mj-diagram svg .nodeLabel, .mj-diagram svg .label { line-height: 1.35; }
+.mj-diagram svg .nodeLabel small, .mj-diagram svg .label small { display: block; font-size: 0.78em; opacity: 0.72; margin-top: 2px; }
+.mj-diagram svg .actor { stroke-width: 1.3px; }
+.mj-diagram svg rect.actor { rx: 10px; ry: 10px; }
+.mj-diagram svg .messageText { font-size: 13px; }
+.mj-diagram svg .note { rx: 8px; ry: 8px; }
+
+/* author classes: `A:::lead` or `class A lead` */
+.mj-diagram svg .node.lead > rect, .mj-diagram svg .node.lead > polygon, .mj-diagram svg .node.lead > circle, .mj-diagram svg .node.lead > path { fill: var(--d-lead-fill) !important; stroke: var(--d-lead-stroke) !important; stroke-width: 1.8px !important; }
+.mj-diagram svg .node.lead .nodeLabel, .mj-diagram svg .node.lead .label { color: var(--d-lead-text) !important; fill: var(--d-lead-text) !important; font-weight: 600; }
+.mj-diagram svg .node.accent > rect, .mj-diagram svg .node.accent > polygon, .mj-diagram svg .node.accent > circle, .mj-diagram svg .node.accent > path { fill: var(--d-accent-fill) !important; stroke: var(--d-accent-stroke) !important; }
+.mj-diagram svg .node.warm > rect, .mj-diagram svg .node.warm > polygon, .mj-diagram svg .node.warm > circle, .mj-diagram svg .node.warm > path { fill: var(--d-warm-fill) !important; stroke: var(--d-warm-stroke) !important; }
+.mj-diagram svg .node.warm .nodeLabel { color: var(--d-warm-text) !important; }
+.mj-diagram svg .node.violet > rect, .mj-diagram svg .node.violet > polygon, .mj-diagram svg .node.violet > circle, .mj-diagram svg .node.violet > path { fill: var(--d-violet-fill) !important; stroke: var(--d-violet-stroke) !important; }
+.mj-diagram svg .node.violet .nodeLabel { color: var(--d-violet-text) !important; }
+.mj-diagram svg .node.muted > rect, .mj-diagram svg .node.muted > polygon, .mj-diagram svg .node.muted > circle, .mj-diagram svg .node.muted > path { fill: var(--d-muted-fill) !important; stroke: var(--d-muted-stroke) !important; stroke-dasharray: 3 3; }
+.mj-diagram svg .node.muted .nodeLabel { color: var(--d-muted-text) !important; }
+.mj-diagram svg .node.ok > rect, .mj-diagram svg .node.ok > polygon, .mj-diagram svg .node.ok > circle, .mj-diagram svg .node.ok > path { fill: var(--d-ok-fill) !important; stroke: var(--d-ok-stroke) !important; }
+.mj-diagram svg .node.ok .nodeLabel { color: var(--d-ok-text) !important; }
+.mj-diagram svg .node.danger > rect, .mj-diagram svg .node.danger > polygon, .mj-diagram svg .node.danger > circle, .mj-diagram svg .node.danger > path { fill: var(--d-danger-fill) !important; stroke: var(--d-danger-stroke) !important; }
+.mj-diagram svg .node.danger .nodeLabel { color: var(--d-danger-text) !important; }
+
+/* full-screen viewer */
+.mj-diagram-viewer {
+  position: fixed; inset: 0; z-index: calc(var(--ifm-z-index-fixed) + 50); display: flex; flex-direction: column;
+  background: color-mix(in srgb, var(--ifm-background-color) 94%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.mj-diagram-viewer-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px;
+  border-bottom: 1px solid var(--mx-site-line); background: var(--ifm-background-color);
+}
+.mj-diagram-viewer-bar strong { font-size: 0.95rem; color: var(--ifm-heading-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mj-diagram-viewer-bar div { display: flex; gap: 6px; flex: none; }
+.mj-diagram-viewer-stage { flex: 1; overflow: auto; padding: 32px; outline: none; -webkit-overflow-scrolling: touch; }
+.mj-diagram-viewer-svg { margin: 0 auto; min-width: 100%; }
+.mj-diagram-viewer-svg svg { width: 100% !important; max-width: none !important; height: auto !important; }
+
+@media (max-width: 640px) {
+  .mj-diagram { border-radius: 14px; margin-left: -4px; margin-right: -4px; }
+  .mj-diagram-head { padding: 9px 10px 9px 14px; }
+  .mj-diagram-title { order: 3; flex-basis: 100%; font-size: 0.88rem; }
+  .mj-diagram-canvas { padding: 20px 14px; }
+  .mj-diagram-viewer-stage { padding: 16px; }
+}

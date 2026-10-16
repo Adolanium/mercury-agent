@@ -58,13 +58,17 @@ const config: Config = {
     { src: '/js/plausible-init.js' },
   ],
 
+  // ```mermaid blocks render through src/theme/Mermaid (site palette, expand, mobile scroll).
+  markdown: { mermaid: true },
   themes: [
+    '@docusaurus/theme-mermaid',
     [
       '@easyops-cn/docusaurus-search-local',
       {
         hashed: true,
         language: ['en'],
-        indexBlog: false,
+        indexBlog: true,
+        blogRouteBasePath: '/blog',
         docsRouteBasePath: '/docs',
         highlightSearchTermsOnTargetPage: true,
       },
@@ -79,13 +83,42 @@ const config: Config = {
           sidebarPath: './sidebars.ts',
           editUrl: 'https://github.com/cosmicstack-labs/mercury-agent/tree/main/website/',
         },
-        blog: false,
+        blog: {
+          routeBasePath: 'blog',
+          path: 'blog',
+          blogTitle: 'Mercury Journal',
+          blogDescription: 'News, engineering notes and field reports from the team building Mercury, the open-source AI agent you can leave running.',
+          // The journal home shows every post: search, filters and sorting run client-side.
+          postsPerPage: 'ALL',
+          blogSidebarCount: 'ALL',
+          blogSidebarTitle: 'All posts',
+          showReadingTime: true,
+          authorsMapPath: 'authors.yml',
+          tags: 'tags.yml',
+          onInlineTags: 'throw',
+          onInlineAuthors: 'throw',
+          onUntruncatedBlogPosts: 'ignore',
+          // Docusaurus defaults, plus the guides that live in blog/ for authors and agents.
+          exclude: ['**/_*.{js,jsx,ts,tsx,md,mdx}', '**/_*/**', '**/*.test.{js,jsx,ts,tsx}', '**/__tests__/**', '**/README.md', '**/AGENTS.md', '**/CLAUDE.md'],
+          // Bare links on their own line become rich previews (X, YouTube, GitHub, Instagram…).
+          remarkPlugins: [require('./plugins/remark-social-embeds.cjs')],
+          editUrl: 'https://github.com/cosmicstack-labs/mercury-agent/tree/main/website/',
+          feedOptions: {
+            type: 'all',
+            title: 'Mercury Journal',
+            description: 'News, engineering notes and field reports from the team building Mercury.',
+            copyright: `© ${new Date().getFullYear()} Cosmic Stack`,
+            limit: 50,
+          },
+        },
         theme: {
           customCss: './src/css/custom.css',
         },
       } satisfies Preset.Options,
     ],
   ],
+
+  plugins: ['./plugins/llms-txt.cjs', './plugins/blog-social-cards.cjs'],
 
   themeConfig: {
     image: 'img/og/home.png',
@@ -120,6 +153,7 @@ const config: Config = {
         {to: '/docs/integrations/mercury-bots', label: 'Bots', position: 'left'},
         {to: '/cloud', label: 'Cloud', position: 'left'},
         {href: 'https://skills.mercuryagent.sh', label: 'Skills', position: 'left'},
+        {to: '/blog', label: 'Blog', position: 'left'},
         {to: '/docs/releases', label: 'Changelog', position: 'left'},
         {
           href: 'https://github.com/cosmicstack-labs/mercury-agent',
@@ -140,6 +174,7 @@ const config: Config = {
             {label: 'Mercury Code', to: '/docs/integrations/coding-workspace'},
             {label: 'Mercury Bots', to: '/docs/integrations/mercury-bots'},
             {label: 'Mercury Cloud', to: '/cloud'},
+            {label: 'Blog', to: '/blog'},
             {label: 'Changelog', to: '/docs/releases'},
           ],
         },
@@ -176,6 +211,7 @@ const config: Config = {
     prism: {
       theme: prismThemes.github,
       darkTheme: prismThemes.dracula,
+      additionalLanguages: ['bash', 'diff', 'toml', 'powershell', 'ini', 'docker'],
     },
   } satisfies Preset.ThemeConfig,
 };

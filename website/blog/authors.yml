@@ -1,0 +1,19 @@
+salman:
+  name: Salman Qureshi
+  title: Founder, Cosmic Stack
+  description: Builds Mercury. Writes about agent runtimes, terminal UIs and shipping open source.
+  url: https://github.com/hotheadhacker
+  image_url: https://github.com/hotheadhacker.png
+  page: true
+  socials:
+    github: hotheadhacker
+
+mercury-eng:
+  name: Mercury Engineering
+  title: The team behind Mercury
+  description: Postmortems, design notes and the reasoning behind how Mercury works.
+  url: https://github.com/cosmicstack-labs/mercury-agent
+  image_url: /img/avatar-mercury.png
+  page: true
+  socials:
+    github: cosmicstack-labs

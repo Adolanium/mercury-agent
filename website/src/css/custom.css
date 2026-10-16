@@ -102,13 +102,28 @@
   border-right: 1px solid var(--mx-site-line);
 }
 
-/* ---- Navbar: hairline, translucent, same on docs and homepage ---- */
+/* ---- Navbar: hairline, translucent, same on docs and homepage ----
+ * The blur lives on a pseudo-element, never on .navbar itself. A
+ * backdrop-filter makes its element the containing block for position:fixed
+ * descendants, and the mobile drawer (.navbar-sidebar) is rendered inside the
+ * navbar: with the filter on .navbar, Safari and every iOS browser squeeze the
+ * drawer to the navbar's 64px height, so the menu opens blank. */
 .navbar {
-  background: color-mix(in srgb, var(--ifm-background-color) 82%, transparent);
-  backdrop-filter: saturate(160%) blur(14px);
-  -webkit-backdrop-filter: saturate(160%) blur(14px);
+  background: transparent;
   border-bottom: 1px solid var(--mx-site-line);
 }
+.navbar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--ifm-background-color) 82%, transparent);
+  -webkit-backdrop-filter: saturate(160%) blur(14px);
+  backdrop-filter: saturate(160%) blur(14px);
+}
+/* While the drawer is open, keep the bar opaque behind it. */
+.navbar.navbar-sidebar--show::before { background: var(--ifm-background-color); }
 .navbar__title { font-weight: 600; letter-spacing: -0.01em; }
 .navbar__logo { height: 26px; }
 .navbar__item.navbar__link { font-size: 0.92rem; font-weight: 500; }
