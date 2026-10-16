@@ -2,7 +2,7 @@ import React, { isValidElement } from 'react';
 import './charts.css';
 
 /**
- * Data components for journal posts, usable in any post without imports
+ * Data components for blog posts, usable in any post without imports
  * (registered in src/theme/MDXComponents.tsx).
  *
  *   <Compare highlight={2} caption="…">  wraps an ordinary Markdown table

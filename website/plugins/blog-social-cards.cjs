@@ -1,9 +1,9 @@
 /**
- * Social cards for the Mercury Journal, rendered after every build.
+ * Social cards for the Mercury Blog, rendered after every build.
  *
- * Every journal page gets its own 1200x630 JPEG at /img/og<permalink>.jpg:
+ * Every blog page gets its own 1200x630 JPEG at /img/og<permalink>.jpg:
  *
- *   /img/og/blog.jpg                    the journal home
+ *   /img/og/blog.jpg                    the blog home
  *   /img/og/blog/<slug>.jpg             each post: title, category, author,
  *                                       date, reading time and its cover art
  *   /img/og/blog/tags/<tag>.jpg         each topic archive
@@ -139,7 +139,7 @@ module.exports = function blogSocialCardsPlugin(context) {
               'div',
               { alignItems: 'center', gap: 14 },
               img(logo, { width: 40, height: 40 }),
-              h('div', { fontSize: 24, fontWeight: 600, letterSpacing: -0.3 }, 'Mercury Journal'),
+              h('div', { fontSize: 24, fontWeight: 600, letterSpacing: -0.3 }, 'Mercury Blog'),
               eyebrow ? h('div', { fontFamily: 'Mono', fontSize: 17, color: ACCENT, letterSpacing: 2.4, textTransform: 'uppercase', marginLeft: 10, padding: '6px 14px', border: '1.5px solid rgba(125,211,224,0.45)', borderRadius: 999 }, eyebrow) : null,
             ),
             h(
@@ -201,7 +201,7 @@ module.exports = function blogSocialCardsPlugin(context) {
         written.push([m.permalink, await render(tree, m.permalink)]);
       }
 
-      // Journal home.
+      // Blog home.
       const listed = posts.filter((p) => !p.metadata.unlisted);
       written.push(['/blog', await render(frame({
         eyebrow: null,

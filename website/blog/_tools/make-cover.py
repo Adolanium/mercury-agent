@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate an abstract cover for a Mercury Journal post.
+"""Generate an abstract cover for a Mercury Blog post.
 
     python3 make-cover.py <seed> <out.jpg> [--style rings|orbit|grid|aurora] [--tone dark|light]
 

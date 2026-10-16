@@ -85,7 +85,7 @@ function Article({ sidebar, children }: { sidebar: Props['sidebar']; children: R
         section={category?.label}
         breadcrumbs={[
           { name: 'Mercury', path: '/' },
-          { name: 'Journal', path: '/blog' },
+          { name: 'Blog', path: '/blog' },
           ...(category ? [{ name: category.label, path: category.permalink }] : []),
           { name: title, path: permalink },
         ]}
@@ -93,7 +93,7 @@ function Article({ sidebar, children }: { sidebar: Props['sidebar']; children: R
       <ProgressBar progress={progress} />
       <ContentVisibility metadata={metadata} />
       <header className="mj-post-head">
-        <Link to="/blog" className="mj-back">← Journal</Link>
+        <Link to="/blog" className="mj-back">← Blog</Link>
         {category && <Link to={category.permalink} className="mj-post-cat">{category.label}</Link>}
         <h1 className="mj-post-title">{title}</h1>
         {description && <p className="mj-post-dek">{description}</p>}
@@ -161,7 +161,7 @@ function Article({ sidebar, children }: { sidebar: Props['sidebar']; children: R
         )}
         {more.length > 0 && (
           <section className="mj-more">
-            <h2>More from the journal</h2>
+            <h2>More from the blog</h2>
             <ul>
               {more.map((i) => (
                 <li key={i.permalink}>
@@ -177,7 +177,7 @@ function Article({ sidebar, children }: { sidebar: Props['sidebar']; children: R
   );
 }
 
-/** Long-form article page for the Mercury Journal. */
+/** Long-form article page for the Mercury Blog. */
 export default function BlogPostPage(props: Props): React.ReactElement {
   const BlogPostContent = props.content;
   return (

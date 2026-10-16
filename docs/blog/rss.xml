@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0">
     <channel>
-        <title>Mercury Journal</title>
+        <title>Mercury Blog</title>
         <link>https://mercuryagent.sh/blog</link>
         <description>News, engineering notes and field reports from the team building Mercury.</description>
         <lastBuildDate>Fri, 16 Oct 2026 00:00:00 GMT</lastBuildDate>

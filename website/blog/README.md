@@ -1,4 +1,4 @@
-# Writing for the Mercury Journal
+# Writing for the Mercury Blog
 
 This is the guide for anyone writing a post for [mercuryagent.sh/blog](https://mercuryagent.sh/blog), whether you're a person or an AI agent. Agents should also read [AGENTS.md](./AGENTS.md).
 
@@ -74,11 +74,11 @@ keywords: [node.js event loop, ai agent architecture, postmortem]
 | `tags` | yes | Keys from `tags.yml`. **The first tag is the category** shown on cards and in the post header. |
 | `image` | recommended | The cover. It's shown as the banner on the post and drawn onto the generated social card. |
 | `keywords` | recommended | Three to seven phrases people would actually search for. |
-| `featured` | no | `true` pins the post to the large slot at the top of the journal home. Only one post should have it. |
+| `featured` | no | `true` pins the post to the large slot at the top of the blog home. Only one post should have it. |
 | `social_image` | no | A path like `/img/og/custom.jpg` that replaces the generated social card. Use it only for a hand-designed card. |
 | `hide_table_of_contents` | no | `true` hides the sidebar contents. It's hidden automatically when a post has fewer than three headings. |
 | `draft` | no | `true` shows the post only in local development, never in the built site. |
-| `unlisted` | no | `true` builds the page but keeps it out of the journal list, search engines, feeds and the sitemap. Use it to share a link for review. |
+| `unlisted` | no | `true` builds the page but keeps it out of the blog list, search engines, feeds and the sitemap. Use it to share a link for review. |
 
 ## Authors and tags
 
@@ -125,7 +125,7 @@ Readers are developers who run Mercury or are deciding whether to. Write the way
 - **Skip the AI tells.** No em dashes, no "In today's fast-paced world", no "Let's dive in", no "It's not just X, it's Y", and no closing paragraph that repeats the post.
 - **Use headings for real sections.** Use `##` for sections and `###` sparingly. They build the table of contents and the reading-progress tracker.
 
-Put the excerpt marker after the first paragraph or two. Everything above it appears on the journal home and in feeds:
+Put the excerpt marker after the first paragraph or two. Everything above it appears on the blog home and in feeds:
 
 ```md
 The opening paragraph that makes someone want to read the rest.
@@ -327,4 +327,4 @@ You don't create any of these. They're listed so you know they exist:
 | `llms.txt`, `llms-full.txt` | site root | AI assistants and crawlers following the llmstxt.org convention |
 | RSS, Atom, JSON Feed | `/blog/rss.xml`, `/blog/atom.xml`, `/blog/feed.json` | Feed readers |
 | Sitemap entries and structured data | `/sitemap.xml`, inside each page | Search engines |
-| Search index | built in | The site search box and the journal search |
+| Search index | built in | The site search box and the blog search |

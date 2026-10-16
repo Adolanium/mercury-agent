@@ -86,9 +86,9 @@ const config: Config = {
         blog: {
           routeBasePath: 'blog',
           path: 'blog',
-          blogTitle: 'Mercury Journal',
+          blogTitle: 'Mercury Blog',
           blogDescription: 'News, engineering notes and field reports from the team building Mercury, the open-source AI agent you can leave running.',
-          // The journal home shows every post: search, filters and sorting run client-side.
+          // The blog home shows every post: search, filters and sorting run client-side.
           postsPerPage: 'ALL',
           blogSidebarCount: 'ALL',
           blogSidebarTitle: 'All posts',
@@ -105,7 +105,7 @@ const config: Config = {
           editUrl: 'https://github.com/cosmicstack-labs/mercury-agent/tree/main/website/',
           feedOptions: {
             type: 'all',
-            title: 'Mercury Journal',
+            title: 'Mercury Blog',
             description: 'News, engineering notes and field reports from the team building Mercury.',
             copyright: `© ${new Date().getFullYear()} Cosmic Stack`,
             limit: 50,

@@ -2,9 +2,9 @@
  * LLM-ready output for mercuryagent.sh, written after every build:
  *
  *   /llms.txt         an index in the llmstxt.org format: what Mercury is,
- *                     where the docs are, and every journal post with a
+ *                     where the docs are, and every blog post with a
  *                     one-line summary and a link to its Markdown copy
- *   /llms-full.txt    the full text of every journal post, concatenated
+ *   /llms-full.txt    the full text of every blog post, concatenated
  *   /blog/<slug>.md   each post as clean Markdown (front matter reduced to
  *                     title/date/authors/tags/canonical URL, MDX stripped),
  *                     linked from the article page and its <head>
@@ -102,13 +102,13 @@ module.exports = function llmsTxtPlugin(context) {
         `- [Mercury Bots](${SITE}/docs/integrations/mercury-bots): persistent bots and fleets`,
         `- [Release notes](${SITE}/docs/releases)`,
         '',
-        '## Journal',
+        '## Blog',
         '',
         ...posts.map((p) => `- [${p.title}](${SITE}/blog/${p.slug}.md) (${p.date}): ${p.description}`),
         '',
         '## Optional',
         '',
-        `- [All journal posts, full text](${SITE}/llms-full.txt)`,
+        `- [All blog posts, full text](${SITE}/llms-full.txt)`,
         `- [RSS feed](${SITE}/blog/rss.xml)`,
         '',
       ].join('\n');

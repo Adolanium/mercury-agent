@@ -1,4 +1,4 @@
-# Instructions for AI agents writing Mercury Journal posts
+# Instructions for AI agents writing Mercury Blog posts
 
 You are writing for the engineering blog at https://mercuryagent.sh/blog. Its readers are developers who run Mercury, an open-source AI agent, or are evaluating it. They notice vague claims and AI-sounding prose, and either one costs us their trust.
 

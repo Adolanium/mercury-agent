@@ -1,4 +1,4 @@
-/* ── Rich link previews in journal posts ─────────────────────────────── */
+/* ── Rich link previews in blog posts ────────────────────────────────── */
 .mj-embed { margin: 2em auto; max-width: 100%; }
 .mj-embed figcaption { margin-top: 10px; font-size: 0.84rem; text-align: center; }
 .mj-embed figcaption a { color: var(--mj-dim, inherit) !important; text-decoration: none !important; }

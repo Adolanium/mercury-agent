@@ -8,19 +8,19 @@ import JournalIndex from '@site/src/components/Journal/JournalIndex';
 import SocialMeta from '@site/src/components/Journal/SocialMeta';
 import { toJournalPosts } from '@site/src/components/Journal/posts';
 
-/** Category / tag archive in the journal layout. */
+/** Category / tag archive in the blog layout. */
 export default function BlogTagsPostsPage({ tag, items }: Props): React.ReactElement {
-  const title = `${tag.label} · Mercury Journal`;
+  const title = `${tag.label} · Mercury Blog`;
   const description = tag.description ?? `Posts about ${tag.label.toLowerCase()} from the Mercury team.`;
   return (
     <HtmlClassNameProvider className={clsx(ThemeClassNames.wrapper.blogPages, ThemeClassNames.page.blogTagPostListPage, 'mj-root')}>
       <PageMetadata title={title} description={description} />
       <SearchMetadata tag="blog_tags_posts" />
-      <SocialMeta permalink={tag.permalink} title={title} imageAlt={`${tag.label}: ${description}`} breadcrumbs={[{ name: 'Mercury', path: '/' }, { name: 'Journal', path: '/blog' }, { name: tag.label, path: tag.permalink }]} />
+      <SocialMeta permalink={tag.permalink} title={title} imageAlt={`${tag.label}: ${description}`} breadcrumbs={[{ name: 'Mercury', path: '/' }, { name: 'Blog', path: '/blog' }, { name: tag.label, path: tag.permalink }]} />
       <Layout>
         <JournalIndex
           posts={toJournalPosts(items)}
-          eyebrow="Mercury Journal · Topic"
+          eyebrow="Mercury Blog · Topic"
           heading={tag.label}
           intro={`${description} ${tag.count} post${tag.count === 1 ? '' : 's'}.`}
           archive

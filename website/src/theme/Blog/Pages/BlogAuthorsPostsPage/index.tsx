@@ -8,18 +8,18 @@ import JournalIndex from '@site/src/components/Journal/JournalIndex';
 import SocialMeta from '@site/src/components/Journal/SocialMeta';
 import { toJournalPosts } from '@site/src/components/Journal/posts';
 
-/** Everything one author has written, in the journal layout. */
+/** Everything one author has written, in the blog layout. */
 export default function BlogAuthorsPostsPage({ author, items }: Props): React.ReactElement {
   const name = author.name ?? author.key;
-  const title = `${name} · Mercury Journal`;
+  const title = `${name} · Mercury Blog`;
   const intro = [author.title, author.description].filter(Boolean).join('. ');
   return (
     <HtmlClassNameProvider className={clsx(ThemeClassNames.wrapper.blogPages, ThemeClassNames.page.blogAuthorsPostsPage, 'mj-root')}>
       <PageMetadata title={title} description={intro || `Posts by ${name}.`} />
       <SearchMetadata tag="blog_authors_posts" />
-      <SocialMeta permalink={author.page?.permalink ?? `/blog/authors/${author.key}`} title={title} imageAlt={`Posts by ${name} on the Mercury Journal`} breadcrumbs={[{ name: 'Mercury', path: '/' }, { name: 'Journal', path: '/blog' }, { name, path: author.page?.permalink ?? '/blog/authors' }]} />
+      <SocialMeta permalink={author.page?.permalink ?? `/blog/authors/${author.key}`} title={title} imageAlt={`Posts by ${name} on the Mercury Blog`} breadcrumbs={[{ name: 'Mercury', path: '/' }, { name: 'Blog', path: '/blog' }, { name, path: author.page?.permalink ?? '/blog/authors' }]} />
       <Layout>
-        <JournalIndex posts={toJournalPosts(items)} eyebrow="Mercury Journal · Author" heading={name} intro={intro || undefined} archive />
+        <JournalIndex posts={toJournalPosts(items)} eyebrow="Mercury Blog · Author" heading={name} intro={intro || undefined} archive />
       </Layout>
     </HtmlClassNameProvider>
   );

@@ -9,7 +9,7 @@ import JournalIndex from '@site/src/components/Journal/JournalIndex';
 import SocialMeta from '@site/src/components/Journal/SocialMeta';
 import { toJournalPosts } from '@site/src/components/Journal/posts';
 
-/** Journal home: featured post, search, category/author filters, sorting. */
+/** Blog home: featured post, search, category/author filters, sorting. */
 export default function BlogListPage(props: Props): React.ReactElement {
   const { metadata, items } = props;
   return (
@@ -17,7 +17,7 @@ export default function BlogListPage(props: Props): React.ReactElement {
       <PageMetadata title={metadata.blogTitle} description={metadata.blogDescription} />
       <SearchMetadata tag="blog_posts_list" />
       <BlogListPageStructuredData {...props} />
-      <SocialMeta permalink={metadata.permalink} title={metadata.blogTitle} imageAlt="Mercury Journal: news, engineering notes and field reports from the people building Mercury." breadcrumbs={[{ name: 'Mercury', path: '/' }, { name: 'Journal', path: '/blog' }]} />
+      <SocialMeta permalink={metadata.permalink} title={metadata.blogTitle} imageAlt="Mercury Blog: news, engineering notes and field reports from the people building Mercury." breadcrumbs={[{ name: 'Mercury', path: '/' }, { name: 'Blog', path: '/blog' }]} />
       <Layout>
         <JournalIndex posts={toJournalPosts(items)} />
       </Layout>

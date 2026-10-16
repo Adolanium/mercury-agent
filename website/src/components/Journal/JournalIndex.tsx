@@ -83,7 +83,7 @@ export interface JournalIndexProps {
   archive?: boolean;
 }
 
-export default function JournalIndex({ posts, eyebrow = 'Mercury Journal', heading, intro, archive = false }: JournalIndexProps): React.ReactElement {
+export default function JournalIndex({ posts, eyebrow = 'Mercury Blog', heading, intro, archive = false }: JournalIndexProps): React.ReactElement {
   const initial = useMemo(readQuery, []);
   const [query, setQuery] = useState(initial.q);
   const [category, setCategory] = useState(initial.c);
@@ -140,7 +140,7 @@ export default function JournalIndex({ posts, eyebrow = 'Mercury Journal', headi
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search posts, topics and authors"
-            aria-label="Search the journal"
+            aria-label="Search the blog"
           />
         </div>
       </header>

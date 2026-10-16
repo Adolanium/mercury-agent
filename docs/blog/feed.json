@@ -1,6 +1,6 @@
 {
     "version": "https://jsonfeed.org/version/1",
-    "title": "Mercury Journal",
+    "title": "Mercury Blog",
     "home_page_url": "https://mercuryagent.sh/blog",
     "description": "News, engineering notes and field reports from the team building Mercury.",
     "items": [

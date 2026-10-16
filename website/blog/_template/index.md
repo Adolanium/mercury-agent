@@ -9,7 +9,7 @@ keywords: [three to seven, phrases people search for]
 draft: true
 ---
 
-Open with the point: what happened, what changed, or what you found. One or two short paragraphs. This part is the excerpt on the journal home and in feeds.
+Open with the point: what happened, what changed, or what you found. One or two short paragraphs. This part is the excerpt on the blog home and in feeds.
 
 {/* truncate */}
 

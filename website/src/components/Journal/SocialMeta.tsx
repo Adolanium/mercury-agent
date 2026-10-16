@@ -3,7 +3,7 @@ import Head from '@docusaurus/Head';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 
 /**
- * Social and search metadata shared by every journal page. The card image is
+ * Social and search metadata shared by every blog page. The card image is
  * generated at build time by plugins/blog-social-cards.cjs at
  * /img/og<permalink>.jpg, so the path here is derived the same way.
  */

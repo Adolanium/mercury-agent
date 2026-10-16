@@ -4,7 +4,7 @@ import CodeBlock from '@theme/CodeBlock';
 import './embeds.css';
 
 /**
- * Rich previews for bare links in journal posts. The remark plugin
+ * Rich previews for bare links in blog posts. The remark plugin
  * (plugins/remark-social-embeds.cjs) detects the provider and fetches
  * metadata at build time; this component renders a static card from that
  * data (so search engines and no-JS readers get real content) and, once the

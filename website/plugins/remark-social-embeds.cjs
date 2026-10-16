@@ -1,7 +1,7 @@
 /**
  * Bare links become rich previews.
  *
- * A URL pasted on its own line in a journal post, with no link text:
+ * A URL pasted on its own line in a blog post, with no link text:
  *
  *     https://x.com/someone/status/1234567890
  *
@@ -27,7 +27,7 @@ const path = require('node:path');
 
 const CACHE_FILE = path.join(__dirname, '..', 'node_modules', '.cache', 'mercury-embeds.json');
 const TTL = 7 * 24 * 3600 * 1000;
-const UA = 'MercuryJournalBot/1.0 (+https://mercuryagent.sh/blog)';
+const UA = 'MercuryBlogBot/1.0 (+https://mercuryagent.sh/blog)';
 
 let cache = null;
 function loadCache() {

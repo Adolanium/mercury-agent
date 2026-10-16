@@ -1,6 +1,6 @@
 /**
  * Normalises what the Docusaurus blog plugin hands a list page into the
- * flat shape the journal UI renders, sorts and searches.
+ * flat shape the blog UI renders, sorts and searches.
  */
 import type { ComponentType } from 'react';
 

@@ -14,7 +14,7 @@ Install: `curl -fsSL https://mercuryagent.sh/install.sh | sh` (macOS/Linux), `ir
 - [Mercury Bots](https://mercuryagent.sh/docs/integrations/mercury-bots): persistent bots and fleets
 - [Release notes](https://mercuryagent.sh/docs/releases)
 
-## Journal
+## Blog
 
 - [Mercury Bots: an agent fleet that runs on your machine](https://mercuryagent.sh/blog/mercury-bots.md) (2026-10-16): Always-on agents shipped everywhere this autumn. How Mercury Bots work, what we measured, how they compare with Grok Bot, OpenAI dots, Meta Muse, OpenClaw and Hermes Agent, and the commits behind it.
 - [The setup wizard that quit at the first menu](https://mercuryagent.sh/blog/the-wizard-that-quit-at-the-menu.md) (2026-10-15): For six releases, a brand-new Mercury install asked for your name, showed one menu, and exited without an error. A walkthrough of a one-tick race between two readers of the same terminal, and the test that now keeps it from coming back.
@@ -24,5 +24,5 @@ Install: `curl -fsSL https://mercuryagent.sh/install.sh | sh` (macOS/Linux), `ir
 
 ## Optional
 
-- [All journal posts, full text](https://mercuryagent.sh/llms-full.txt)
+- [All blog posts, full text](https://mercuryagent.sh/llms-full.txt)
 - [RSS feed](https://mercuryagent.sh/blog/rss.xml)
