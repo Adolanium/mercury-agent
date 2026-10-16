@@ -1,0 +1,91 @@
+{
+    "version": "https://jsonfeed.org/version/1",
+    "title": "Mercury Journal",
+    "home_page_url": "https://mercuryagent.sh/blog",
+    "description": "News, engineering notes and field reports from the team building Mercury.",
+    "items": [
+        {
+            "id": "https://mercuryagent.sh/blog/mercury-bots",
+            "content_html": null,
+            "url": "https://mercuryagent.sh/blog/mercury-bots",
+            "title": "Mercury Bots: an agent fleet that runs on your machine",
+            "summary": "Always-on agents shipped everywhere this autumn. How Mercury Bots work, what we measured, how they compare with Grok Bot, OpenAI dots, Meta Muse, OpenClaw and Hermes Agent, and the commits behind it.",
+            "date_modified": "2026-10-16T00:00:00.000Z",
+            "author": {
+                "name": "Salman Qureshi",
+                "url": "https://github.com/hotheadhacker"
+            },
+            "tags": [
+                "Product",
+                "Engineering",
+                "Runtime"
+            ]
+        },
+        {
+            "id": "https://mercuryagent.sh/blog/the-wizard-that-quit-at-the-menu",
+            "content_html": null,
+            "url": "https://mercuryagent.sh/blog/the-wizard-that-quit-at-the-menu",
+            "title": "The setup wizard that quit at the first menu",
+            "summary": "For six releases, a brand-new Mercury install asked for your name, showed one menu, and exited without an error. A walkthrough of a one-tick race between two readers of the same terminal, and the test that now keeps it from coming back.",
+            "date_modified": "2026-10-15T00:00:00.000Z",
+            "author": {
+                "name": "Mercury Engineering",
+                "url": "https://github.com/cosmicstack-labs/mercury-agent"
+            },
+            "tags": [
+                "Engineering",
+                "Postmortem"
+            ]
+        },
+        {
+            "id": "https://mercuryagent.sh/blog/we-were-running-mercury-twice",
+            "content_html": null,
+            "url": "https://mercuryagent.sh/blog/we-were-running-mercury-twice",
+            "title": "We were running Mercury twice and didn't know it",
+            "summary": "Typing felt sluggish on every machine, and the terminal renderer took the blame. The real cause was a second full copy of the agent, started quietly by the launcher. How we found it, and why the fix was an architecture change rather than a performance tweak.",
+            "date_modified": "2026-10-14T00:00:00.000Z",
+            "author": {
+                "name": "Salman Qureshi",
+                "url": "https://github.com/hotheadhacker"
+            },
+            "tags": [
+                "Engineering",
+                "Postmortem",
+                "Runtime"
+            ]
+        },
+        {
+            "id": "https://mercuryagent.sh/blog/mercury-1-3",
+            "content_html": null,
+            "url": "https://mercuryagent.sh/blog/mercury-1-3",
+            "title": "Mercury 1.3: an agent you can actually leave running",
+            "summary": "One background runtime that every terminal attaches to, bots that deliver real files and stay online, and a fleet you can run from Telegram. What changed in the 1.3 line and why.",
+            "date_modified": "2026-10-12T00:00:00.000Z",
+            "author": {
+                "name": "Salman Qureshi",
+                "url": "https://github.com/hotheadhacker"
+            },
+            "tags": [
+                "News",
+                "Releases",
+                "Runtime"
+            ]
+        },
+        {
+            "id": "https://mercuryagent.sh/blog/asks-before-it-acts",
+            "content_html": null,
+            "url": "https://mercuryagent.sh/blog/asks-before-it-acts",
+            "title": "Asks before it acts: how Mercury's permission model works",
+            "summary": "An agent with a shell, a file system and network access is only useful if you can trust what it will do with them. A tour of the layers between the model and your machine: scopes, approvals, a blocklist nothing can override, an SSRF guard, and tiers for unattended bots.",
+            "date_modified": "2026-10-09T00:00:00.000Z",
+            "author": {
+                "name": "Mercury Engineering",
+                "url": "https://github.com/cosmicstack-labs/mercury-agent"
+            },
+            "tags": [
+                "Product",
+                "Security"
+            ]
+        }
+    ]
+}

@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+    <id>https://mercuryagent.sh/blog</id>
+    <title>Mercury Journal</title>
+    <updated>2026-10-16T00:00:00.000Z</updated>
+    <generator>https://github.com/jpmonette/feed</generator>
+    <link rel="alternate" href="https://mercuryagent.sh/blog"/>
+    <subtitle>News, engineering notes and field reports from the team building Mercury.</subtitle>
+    <icon>https://mercuryagent.sh/img/logo-light.png</icon>
+    <rights>© 2026 Cosmic Stack</rights>
+    <entry>
+        <title type="html"><![CDATA[Mercury Bots: an agent fleet that runs on your machine]]></title>
+        <id>https://mercuryagent.sh/blog/mercury-bots</id>
+        <link href="https://mercuryagent.sh/blog/mercury-bots"/>
+        <updated>2026-10-16T00:00:00.000Z</updated>
+        <summary type="html"><![CDATA[Always-on agents shipped everywhere this autumn. How Mercury Bots work, what we measured, how they compare with Grok Bot, OpenAI dots, Meta Muse, OpenClaw and Hermes Agent, and the commits behind it.]]></summary>
+        <author>
+            <name>Salman Qureshi</name>
+            <uri>https://github.com/hotheadhacker</uri>
+        </author>
+        <category label="Product" term="Product"/>
+        <category label="Engineering" term="Engineering"/>
+        <category label="Runtime" term="Runtime"/>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[The setup wizard that quit at the first menu]]></title>
+        <id>https://mercuryagent.sh/blog/the-wizard-that-quit-at-the-menu</id>
+        <link href="https://mercuryagent.sh/blog/the-wizard-that-quit-at-the-menu"/>
+        <updated>2026-10-15T00:00:00.000Z</updated>
+        <summary type="html"><![CDATA[For six releases, a brand-new Mercury install asked for your name, showed one menu, and exited without an error. A walkthrough of a one-tick race between two readers of the same terminal, and the test that now keeps it from coming back.]]></summary>
+        <author>
+            <name>Mercury Engineering</name>
+            <uri>https://github.com/cosmicstack-labs/mercury-agent</uri>
+        </author>
+        <category label="Engineering" term="Engineering"/>
+        <category label="Postmortem" term="Postmortem"/>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[We were running Mercury twice and didn't know it]]></title>
+        <id>https://mercuryagent.sh/blog/we-were-running-mercury-twice</id>
+        <link href="https://mercuryagent.sh/blog/we-were-running-mercury-twice"/>
+        <updated>2026-10-14T00:00:00.000Z</updated>
+        <summary type="html"><![CDATA[Typing felt sluggish on every machine, and the terminal renderer took the blame. The real cause was a second full copy of the agent, started quietly by the launcher. How we found it, and why the fix was an architecture change rather than a performance tweak.]]></summary>
+        <author>
+            <name>Salman Qureshi</name>
+            <uri>https://github.com/hotheadhacker</uri>
+        </author>
+        <category label="Engineering" term="Engineering"/>
+        <category label="Postmortem" term="Postmortem"/>
+        <category label="Runtime" term="Runtime"/>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[Mercury 1.3: an agent you can actually leave running]]></title>
+        <id>https://mercuryagent.sh/blog/mercury-1-3</id>
+        <link href="https://mercuryagent.sh/blog/mercury-1-3"/>
+        <updated>2026-10-12T00:00:00.000Z</updated>
+        <summary type="html"><![CDATA[One background runtime that every terminal attaches to, bots that deliver real files and stay online, and a fleet you can run from Telegram. What changed in the 1.3 line and why.]]></summary>
+        <author>
+            <name>Salman Qureshi</name>
+            <uri>https://github.com/hotheadhacker</uri>
+        </author>
+        <category label="News" term="News"/>
+        <category label="Releases" term="Releases"/>
+        <category label="Runtime" term="Runtime"/>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[Asks before it acts: how Mercury's permission model works]]></title>
+        <id>https://mercuryagent.sh/blog/asks-before-it-acts</id>
+        <link href="https://mercuryagent.sh/blog/asks-before-it-acts"/>
+        <updated>2026-10-09T00:00:00.000Z</updated>
+        <summary type="html"><![CDATA[An agent with a shell, a file system and network access is only useful if you can trust what it will do with them. A tour of the layers between the model and your machine: scopes, approvals, a blocklist nothing can override, an SSRF guard, and tiers for unattended bots.]]></summary>
+        <author>
+            <name>Mercury Engineering</name>
+            <uri>https://github.com/cosmicstack-labs/mercury-agent</uri>
+        </author>
+        <category label="Product" term="Product"/>
+        <category label="Security" term="Security"/>
+    </entry>
+</feed>

@@ -1,0 +1,28 @@
+# Mercury Agent
+
+> Mercury is an open-source, soul-driven AI agent that runs on your own machine. It reaches you from the terminal, Telegram, Discord, Slack, Signal and a local web dashboard, keeps a local long-term memory, asks before it acts through a permission system, stays inside a daily token budget, and keeps running as a background service. It ships Mercury Code (a coding environment) and Mercury Bots (persistent specialist agents).
+
+Install: `curl -fsSL https://mercuryagent.sh/install.sh | sh` (macOS/Linux), `irm https://mercuryagent.sh/install.ps1 | iex` (Windows), or `npm i -g @cosmicstack/mercury-agent` on Node.js 22+. Source: https://github.com/cosmicstack-labs/mercury-agent (MIT).
+
+## Docs
+
+- [Getting started](https://mercuryagent.sh/docs): install, first run, channels
+- [CLI commands](https://mercuryagent.sh/docs/cli-commands/cli-commands): every `mercury` command
+- [Permissions model](https://mercuryagent.sh/docs/reference/permissions): scopes, approvals, blocklist
+- [Second Brain memory](https://mercuryagent.sh/docs/reference/second-brain): how memory is extracted and recalled
+- [Mercury Code](https://mercuryagent.sh/docs/integrations/coding-workspace): the coding environment
+- [Mercury Bots](https://mercuryagent.sh/docs/integrations/mercury-bots): persistent bots and fleets
+- [Release notes](https://mercuryagent.sh/docs/releases)
+
+## Journal
+
+- [Mercury Bots: an agent fleet that runs on your machine](https://mercuryagent.sh/blog/mercury-bots.md) (2026-10-16): Always-on agents shipped everywhere this autumn. How Mercury Bots work, what we measured, how they compare with Grok Bot, OpenAI dots, Meta Muse, OpenClaw and Hermes Agent, and the commits behind it.
+- [The setup wizard that quit at the first menu](https://mercuryagent.sh/blog/the-wizard-that-quit-at-the-menu.md) (2026-10-15): For six releases, a brand-new Mercury install asked for your name, showed one menu, and exited without an error. A walkthrough of a one-tick race between two readers of the same terminal, and the test that now keeps it from coming back.
+- [We were running Mercury twice and didn't know it](https://mercuryagent.sh/blog/we-were-running-mercury-twice.md) (2026-10-14): Typing felt sluggish on every machine, and the terminal renderer took the blame. The real cause was a second full copy of the agent, started quietly by the launcher. How we found it, and why the fix was an architecture change rather than a performance tweak.
+- [Mercury 1.3: an agent you can actually leave running](https://mercuryagent.sh/blog/mercury-1-3.md) (2026-10-12): One background runtime that every terminal attaches to, bots that deliver real files and stay online, and a fleet you can run from Telegram. What changed in the 1.3 line and why.
+- [Asks before it acts: how Mercury's permission model works](https://mercuryagent.sh/blog/asks-before-it-acts.md) (2026-10-09): An agent with a shell, a file system and network access is only useful if you can trust what it will do with them. A tour of the layers between the model and your machine: scopes, approvals, a blocklist nothing can override, an SSRF guard, and tiers for unattended bots.
+
+## Optional
+
+- [All journal posts, full text](https://mercuryagent.sh/llms-full.txt)
+- [RSS feed](https://mercuryagent.sh/blog/rss.xml)
