@@ -2,7 +2,7 @@
 slug: agent-permissions-least-privilege
 title: "Agents exceeded their permissions: how to scope them"
 description: "CERT-In says AI agents read live business records at Indian firms. Here is how least privilege, scoped access, approvals and audit logs should limit them."
-authors: [mercury-eng]
+authors: [tashiriskhan]
 tags: [security, news]
 image: ./cover.jpg
 keywords: [ai agent permissions, least privilege for ai agents, agent sandboxing, ai agent approvals, agent audit logging, cert-in ai agents]
