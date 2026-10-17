@@ -68,6 +68,27 @@ export interface PersonConnectionRow {
   strength: number;
 }
 
+/** Most distinct terms a memory search uses; keeps queries far below SQLite's
+ *  expression-depth limit (1000), which a long pasted message used to blow
+ *  through in both the FTS query and its LIKE fallback, failing the turn. */
+const MAX_SEARCH_TERMS = 32;
+
+/**
+ * Search terms for a free-text query: distinct lowercase words of 2+ letters
+ * or digits (punctuation and FTS operators can't leak in), first occurrence
+ * order, capped at MAX_SEARCH_TERMS.
+ */
+export function ftsSearchTerms(query: string): string[] {
+  const seen = new Set<string>();
+  for (const match of query.toLowerCase().matchAll(/[\p{L}\p{N}_]+/gu)) {
+    const term = match[0];
+    if (term.length < 2 || seen.has(term)) continue;
+    seen.add(term);
+    if (seen.size >= MAX_SEARCH_TERMS) break;
+  }
+  return [...seen];
+}
+
 export class SecondBrainDB {
   private db: SqliteDatabase;
 
@@ -372,12 +393,13 @@ export class SecondBrainDB {
   }
 
   searchRelevant(userKey: string, query: string, limit: number = 10): MemoryRow[] {
-    const tokens = query.split(/\s+/).filter(t => t.length > 0).map(t => t.replace(/"/g, '""'));
+    const tokens = ftsSearchTerms(query);
     if (tokens.length === 0) {
       const stmt = this.db.prepare(`SELECT * FROM memories WHERE user_key = ? AND dismissed = 0 AND scope IN ('active', 'durable') ORDER BY updated_at DESC LIMIT ?`);
       return stmt.all(userKey, limit) as MemoryRow[];
     }
-    const ftsQuery = tokens.join(' OR ');
+    // Quoted: punctuation in a term can't break FTS5 query syntax.
+    const ftsQuery = tokens.map((term) => `"${term}"`).join(' OR ');
     const ftsStmt = this.db.prepare(`
       SELECT m.* FROM memories m
       JOIN memories_fts fts ON m.rowid = fts.rowid
@@ -396,12 +418,13 @@ export class SecondBrainDB {
   }
 
   searchSubconscious(userKey: string, query: string, limit: number = 10): MemoryRow[] {
-    const tokens = query.split(/\s+/).filter(t => t.length > 0).map(t => t.replace(/"/g, '""'));
+    const tokens = ftsSearchTerms(query);
     if (tokens.length === 0) {
       const stmt = this.db.prepare(`SELECT * FROM memories WHERE user_key = ? AND dismissed = 0 AND scope = 'subconscious' ORDER BY updated_at DESC LIMIT ?`);
       return stmt.all(userKey, limit) as MemoryRow[];
     }
-    const ftsQuery = tokens.join(' OR ');
+    // Quoted: punctuation in a term can't break FTS5 query syntax.
+    const ftsQuery = tokens.map((term) => `"${term}"`).join(' OR ');
     const ftsStmt = this.db.prepare(`
       SELECT m.* FROM memories m
       JOIN memories_fts fts ON m.rowid = fts.rowid
