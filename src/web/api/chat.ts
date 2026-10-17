@@ -5,6 +5,10 @@ import { existsSync, readFileSync, writeFileSync, readdirSync, statSync } from '
 import { join, extname, basename, relative, resolve } from 'node:path';
 import { getMercuryHome, loadConfig, getActiveProviders } from '../../utils/config.js';
 import type { SessionRepository } from '../../sessions/index.js';
+import {
+  getModelPref, setModelPref, humanizeModelName, modelGroupLabel,
+  reasoningLevelsFor, effectiveReasoning, isReasoningLevel, isValidModelRef, type ReasoningLevel,
+} from '../../utils/model-prefs.js';
 
 let webChannel: WebChannel | null = null;
 let programmingMode: ProgrammingMode | null = null;
@@ -216,15 +220,32 @@ chat.post('/api/chat/permission/:id', async (c) => {
 
 // ─── Models / Provider Switching ─────────────────────────────
 
+/**
+ * Failed model lookups are remembered briefly so that opening the picker
+ * while Ollama is down (or ChatGPT is signed out) doesn't wait on a timeout
+ * every time.
+ */
+const LOOKUP_RETRY_MS = 30_000;
+const failedLookups = new Map<string, number>();
+
+function recentlyFailed(key: string): boolean {
+  const at = failedLookups.get(key);
+  return at !== undefined && Date.now() - at < LOOKUP_RETRY_MS;
+}
+
 /** Every model the local Ollama server has pulled (empty if unreachable). */
 async function listOllamaModels(baseUrl: string): Promise<string[]> {
+  const root = baseUrl.replace(/\/+$/, '').replace(/\/(v1|api)$/, '');
+  const lookup = `ollama:${root}`;
+  if (recentlyFailed(lookup)) return [];
   try {
-    const root = baseUrl.replace(/\/+$/, '').replace(/\/(v1|api)$/, '');
     const res = await fetch(`${root}/api/tags`, { signal: AbortSignal.timeout(3000) });
-    if (!res.ok) return [];
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = (await res.json()) as { models?: { name?: string }[] };
+    failedLookups.delete(lookup);
     return (data.models ?? []).map((m) => m.name ?? '').filter(Boolean).sort();
   } catch {
+    failedLookups.set(lookup, Date.now());
     return [];
   }
 }
@@ -237,15 +258,18 @@ async function listChatGPTModels(): Promise<string[]> {
   if (chatgptModelCache && Date.now() - chatgptModelCache.at < CHATGPT_MODEL_TTL_MS) {
     return chatgptModelCache.models;
   }
+  if (recentlyFailed('chatgpt')) return [];
   try {
     const { getValidChatGPTSession } = await import('../../auth/chatgpt-session.js');
     const { fetchChatGPTModels } = await import('../../auth/chatgpt-models.js');
     const session = await getValidChatGPTSession();
-    if (!session) return [];
+    if (!session) throw new Error('not signed in');
     const catalog = await fetchChatGPTModels(session.accessToken, session.accountId);
     chatgptModelCache = { at: Date.now(), models: catalog.models };
+    failedLookups.delete('chatgpt');
     return catalog.models;
   } catch {
+    failedLookups.set('chatgpt', Date.now());
     return [];
   }
 }
@@ -257,11 +281,24 @@ async function listProviderModels(p: { name: string; baseUrl: string }): Promise
   return [];
 }
 
+/** What the picker needs to show a model in plain language. */
+function describeModel(provider: string, model: string) {
+  const pref = getModelPref(provider, model);
+  return {
+    label: pref.label ?? humanizeModelName(model),
+    autoLabel: humanizeModelName(model),
+    customLabel: pref.label ?? null,
+    group: modelGroupLabel(provider, model),
+    reasoning: effectiveReasoning(provider, model) ?? 'auto',
+    reasoningLevels: reasoningLevelsFor(provider, model),
+  };
+}
+
 chat.get('/api/chat/models', async (c) => {
   const config = loadConfig();
   const active = getActiveProviders(config);
   const current = currentProviderFn ? currentProviderFn() : { name: config.providers.default || '', model: '' };
-  const entries: { name: string; model: string; available: boolean; isCurrent: boolean }[] = [];
+  const entries: ({ name: string; model: string; available: boolean; isCurrent: boolean } & ReturnType<typeof describeModel>)[] = [];
   const perProvider = await Promise.all(active.map((p) => listProviderModels(p)));
   for (const [i, p] of active.entries()) {
     const models = perProvider[i];
@@ -272,10 +309,41 @@ chat.get('/api/chat/models', async (c) => {
         model,
         available: true,
         isCurrent: p.name === current.name && model === current.model,
+        ...describeModel(p.name, model),
       });
     }
   }
-  return c.json({ current, providers: entries });
+  return c.json({ current: { ...current, ...describeModel(current.name, current.model) }, providers: entries });
+});
+
+/** Rename a model (label) and/or set its reasoning level. null / '' / 'auto' resets. */
+chat.post('/api/chat/models/prefs', async (c) => {
+  const body = await c.req.json<Record<string, unknown>>().catch(() => null);
+  // Same id rules as /api/chat/models/switch; anything else is a 400, not a 500.
+  if (!body || !isValidModelRef(body.provider) || !isValidModelRef(body.model)) {
+    return c.json({ error: 'provider and model must be non-empty strings of at most 256 characters' }, 400);
+  }
+  const { provider, model, label, reasoning } = body as { provider: string; model: string; label?: unknown; reasoning?: unknown };
+  if (label !== undefined && label !== null && typeof label !== 'string') {
+    return c.json({ error: 'label must be a string or null' }, 400);
+  }
+  if (reasoning !== undefined && reasoning !== null && typeof reasoning !== 'string') {
+    return c.json({ error: 'reasoning must be a string or null' }, 400);
+  }
+  // Only active providers: keeps model-prefs.json from growing unbounded.
+  if (!getActiveProviders(loadConfig()).some((p) => p.name === provider)) {
+    return c.json({ error: `Provider \`${provider}\` is not configured` }, 400);
+  }
+  if (typeof reasoning === 'string' && reasoning !== 'auto') {
+    if (!isReasoningLevel(reasoning) || !reasoningLevelsFor(provider, model).includes(reasoning)) {
+      return c.json({ error: `Reasoning level '${reasoning}' is not supported for ${model}` }, 400);
+    }
+  }
+  setModelPref(provider, model, {
+    label: label as string | null | undefined,
+    reasoning: reasoning as ReasoningLevel | 'auto' | null | undefined,
+  });
+  return c.json({ ok: true, ...describeModel(provider, model) });
 });
 
 chat.post('/api/chat/models/switch', async (c) => {

@@ -122,6 +122,9 @@ export const chat = {
         provider,
         model,
       }),
+    /** Rename a model and/or set its reasoning level; null / '' / 'auto' resets. */
+    setPrefs: (provider: string, model: string, prefs: { label?: string | null; reasoning?: ReasoningChoice | null }) =>
+      post<{ ok: boolean } & ModelDescription>("/api/chat/models/prefs", { provider, model, ...prefs }),
   },
   threads: {
     list: () => get<{ threads: ChatThread[] }>("/api/chat/threads"),
@@ -483,9 +486,25 @@ export interface ToolStep {
   result?: string;
 }
 
+export type ReasoningLevel = "off" | "low" | "medium" | "high";
+export type ReasoningChoice = ReasoningLevel | "auto";
+
+/** Plain-language view of a model (see src/utils/model-prefs.ts). */
+export interface ModelDescription {
+  /** Custom label if set, else the generated friendly name. */
+  label: string;
+  autoLabel: string;
+  customLabel: string | null;
+  /** Heading the model is grouped under, e.g. "ChatGPT". */
+  group: string;
+  reasoning: ReasoningChoice;
+  /** Levels this provider honours; empty means no reasoning control. */
+  reasoningLevels: ReasoningLevel[];
+}
+
 export interface ModelsResponse {
-  current: { name: string; model: string };
-  providers: { name: string; model: string; available: boolean; isCurrent?: boolean }[];
+  current: { name: string; model: string } & ModelDescription;
+  providers: ({ name: string; model: string; available: boolean; isCurrent?: boolean } & ModelDescription)[];
 }
 
 export interface CodeStatus {
