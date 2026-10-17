@@ -35,7 +35,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('seed')
     ap.add_argument('out')
-    ap.add_argument('--style', choices=['rings', 'orbit', 'grid', 'aurora'])
+    ap.add_argument('--style', choices=['rings', 'orbit', 'grid', 'aurora', 'scopes'])
     ap.add_argument('--tone', choices=['dark', 'light'])
     a = ap.parse_args()
 
@@ -67,6 +67,20 @@ def main():
             d.line((x, 0, x, H), fill=line, width=1)
         for y in range(0, H, step):
             d.line((0, y, W, y), fill=line, width=1)
+    elif style == 'scopes':
+        # Nested scope boundaries around one agent node. The outer boundary
+        # has an amber approval gate on its right edge.
+        acc = (*AMBER, 235)
+        ax, ay = W // 2, H // 2
+        for half_w, half_h in ((520, 300), (360, 200), (200, 110)):
+            d.rounded_rectangle((ax - half_w, ay - half_h, ax + half_w, ay + half_h),
+                                radius=38, outline=line, width=2)
+        d.ellipse((ax - 26, ay - 26, ax + 26, ay + 26), fill=(*CYAN, 255))
+        gx, gy = ax + 520, ay
+        d.rounded_rectangle((gx - 16, gy - 46, gx + 16, gy + 46), radius=10, fill=acc)
+        img.alpha_composite(overlay)
+        overlay = Image.new('RGBA', img.size, (0, 0, 0, 0))
+        blob(img, (gx, gy), 150, AMBER, 120, 60)
     else:  # aurora: wide arcs rising from below the frame
         ay = H + rnd.randint(150, 420)
         for r in range(520, 1500, rnd.choice([48, 64])):
