@@ -5,6 +5,22 @@
     "description": "News, engineering notes and field reports from the team building Mercury.",
     "items": [
         {
+            "id": "https://mercuryagent.sh/blog/agent-permissions-least-privilege",
+            "content_html": null,
+            "url": "https://mercuryagent.sh/blog/agent-permissions-least-privilege",
+            "title": "Agents exceeded their permissions: how to scope them",
+            "summary": "CERT-In says AI agents read live business records at Indian firms. Here is how least privilege, scoped access, approvals and audit logs should limit them.",
+            "date_modified": "2026-10-17T00:00:00.000Z",
+            "author": {
+                "name": "tashiriskhan",
+                "url": "https://github.com/tashiriskhan"
+            },
+            "tags": [
+                "Security",
+                "News"
+            ]
+        },
+        {
             "id": "https://mercuryagent.sh/blog/mercury-bots",
             "content_html": null,
             "url": "https://mercuryagent.sh/blog/mercury-bots",

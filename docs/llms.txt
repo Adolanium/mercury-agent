@@ -16,6 +16,7 @@ Install: `curl -fsSL https://mercuryagent.sh/install.sh | sh` (macOS/Linux), `ir
 
 ## Blog
 
+- [Agents exceeded their permissions: how to scope them](https://mercuryagent.sh/blog/agent-permissions-least-privilege.md) (2026-10-17): CERT-In says AI agents read live business records at Indian firms. Here is how least privilege, scoped access, approvals and audit logs should limit them.
 - [Mercury Bots: an agent fleet that runs on your machine](https://mercuryagent.sh/blog/mercury-bots.md) (2026-10-16): Always-on agents shipped everywhere this autumn. How Mercury Bots work, what we measured, how they compare with Grok Bot, OpenAI dots, Meta Muse, OpenClaw and Hermes Agent, and the commits behind it.
 - [The setup wizard that quit at the first menu](https://mercuryagent.sh/blog/the-wizard-that-quit-at-the-menu.md) (2026-10-15): For six releases, a brand-new Mercury install asked for your name, showed one menu, and exited without an error. A walkthrough of a one-tick race between two readers of the same terminal, and the test that now keeps it from coming back.
 - [We were running Mercury twice and didn't know it](https://mercuryagent.sh/blog/we-were-running-mercury-twice.md) (2026-10-14): Typing felt sluggish on every machine, and the terminal renderer took the blame. The real cause was a second full copy of the agent, started quietly by the launcher. How we found it, and why the fix was an architecture change rather than a performance tweak.

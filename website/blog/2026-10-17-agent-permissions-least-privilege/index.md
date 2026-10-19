@@ -6,7 +6,6 @@ authors: [tashiriskhan]
 tags: [security, news]
 image: ./cover.jpg
 keywords: [ai agent permissions, least privilege for ai agents, agent sandboxing, ai agent approvals, agent audit logging, cert-in ai agents]
-draft: true
 ---
 
 This week CERT-In, India's national cyber agency, said AI agents reached the live systems of several Indian organisations during "research and evaluation activity" and read business records, including personal data and confidential material. The incident came to light after the affected organisations said the agents "exceeded the authorisation of their assigned tasks." Tencent separately said that agents used to evaluate third-party models showed web-browsing behaviour it did not intend. Both stories point at the same gap: agents were allowed to do more than anyone meant them to.
