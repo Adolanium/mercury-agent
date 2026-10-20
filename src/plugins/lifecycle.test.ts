@@ -160,8 +160,8 @@ describe('optional secrets', () => {
       await m.install(inProcessPlugin(src, { id: 'voicey', manifest }));
       await new Promise((r) => setTimeout(r, 80));
       expect(notices).toHaveLength(1);
-      expect(notices[0]).toMatch(/Voice calls: needs FIXTURE_VOICE_KEY/);
-      expect((await m.info('voicey'))?.missingOptionalSecrets).toEqual([{ name: 'FIXTURE_VOICE_KEY', unlocks: 'Voice calls' }]);
+      expect(notices[0]).toMatch(/Voice calls needs FIXTURE_VOICE_KEY/);
+      expect((await m.info('voicey'))?.missing).toMatchObject([{ key: 'secret:FIXTURE_VOICE_KEY', unlocks: 'Voice calls' }]);
       // Restarting the same version doesn't repeat it.
       await m.disable('voicey');
       await m.enable('voicey');
@@ -169,7 +169,7 @@ describe('optional secrets', () => {
       expect(notices).toHaveLength(1);
       // With the key set, nothing is missing.
       process.env.FIXTURE_VOICE_KEY = 'k';
-      expect((await m.info('voicey'))?.missingOptionalSecrets).toEqual([]);
+      expect((await m.info('voicey'))?.missing).toEqual([]);
     } finally {
       await m.shutdown();
       SECRET_NOTICE_DELAY.ms = saved;
@@ -181,5 +181,46 @@ describe('optional secrets', () => {
     const base = JSON.parse(readFileSync(join(inProcessPlugin(src, { id: 'bad-secret' }), 'mercury-plugin.json'), 'utf8'));
     const bad = { ...base, permissions: { network: [], secrets: [], optionalSecrets: { OPENAI_API_KEY: 'Voice calls' } } };
     expect(manifestSchema.safeParse(bad).success).toBe(false);
+  });
+});
+
+describe('Mercury providers for plugins', () => {
+  const code = `export async function activate(ctx) {
+  ctx.tools.register({ name: 'echo', inputSchema: { type: 'object' }, execute: async () => JSON.stringify({ key: ctx.secrets.get('MERCURY_PROVIDER_OPENAI_API_KEY') ?? null, url: ctx.secrets.get('MERCURY_PROVIDER_OPENAI_BASE_URL') ?? null, raw: ctx.secrets.get('OPENAI_API_KEY') ?? null }) });
+}`;
+  const manifest = { permissions: { network: [], secrets: [], providers: { openai: 'Voice calls' } } };
+
+  async function callEcho(): Promise<{ key: string | null; url: string | null; raw: string | null }> {
+    const t = listLiveTools().find((x) => x.pluginId === 'prov' && x.name === 'echo')!;
+    return JSON.parse(String(await t.invoke({}, new AbortController().signal)));
+  }
+
+  it('uses the key from Mercury\'s OpenAI provider; no plugin-specific setup', async () => {
+    const { setProviderLookup } = await import('./manager.js');
+    setProviderLookup((id) => (id === 'openai' ? { apiKey: 'sk-from-providers', baseUrl: 'https://api.openai.com/v1' } : undefined));
+    try {
+      await mgr.install(inProcessPlugin(src, { id: 'prov', code, manifest }));
+      const got = await callEcho();
+      expect(got.key).toBe('sk-from-providers');
+      expect(got.url).toMatch(/^https:\/\//);
+      expect(got.raw).toBeNull(); // only the provider names, never arbitrary env
+      expect((await mgr.info('prov'))?.missing).toEqual([]);
+    } finally {
+      setProviderLookup(() => undefined);
+    }
+  });
+
+  it('without an OpenAI provider: runs, and says to add one in Providers (not .env)', async () => {
+    const { setProviderLookup } = await import('./manager.js');
+    setProviderLookup(() => undefined);
+    {
+      await mgr.install(inProcessPlugin(src, { id: 'prov', code, manifest }));
+      expect((await callEcho()).key).toBeNull();
+      const missing = (await mgr.info('prov'))?.missing ?? [];
+      expect(missing).toHaveLength(1);
+      expect(missing[0]).toMatchObject({ key: 'provider:openai', unlocks: 'Voice calls', needs: 'an OpenAI provider' });
+      expect(missing[0].fix).toMatch(/Providers/);
+      expect(missing[0].fix).not.toMatch(/\.env/);
+    }
   });
 });

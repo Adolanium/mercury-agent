@@ -17,7 +17,7 @@ import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 import { assertFetchableTarget, MAX_REDIRECTS } from '../../utils/ssrf.js';
 import { logger } from '../../utils/logger.js';
-import { PLUGIN_API_VERSION, type PluginManifest } from '../types.js';
+import { PLUGIN_API_VERSION, providerSecretNames, type PluginManifest, type PluginProviderId } from '../types.js';
 import type { Disposable, PluginCommandDefinition, PluginContext, PluginModule, PluginToolDefinition } from '../sdk.js';
 import { publishCommand, publishTool, unpublishPlugin } from '../tool-bridge.js';
 import type { PluginRuntime, RuntimeDeps } from './types.js';
@@ -145,7 +145,10 @@ export class InProcessRuntime implements PluginRuntime {
     const m = this.manifest;
     const declaredTools = new Map(m.contributes.tools.map((t) => [t.name, t]));
     const declaredCommands = new Map(m.contributes.commands.map((c) => [c.name, c]));
-    const declaredSecrets = new Set(m.permissions.secrets);
+    const declaredSecrets = new Set([
+      ...m.permissions.secrets,
+      ...(Object.keys(m.permissions.providers ?? {}) as PluginProviderId[]).flatMap((p) => Object.values(providerSecretNames(p))),
+    ]);
     const signal = this.ac.signal;
     const self = this;
 

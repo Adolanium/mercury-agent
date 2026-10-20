@@ -41,6 +41,16 @@ export const RESERVED_COMMANDS: ReadonlySet<string> = new Set([
   'usage', 'cost', 'doctor', 'settings', 'config', 'login', 'logout', 'upgrade', 'version', 'about',
 ]);
 
+/** Mercury providers a plugin can ask to use (Plugin API 1.1). */
+export const PLUGIN_PROVIDER_IDS = ['openai'] as const;
+export type PluginProviderId = (typeof PLUGIN_PROVIDER_IDS)[number];
+
+/** Env names a plugin gets for a provider it declared. */
+export function providerSecretNames(id: PluginProviderId): { apiKey: string; baseUrl: string } {
+  const up = id.toUpperCase();
+  return { apiKey: `MERCURY_PROVIDER_${up}_API_KEY`, baseUrl: `MERCURY_PROVIDER_${up}_BASE_URL` };
+}
+
 /** Channel types a plugin may provide (Plugin API 1.1). */
 export const PLUGIN_CHANNEL_TYPES = ['whatsapp'] as const;
 export type PluginChannelType = (typeof PLUGIN_CHANNEL_TYPES)[number];
@@ -144,6 +154,15 @@ export const manifestSchema = z.object({
      * owner once per plugin version, and shown in /plugins info.
      */
     optionalSecrets: z.record(z.string().regex(SECRET_NAME_RE), z.string().min(1).max(200)).optional(),
+    /**
+     * Mercury AI providers the plugin may use, and what each unlocks, e.g.
+     * { "openai": "Voice calls" }. The credentials come from Mercury's own
+     * provider settings (dashboard → Providers, or `mercury doctor`), so the
+     * owner sets a key once for everything. The plugin receives them as
+     * MERCURY_PROVIDER_<ID>_API_KEY and MERCURY_PROVIDER_<ID>_BASE_URL.
+     * All optional: the plugin runs without them, minus that feature.
+     */
+    providers: z.record(z.enum(PLUGIN_PROVIDER_IDS), z.string().min(1).max(200)).optional(),
   }).strict().default({ network: [], secrets: [] }),
   settings: z.object({
     /** Bump when a field is renamed, removed or changes meaning, and add a migration. */
@@ -219,7 +238,7 @@ export interface PluginStateEntry {
   installedAt: string;
   updatedAt: string;
   disabled?: { code: DisabledCode; message: string; at: string };
-  /** Optional secrets the owner was already told are missing, at this version. */
+  /** Missing optional requirements the owner was already told about, at this version. */
   secretNotices?: Record<string, string>;
 }
 
@@ -252,8 +271,8 @@ export interface PluginListItem {
   verified: boolean;
   tools: string[];
   commands: string[];
-  /** Optional secrets that aren't set, with what each would unlock. */
-  missingOptionalSecrets?: Array<{ name: string; unlocks: string }>;
+  /** Optional providers or secrets that aren't set up: what's off, what it needs, how to fix it. */
+  missing?: Array<{ key: string; unlocks: string; needs: string; fix: string }>;
   /** Plugin API 1.1: the chat channel this plugin provides, and its live state. */
   channel?: { type: string; state?: string; detail?: string; account?: string };
   permissions?: PluginManifest['permissions'];

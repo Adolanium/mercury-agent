@@ -53,7 +53,7 @@ import { ShortTermMemory, LongTermMemory, EpisodicMemory, migrateLegacyMemory } 
 import { buildConversationHistoryPayload, CloudSessionSynchronizer, SessionRepository } from './sessions/index.js';
 import { UserMemoryStore } from './memory/user-memory.js';
 import { BotManager } from './bots/bot-manager.js';
-import { getPluginManager, peekPluginManager } from './plugins/manager.js';
+import { getPluginManager, peekPluginManager, setProviderLookup } from './plugins/manager.js';
 import { setChannelHost } from './plugins/channel-bridge.js';
 import { registerPluginsCli } from './cli/plugins-cli.js';
 import { SECOND_BRAIN_UNAVAILABLE_MESSAGE } from './memory/second-brain-db.js';
@@ -2678,6 +2678,9 @@ async function runAgent(isDaemon: boolean = false): Promise<void> {
       register: (type, channel) => channels.register(type, channel),
       unregister: (type, channel) => channels.unregister(type, channel),
     });
+    // Plugins that use a Mercury provider (e.g. OpenAI for WhatsApp calls)
+    // get the same credentials this runtime uses: one place to set a key.
+    setProviderLookup((id) => (config.providers as unknown as Record<string, { apiKey?: string; baseUrl?: string } | undefined>)[id]);
     pluginManager.setRunsPlugins(true);
     pluginManager.setNotifier((m) => agent.notifyAllChannels(m));
     void pluginManager.boot().catch((err) => logger.error({ err }, 'Plugin boot failed'));

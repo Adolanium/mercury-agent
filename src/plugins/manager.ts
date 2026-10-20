@@ -34,7 +34,8 @@ import { InProcessRuntime, inProcessLogger } from './runtime/in-process.js';
 import { OutOfProcessRuntime } from './runtime/out-of-process.js';
 import { PluginChannel, type ChannelStatus } from './channel-bridge.js';
 import type { PluginRuntime } from './runtime/types.js';
-import type { CatalogEntry, DisabledCode, PluginListItem, PluginManifest, PluginsState } from './types.js';
+import { providerSecretNames, type CatalogEntry, type DisabledCode, type PluginListItem, type PluginManifest, type PluginProviderId, type PluginsState } from './types.js';
+import { loadConfig } from '../utils/config.js';
 
 export const CIRCUIT_BREAKER_FAILURES = 5;
 export const BOOT_HEALTHY_AFTER_MS = 60_000;
@@ -257,7 +258,7 @@ export class PluginManager {
         mercuryVersion: mercuryVersion(),
         dataDir: pluginDataDir(id),
         settings: resolvedSettings(manifest),
-        secrets: Object.fromEntries(manifest.permissions.secrets.map((k) => [k, process.env[k]])),
+        secrets: { ...Object.fromEntries(manifest.permissions.secrets.map((k) => [k, process.env[k]])), ...providerCredentials(manifest) },
         log: inProcessLogger(id),
         onError: (message: string) => this.recordFailure(id, message),
         onFatal: (code: 'crashed' | 'activation', message: string) => {
@@ -307,24 +308,22 @@ export class PluginManager {
    * so it lands after channels have connected at startup.
    */
   private noticeMissingSecrets(id: string, manifest: PluginManifest): void {
-    const missing = missingOptionalSecrets(manifest);
+    const missing = missingRequirements(manifest);
     if (!missing.length) return;
     const entry = readState().plugins[id];
-    const fresh = missing.filter((m) => entry?.secretNotices?.[m.name] !== manifest.version);
+    const fresh = missing.filter((m) => entry?.secretNotices?.[m.key] !== manifest.version);
     if (!fresh.length) return;
     const timer = setTimeout(() => {
       if (!this.running.has(id)) return;
-      const lines = fresh.map((m) => `• ${m.unlocks}: needs ${m.name}`);
       void this.notifyFn([
-        `🧩 ${manifest.name} is running. Some features are off until you add a key:`,
-        ...lines,
-        `Add it to ~/.mercury/.env (or set up that provider with \`mercury doctor\`), then restart Mercury.`,
+        `🧩 ${manifest.name} is running, but some features are off:`,
+        ...fresh.map((m) => `• ${m.unlocks} needs ${m.needs}. ${m.fix}`),
       ].join('\n'));
       void updateState((s) => {
         const e = s.plugins[id];
         if (!e) return;
         e.secretNotices = { ...(e.secretNotices ?? {}) };
-        for (const m of fresh) e.secretNotices[m.name] = manifest.version;
+        for (const m of fresh) e.secretNotices[m.key] = manifest.version;
       }).catch(() => {});
     }, SECRET_NOTICE_DELAY.ms);
     timer.unref?.();
@@ -600,7 +599,7 @@ export class PluginManager {
         : undefined,
       permissions: manifest?.permissions ?? (cat ? { network: cat.permissions.network, secrets: cat.permissions.secrets } : undefined),
       disabled: inst?.disabled,
-      missingOptionalSecrets: manifest ? missingOptionalSecrets(manifest) : undefined,
+      missing: manifest ? missingRequirements(manifest) : undefined,
       lastError: run?.lastError ?? this.lastErrors.get(id),
       incompatibleReason: instIncompat ?? catIncompat ?? undefined,
     };
@@ -670,9 +669,56 @@ export function resetPluginManager(): void {
   instance = null;
 }
 
-/** Optional secrets this plugin declares that aren't set in the environment. */
-export function missingOptionalSecrets(manifest: PluginManifest): Array<{ name: string; unlocks: string }> {
-  return Object.entries(manifest.permissions.optionalSecrets ?? {})
-    .filter(([name]) => !process.env[name])
-    .map(([name, unlocks]) => ({ name, unlocks }));
+const PROVIDER_LABEL: Record<PluginProviderId, string> = { openai: 'OpenAI' };
+
+type ProviderLookup = (id: PluginProviderId) => { apiKey?: string; baseUrl?: string } | undefined;
+
+let providerLookup: ProviderLookup = (id) => {
+  try {
+    return (loadConfig().providers as unknown as Record<string, { apiKey?: string; baseUrl?: string }>)[id];
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * Where provider credentials come from. The runtime points this at its live
+ * config, the same one its own model calls use; tests point it at a fake.
+ */
+export function setProviderLookup(fn: ProviderLookup): void {
+  providerLookup = fn;
+}
+
+/** Credentials for the Mercury providers a plugin declared, from Mercury's own provider settings. */
+export function providerCredentials(manifest: PluginManifest): Record<string, string> {
+  const out: Record<string, string> = {};
+  const declared = Object.keys(manifest.permissions.providers ?? {}) as PluginProviderId[];
+  for (const id of declared) {
+    const p = providerLookup(id);
+    if (!p?.apiKey) continue;
+    const names = providerSecretNames(id);
+    out[names.apiKey] = p.apiKey;
+    if (p.baseUrl) out[names.baseUrl] = p.baseUrl;
+  }
+  return out;
+}
+
+/** Optional providers and secrets this plugin declares that aren't set up. */
+export function missingRequirements(manifest: PluginManifest): Array<{ key: string; unlocks: string; needs: string; fix: string }> {
+  const creds = providerCredentials(manifest);
+  const out: Array<{ key: string; unlocks: string; needs: string; fix: string }> = [];
+  for (const [id, unlocks] of Object.entries(manifest.permissions.providers ?? {}) as Array<[PluginProviderId, string]>) {
+    if (creds[providerSecretNames(id).apiKey]) continue;
+    out.push({
+      key: `provider:${id}`,
+      unlocks,
+      needs: `an ${PROVIDER_LABEL[id]} provider`,
+      fix: `Add your ${PROVIDER_LABEL[id]} key once in the dashboard (Providers) or with \`mercury doctor\`; Mercury uses it for everything.`,
+    });
+  }
+  for (const [name, unlocks] of Object.entries(manifest.permissions.optionalSecrets ?? {})) {
+    if (process.env[name]) continue;
+    out.push({ key: `secret:${name}`, unlocks, needs: name, fix: `Add ${name} to ~/.mercury/.env and restart Mercury.` });
+  }
+  return out;
 }
