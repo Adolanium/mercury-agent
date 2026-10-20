@@ -75,6 +75,8 @@ export class PluginManager {
   private readonly safeMode: boolean;
   private notifyFn: (message: string) => void | Promise<void>;
   private reconciling: Promise<void> | null = null;
+  private reconcileAgain = false;
+  private passSeq = 0;
   private healthyTimer: ReturnType<typeof setTimeout> | null = null;
   private booted = false;
   private runs: boolean;
@@ -185,25 +187,43 @@ export class PluginManager {
   /** Make the running set match state.json. Serialised; never throws. */
   async reconcile(): Promise<void> {
     if (this.safeMode || !this.runs) return;
+    // A request that arrives mid-pass may be for a change that pass already
+    // read past (e.g. an install): ask for one more pass instead of reusing it.
+    this.reconcileAgain = true;
     if (this.reconciling) return this.reconciling;
-    this.reconciling = (async () => {
+    const passId = ++this.passSeq;
+    const pass = (async () => {
+      // Yield first: a pass with nothing to await must not finish before
+      // `this.reconciling` is assigned, or the settled promise would stick
+      // there and every later reconcile would silently do nothing.
+      await Promise.resolve();
       try {
-        const state = readState();
-        for (const [id, run] of [...this.running]) {
-          const entry = state.plugins[id];
-          if (!entry || !entry.enabled || entry.version !== run.version) await this.stopRuntime(id);
+        while (this.reconcileAgain) {
+          this.reconcileAgain = false;
+          await this.reconcileOnce();
         }
-        for (const [id, entry] of Object.entries(state.plugins)) {
-          if (entry.enabled && !this.running.has(id)) await this.startRuntime(id, entry.version);
-        }
-      } catch (err) {
-        logger.error({ err }, 'Plugin reconcile failed');
       } finally {
-        this.reconciling = null;
+        if (this.passSeq === passId) this.reconciling = null;
         this.changed();
       }
     })();
-    return this.reconciling;
+    this.reconciling = pass;
+    return pass;
+  }
+
+  private async reconcileOnce(): Promise<void> {
+    try {
+      const state = readState();
+      for (const [id, run] of [...this.running]) {
+        const entry = state.plugins[id];
+        if (!entry || !entry.enabled || entry.version !== run.version) await this.stopRuntime(id);
+      }
+      for (const [id, entry] of Object.entries(state.plugins)) {
+        if (entry.enabled && !this.running.has(id)) await this.startRuntime(id, entry.version);
+      }
+    } catch (err) {
+      logger.error({ err }, 'Plugin reconcile failed');
+    }
   }
 
   private async startRuntime(id: string, version: string): Promise<void> {
