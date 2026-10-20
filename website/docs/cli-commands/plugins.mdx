@@ -1,0 +1,95 @@
+---
+id: plugins
+title: Plugins (install, enable, disable, remove)
+sidebar_label: Plugins
+---
+
+Plugins add features to Mercury that not everyone needs, without making the
+Mercury download bigger for everyone. You install the ones you want; the rest
+never touch your machine.
+
+A plugin can add **tools** the agent can use and, for some plugins, **slash
+commands** you can type. Every plugin can be turned off or removed at any
+time, and Mercury keeps running if a plugin breaks.
+
+## Four ways to manage plugins
+
+| Where | Example |
+|-------|---------|
+| Any chat (terminal, Telegram, web, Discord, Slack) | `/plugins` |
+| Shell | `mercury plugins list` |
+| Web dashboard | **Configure → Plugins** |
+| Telegram buttons | `/plugins`, then tap **Install**, **Disable** or **Uninstall** |
+
+They all do the same thing. If Mercury is running in the background, the
+shell commands ask it to make the change, so plugins start and stop right
+away without a restart.
+
+## Commands
+
+| Chat | Shell | What it does |
+|------|-------|--------------|
+| `/plugins` | `mercury plugins` | Installed and available plugins, with status |
+| `/plugins search weather` | `mercury plugins search weather` | Find plugins in the catalog |
+| `/plugins info ID` | `mercury plugins info ID` | Tools, network access, secrets it reads, settings |
+| `/plugins install ID` | `mercury plugins install ID` | Install. Shows what the plugin needs first and asks you to confirm |
+| `/plugins enable ID` | `mercury plugins enable ID` | Turn it on |
+| `/plugins disable ID` | `mercury plugins disable ID` | Turn it off. Its data and settings are kept |
+| `/plugins update` | `mercury plugins update` | Update catalog plugins (or one: `update ID`) |
+| `/plugins rollback ID` | `mercury plugins rollback ID` | Go back to the version you had before |
+| `/plugins uninstall ID` | `mercury plugins uninstall ID` | Remove it. Add `--purge` to delete its data too |
+| `/plugins set ID KEY VALUE` | `mercury plugins set ID KEY VALUE` | Change a plugin setting |
+
+`install` accepts a catalog id, a folder, a `.tgz` file, an `https://` URL,
+or `github:owner/repo` (latest release). Only catalog plugins are verified
+by Mercury; install anything else only from people you trust.
+
+Only the owner (and admins on Telegram, Discord and Slack) can install or
+change plugins. In the web dashboard, changes are accepted only from the
+computer Mercury runs on.
+
+## What keeps Mercury safe from a bad plugin
+
+- **Two kinds of plugin.** *Own process* plugins run as a separate program:
+  if they crash, Mercury restarts them, and after repeated crashes turns them
+  off. *In-process* plugins run inside Mercury, with timeouts on everything
+  they do.
+- **Only what it declared.** A plugin can reach only the websites and read
+  only the secrets listed in its manifest. `/plugins info` shows both, and
+  install shows them before you confirm.
+- **Tools ask first.** A plugin tool that changes anything asks for your
+  approval like any built-in tool. Bots never see plugin tools unless you
+  allow them in the bot's tool list (`weather__forecast`, or `weather__*` for
+  all of one plugin's tools).
+- **Automatic turn-off.** A plugin is turned off, and you get a message
+  saying why, when:
+  - it fails 5 times in a row;
+  - it crashes too often;
+  - its files changed since install;
+  - it isn't compatible with your Mercury version;
+  - Mercury failed to start twice right after it was installed or updated.
+- **Clean removal.** Disable or uninstall stops its timers, network requests
+  and tools straight away. No restart needed.
+- **Updates you can undo.** The previous version is kept, so
+  `/plugins rollback ID` brings it back, with its settings.
+
+## Safe mode
+
+If Mercury won't start after a plugin change, start it with every plugin off:
+
+```sh
+mercury start --safe-mode        # or: MERCURY_PLUGINS=off mercury start
+mercury doctor --plugins         # what's installed, what's off and why
+```
+
+## Where things live
+
+```
+~/.mercury/plugins/
+  state.json                 installed / enabled
+  ID/versions/VERSION/       the plugin (current + previous)
+  ID/data/                   the plugin's own data (kept on uninstall unless --purge)
+  ID/settings.json           your settings for it
+```
+
+Writing a plugin? See [Reference → Writing plugins](../reference/plugins).

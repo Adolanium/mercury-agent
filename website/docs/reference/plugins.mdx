@@ -1,0 +1,156 @@
+---
+id: plugins
+title: Writing plugins
+sidebar_label: Writing plugins
+---
+
+A Mercury plugin is a folder with a `mercury-plugin.json` manifest and code.
+Start from a working one:
+
+```sh
+mercury plugins init my-plugin                    # runs inside Mercury
+mercury plugins init my-plugin --out-of-process   # an MCP server in its own process
+cd my-plugin
+mercury plugins validate .                        # check it the way Mercury will run it
+mercury plugins install . --yes                   # try it in your Mercury
+mercury plugins pack .                            # .tgz + checksum + catalog entry
+```
+
+No npm package is needed: `init` writes the API types next to your code as
+`mercury-plugin.d.ts`.
+
+## Which kind?
+
+| | In-process | Out-of-process |
+|---|---|---|
+| Runs | Inside Mercury, loaded with `import()` | As a child process speaking MCP over stdio |
+| Good for | Small, fast tools; slash commands | Native code, heavy work, existing MCP servers, other languages |
+| If it crashes | Errors are contained and counted; repeated failures turn it off | Mercury restarts it; repeated crashes turn it off |
+| Slash commands | Yes | Not in plugin API 1.0 |
+
+## The manifest
+
+```json
+{
+  "manifestVersion": 1,
+  "id": "weather",
+  "name": "Weather",
+  "version": "1.2.0",
+  "description": "Forecasts and alerts.",
+  "kind": "in-process",
+  "engines": { "mercury": ">=1.4.0 <2.0.0", "pluginApi": "^1.0.0" },
+  "entry": "index.mjs",
+  "contributes": {
+    "tools": [{ "name": "forecast", "description": "Get the forecast for a city.", "readOnly": true, "timeoutMs": 20000 }],
+    "commands": [{ "name": "weather", "description": "Today's weather" }]
+  },
+  "permissions": { "network": ["api.weather.example"], "secrets": ["WEATHER_API_KEY"] },
+  "settings": {
+    "version": 2,
+    "fields": { "unit": { "type": "enum", "options": ["c", "f"], "default": "c" } },
+    "migrations": [{ "to": 2, "rename": { "units": "unit" }, "mapValues": { "unit": { "celsius": "c", "fahrenheit": "f" } } }]
+  }
+}
+```
+
+- **Tools** are shown to the model as `ID__name` (for example
+  `weather__forecast`). `readOnly` tools skip approval and are available in
+  plan mode; every other tool asks the owner first.
+- **Commands** can't use a built-in name (`/help`, `/stop`, `/bots` and so on).
+- **permissions.network** lists the hosts `ctx.fetch` may reach (`*.example.com`
+  works). Private and loopback addresses are always blocked.
+- **permissions.secrets** lists the names from `~/.mercury/.env` the plugin
+  may read. Nothing else is visible to it.
+- Out-of-process plugins use `"server": { "command": "node", "args": ["server.mjs"] }`.
+  `node` means Mercury's own runtime, so users don't need Node installed.
+  It can also be a binary inside the package, with per-platform variants
+  under `server.platforms` and their SHA-256 in `checksums`.
+
+## In-process API
+
+```js
+/** @param {import('./mercury-plugin').PluginContext} ctx */
+export async function activate(ctx) {
+  ctx.tools.register({
+    name: 'forecast',
+    inputSchema: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'] },
+    execute: async ({ city }, { signal }) => {
+      const res = await ctx.fetch(`https://api.weather.example/v1?q=${encodeURIComponent(city)}`, {
+        headers: { authorization: `Bearer ${ctx.secrets.get('WEATHER_API_KEY')}` },
+        signal,
+      });
+      return await res.json();
+    },
+  });
+  ctx.timers.setInterval(() => ctx.log.debug('tick'), 60_000);
+}
+```
+
+The context provides:
+
+- `ctx.tools`, `ctx.commands`
+- `ctx.settings`, `ctx.secrets`
+- `ctx.fetch`
+- `ctx.timers`
+- `ctx.log`
+- `ctx.plugin.dataDir`, a folder kept across updates
+- `ctx.signal`, aborted when the plugin stops
+- `ctx.onDispose`
+
+Everything registered or scheduled through `ctx` is cleaned up automatically
+when the plugin is turned off, updated or removed.
+
+## Rules for a stable plugin
+
+These are checked by `mercury plugins validate`:
+
+1. **One self-contained file.** Bundle your dependencies
+   (`esbuild src/index.ts --bundle --format=esm --platform=node --outfile=index.mjs`).
+   A compiled Mercury can't resolve npm packages for you; only `node:`
+   builtins and files in your package load.
+2. **Hot plug.** Your plugin must start, stop and start again cleanly, with
+   no restart of Mercury. Use `ctx.timers` and `ctx.signal`, not globals.
+3. **Clean up.** Anything you start outside `ctx`, stop in `ctx.onDispose`.
+4. **Versioned contract.** Declare `engines.pluginApi`. Plugin API minor
+   versions only add. A breaking change is a new major, and the previous one
+   stays supported for at least two Mercury minor releases.
+5. **Settings migrations.** If you rename or remove a setting, or change its
+   meaning, do two things:
+   - bump `settings.version`;
+   - add a `migrations` step (`rename`, `remove`, `mapValues`).
+
+   Saved values then carry over on update. Rolling back restores the older
+   version's settings.
+6. **No plugin-to-plugin dependencies** in plugin API 1.0. Each plugin stands
+   alone.
+
+## Out-of-process (MCP)
+
+Mercury starts the server and runs the handshake:
+
+1. `initialize`, then `notifications/initialized`
+2. `tools/list`, which exposes only the tools your manifest declares
+3. `tools/call` for each tool use
+
+It also handles `ping` and `notifications/tools/list_changed`. It cancels
+calls with `notifications/cancelled` when a turn stops.
+
+What your server receives:
+
+- **Settings:** JSON in the `MERCURY_PLUGIN_SETTINGS` environment variable.
+- **Data folder:** `MERCURY_PLUGIN_DATA_DIR`.
+- **Secrets:** the declared secrets, as environment variables.
+
+Write logs to stderr. Stdout is the protocol channel.
+
+## Publishing
+
+`mercury plugins pack .` writes `ID-VERSION.tgz` and prints its SHA-256 and
+a catalog entry. Then:
+
+- **Share it from GitHub.** Attach the file to a GitHub release as
+  `mercury-plugin.tgz` (or `mercury-plugin-PLATFORM.tgz` per platform).
+  Anyone can then install it with `mercury plugins install github:owner/repo`.
+- **List it in `/plugins`.** Open a pull request adding the entry to the
+  catalog at `website/static/plugins/catalog.json`. Catalog installs are
+  checksum-verified.

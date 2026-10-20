@@ -216,3 +216,28 @@
 - **Decision**: One process is the runtime. `bootDaemonThenAttach()` replaces spawn-then-boot at launch and in recovery: spawn the daemon, attach to it (`runAttach` now waits for the attach token and tolerates a token rotated during boot); only when no daemon can run here (Termux, unsupported platform) does the terminal become the runtime. A foreground runtime that finds a live daemon (`daemonOwnsRuntime`: `mercury code`, an attach that could not connect) wires the CLI channel only (`ChannelRegistry({ cliOnly })`), creates no `BotManager`, and does not bind the web port — it is a terminal for the main agent. The event loop is measured (`monitorEventLoopDelay`): `/api/health` reports `loopLag`, and stalls ≥250 ms are logged.
 - **Also**: the login service must launch *this* install. `serviceDrift()` compares the plist/unit's program with the running binary; `autoDaemonize` re-points a drifted service (macOS unloads the old label first — a loaded label ignores a rewritten plist and KeepAlive keeps the old daemon alive; Linux restarts the unit), `mercury doctor` reports it, and the attach "foreign port" message names it. On the reporting machine the LaunchAgent still launched the npm-global 1.3.0; that daemon owned :6174 for a day while every `mercury` launch healed around it.
 - **Consequence**: Bots and channels run exactly once, in the daemon, on their own thread; the TUI process renders keystrokes and nothing else. The attach TUI is what most sessions see (the daemon auto-starts on login), so parity gaps in it — TUI-only bot threads (`/bots open`), the `/telegram` menu — are now visible and worth closing. Lag has a number: if `loopLag.maxMs` is high in the daemon, something in a bot turn is synchronous and should move off the thread.
+
+## ADR-025: Optional features ship as plugins, isolated and hot-pluggable
+
+- **Context**: Features only some people want (WhatsApp calls, #202; integrations with heavy native pieces) were heading into the single binary, making it bigger and riskier for everyone (#203). A plugin system had to keep Mercury stable when a plugin is bad, and had to work from the compiled binary. Spikes showed that a `bun build --compile` binary can `import()` JS from disk but cannot resolve packages for it. They also showed that `BUN_BE_BUN=1 <binary> script.js` runs scripts without a system Node.
+- **Decision**: Plugins live in `~/.mercury/plugins`. Each one is either an *in-process* single-file ES module, given a scoped `PluginContext`, or an *out-of-process* MCP server over stdio, supervised with restart backoff.
+  - **Contract**: Frozen manifest v1 and Plugin API 1.0. Minor versions only add; a major version is supported for at least two Mercury minors.
+  - **Isolation and hot plug**:
+    - A plugin gets only what it declares: tools, commands, network hosts (through the SSRF guard) and secrets.
+    - Everything made through the context is torn down on disable, so plugins are hot-plugged with no restart.
+    - Tools are namespaced `id__tool`. Non-read-only tools need approval.
+    - Bots see plugin tools only through an explicit allow entry. Members get none.
+    - Built-in command names are reserved.
+  - **Self-protection**:
+    - Atomic installs with checksum, tree and manifest checks; the previous version is kept for rollback.
+    - A cross-process lock.
+    - A circuit breaker after 5 consecutive failures.
+    - A crash-loop limit.
+    - A boot guard that disables the last-changed plugin after two failed starts.
+    - Uncaught errors whose stack points into a plugin disable that plugin instead of exiting.
+    - `--safe-mode` / `MERCURY_PLUGINS=off`.
+  - **Settings**: migrations are declarative (`rename`/`remove`/`mapValues`), so no plugin code runs to migrate, and a backup is kept for rollback.
+  - **Dependencies**: No plugin-to-plugin dependencies in v1.
+  - **Ownership**: Following ADR-024, only the runtime owner runs plugins. Every other process (`mercury plugins …`, attached terminals) forwards changes over the loopback API. Web mutations are loopback-only.
+  - **Authoring**: `init`, `validate` (a conformance kit that starts, inspects, stops and restarts the plugin) and `pack` ship in the binary, so authors need no npm package.
+- **Consequence**: The core binary stays the same size; optional features become catalog entries (`mercuryagent.sh/plugins/catalog.json`, checksum-pinned). In-process plugins still share the daemon's memory and event loop: the guards contain errors and timeouts, not a busy loop or a memory leak. Anything heavy or native should be out-of-process, and the docs say so.

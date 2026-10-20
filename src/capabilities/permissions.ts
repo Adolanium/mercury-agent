@@ -352,6 +352,8 @@ export class PermissionManager {
   private rootCache: PermissionContext | null = null;
   private binaryResolver: BinaryResolver = pinnedBinary;
   private approvedCommandsByContext = new Map<string, Set<string>>();
+  /** "Always allow" choices for plugin tools, per channel (see approvePluginTool). */
+  private approvedPluginToolsByContext = new Map<string, Set<string>>();
   private approvedWritesByContext = new Map<string, Set<string>>();
   /** Hard-linked files the user answered "always" for, per interaction context. */
   private approvedHardlinkReadsByContext = new Map<string, Set<string>>();
@@ -514,6 +516,34 @@ export class PermissionManager {
     if (!this.askHandler) return false;
     const result = await this.askHandler(prompt);
     return result === 'yes' || result === 'always';
+  }
+
+  /**
+   * Approval for a plugin tool call (src/plugins). Same rules as the shell
+   * approval lane:
+   * - fail-closed (bots): the tool already passed the bot's explicit
+   *   permissions.yaml allow list (filterBotTools), so it runs; there is no
+   *   one to ask and no prompt mid-run.
+   * - internal/scheduled turns: only an allow-all context approves.
+   * - session Allow All approves, except web requests (never inherit local).
+   * - "always" is remembered per channel for this plugin tool.
+   * - otherwise the user sees the plugin, tool and arguments.
+   */
+  async approvePluginTool(toolKey: string, prompt: string): Promise<boolean> {
+    const ctx = this.ctx();
+    if (this.failClosed) return true;
+    if (ctx.channelType === 'internal') return ctx.autoApprove;
+    if (this.isGlobalAutoApproveActive()) return true;
+    if (this.approvedPluginToolsByContext.get(ctx.channelId)?.has(toolKey)) return true;
+    if (!this.askHandler) return false;
+    const result = await this.askHandler(prompt);
+    if (result === 'always') {
+      const approved = this.approvedPluginToolsByContext.get(ctx.channelId) ?? new Set<string>();
+      approved.add(toolKey);
+      this.approvedPluginToolsByContext.set(ctx.channelId, approved);
+      return true;
+    }
+    return result === 'yes';
   }
 
   /** Session-level Allow All (user choice). Inside a sub-agent it only changes that sub-agent. */

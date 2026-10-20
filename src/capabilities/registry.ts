@@ -58,6 +58,7 @@ import type { TokenBudget } from '../utils/tokens.js';
 import type { SubAgentSupervisor } from '../core/supervisor.js';
 import type { SpotifyClient } from '../spotify/client.js';
 import { createDelegateTaskTool, createListAgentsTool, createStopAgentTool } from './subagents/index.js';
+import { getPluginTools } from '../plugins/tool-bridge.js';
 import { createDispatchBotTool } from '../bots/tools/dispatch-bot.js';
 import type { UserMemoryStore } from '../memory/user-memory.js';
 import { logger } from '../utils/logger.js';
@@ -280,15 +281,33 @@ export class CapabilityRegistry {
   }
 
   getTools(): Record<string, Tool> {
-    if (this.permissions.getCurrentSenderRole() !== 'member') return this.tools;
     // Members on a channel that distinguishes roles (e.g. Telegram) must not be
     // able to install skills: `install_skill` is the escalation path from chat
     // access to arbitrary local execution and is documented as admin-only.
-    const filtered: Record<string, Tool> = {};
-    for (const [name, tool] of Object.entries(this.tools)) {
-      if (name !== 'install_skill') filtered[name] = tool;
+    // Plugin tools are owner-installed code, so members don't get them either.
+    if (this.permissions.getCurrentSenderRole() === 'member') {
+      const filtered: Record<string, Tool> = {};
+      for (const [name, tool] of Object.entries(this.tools)) {
+        if (name !== 'install_skill') filtered[name] = tool;
+      }
+      return filtered;
     }
-    return filtered;
+    return this.withPluginTools(this.tools, false);
+  }
+
+  /**
+   * Built-in tools plus the live plugin tools (src/plugins). Read on every
+   * call, so enabling or disabling a plugin takes effect on the next turn.
+   * A built-in tool always wins a name clash.
+   */
+  private withPluginTools(base: Record<string, Tool>, readOnlyOnly: boolean): Record<string, Tool> {
+    const plugin = getPluginTools(this.permissions, { readOnlyOnly });
+    if (Object.keys(plugin).length === 0) return base;
+    const merged: Record<string, Tool> = { ...base };
+    for (const [name, tool] of Object.entries(plugin)) {
+      if (!(name in merged)) merged[name] = tool;
+    }
+    return merged;
   }
 
   /** Return tools filtered for plan mode — read-only tools only */
@@ -304,7 +323,9 @@ export class CapabilityRegistry {
     for (const [name, tool] of Object.entries(this.tools)) {
       if (!blocked.has(name)) filtered[name] = tool;
     }
-    return filtered;
+    // Plan mode: only plugin tools their manifest declares read-only.
+    if (this.permissions.getCurrentSenderRole() === 'member') return filtered;
+    return this.withPluginTools(filtered, true);
   }
 
   getToolNames(): string[] {

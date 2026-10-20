@@ -53,6 +53,8 @@ import { ShortTermMemory, LongTermMemory, EpisodicMemory, migrateLegacyMemory } 
 import { buildConversationHistoryPayload, CloudSessionSynchronizer, SessionRepository } from './sessions/index.js';
 import { UserMemoryStore } from './memory/user-memory.js';
 import { BotManager } from './bots/bot-manager.js';
+import { getPluginManager, peekPluginManager } from './plugins/manager.js';
+import { registerPluginsCli } from './cli/plugins-cli.js';
 import { SECOND_BRAIN_UNAVAILABLE_MESSAGE } from './memory/second-brain-db.js';
 import { isSqliteAvailable } from './utils/sqlite-driver.js';
 import { runStorageDoctor } from './utils/storage-doctor.js';
@@ -2408,6 +2410,9 @@ async function runAgent(isDaemon: boolean = false): Promise<void> {
     }
     process.on('uncaughtException', (err) => {
       try { line(`UNCAUGHT: ${err?.stack || err}`); } catch { /* disk full */ }
+      // A throw from a plugin's own code (a stray timer, an event handler)
+      // disables that plugin instead of taking Mercury down with it.
+      try { if (peekPluginManager()?.attributeFault(err)) return; } catch { /* fall through to exit */ }
       try { writeCrashFlag({ reason: `Uncaught: ${String(err?.message || err)}`.slice(0, 300), timestamp: Date.now() }); } catch {}
       // A TUI-crashed process must not linger headless: it would hold the
       // runtime pid files and silently block every future launch. Print,
@@ -2419,6 +2424,7 @@ async function runAgent(isDaemon: boolean = false): Promise<void> {
     });
     process.on('unhandledRejection', (reason) => {
       try { line(`REJECTION: ${reason instanceof Error ? reason.stack : String(reason)}`); } catch {}
+      try { if (peekPluginManager()?.attributeFault(reason)) return; } catch { /* keep going */ }
       // A rejected boot (e.g. "runtime already running") must fail loudly,
       // not exit(0) as if nothing happened.
       const message = String(reason instanceof Error ? reason.message : reason || '');
@@ -2659,6 +2665,16 @@ async function runAgent(isDaemon: boolean = false): Promise<void> {
 
   if (supervisor) {
     agent.setSupervisor(supervisor);
+  }
+
+  // Plugins run only in the process that owns the runtime (ADR-024); an
+  // attached terminal forwards /plugins to it. Boot is fire-and-forget:
+  // a broken plugin is disabled, never a reason for Mercury not to start.
+  const pluginManager = daemonOwnsRuntime ? undefined : getPluginManager();
+  if (pluginManager) {
+    pluginManager.setRunsPlugins(true);
+    pluginManager.setNotifier((m) => agent.notifyAllChannels(m));
+    void pluginManager.boot().catch((err) => logger.error({ err }, 'Plugin boot failed'));
   }
 
   // Mercury Bots: fleet manager runs outside the main message queue.
@@ -3744,6 +3760,7 @@ async function runAgent(isDaemon: boolean = false): Promise<void> {
       // Release the bots' SQLite queue handle — on Windows an open handle
       // keeps queue.db locked against any later uninstall/replace.
       try { botManager?.dispose(); } catch { /* best effort */ }
+      try { await pluginManager?.shutdown(); } catch { /* best effort */ }
       await agent.shutdown();
       clearCloudRuntimeOnline();
       releaseRuntimeProcess(runtimeMode);
@@ -3819,6 +3836,10 @@ function removeBootCrashHandlers(): void {
 }
 installBootCrashHandlers();
 
+// --safe-mode must reach the daemon child too, which is spawned with this
+// process's environment but its own argv.
+if (process.argv.includes('--safe-mode')) process.env.MERCURY_PLUGINS = 'off';
+
 const program = new Command();
 
 program
@@ -3826,6 +3847,7 @@ program
   .description('Mercury — Soul-driven AI agent with permission-hardened tools, token budgets, and multi-channel access.')
   .version(pkgVersion)
   .option('-v, --verbose', 'Show debug logs')
+  .option('--safe-mode', 'Start with every plugin turned off (also MERCURY_PLUGINS=off)')
   .action(async () => {
     if (!isSetupComplete()) {
       await configure();
@@ -3858,6 +3880,7 @@ program
   .option('-f, --foreground', 'Run in foreground (attached to terminal)')
   .option('-d, --detached', 'Run in background (daemon mode) — same as default')
   .option('--daemon', 'Internal flag for daemon child process')
+  .option('--safe-mode', 'Start with every plugin turned off')
   .action(async (opts) => {
     if (opts.daemon) {
       await runWithWatchdog(() => runAgent(true));
@@ -3978,6 +4001,7 @@ program
   .description('Reconfigure Mercury setup (name, providers, channels, permissions defaults)')
   .option('--platform', 'Show platform compatibility diagnostics')
   .option('--storage', 'Show SQLite backend, database files and row counts')
+  .option('--plugins', 'Check installed plugins and why any are turned off')
   .action(async (opts) => {
     {
       // Keys that cannot be right — say so before anything is tried.
@@ -3991,6 +4015,11 @@ program
     }
     if (opts.storage) {
       runStorageDoctor();
+      return;
+    }
+    if (opts.plugins) {
+      const { runPluginDoctor } = await import('./cli/plugins-cli.js');
+      await runPluginDoctor();
       return;
     }
     // The daemon reads providers, keys and channels at boot: a reconfigure
@@ -5062,6 +5091,8 @@ program
     console.log(chalk.dim(`  Login at http://localhost:${loadConfig().web.port}`));
     console.log('');
   });
+
+registerPluginsCli(program);
 
 const cloud = program.command('cloud').description('Manage Mercury Cloud connection');
 

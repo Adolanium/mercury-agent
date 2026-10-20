@@ -96,6 +96,7 @@ import { createTaskSurface } from './task-surface.js';
 import { buildFileChangePreview } from '../utils/file-preview.js';
 import { whatsNewText } from '../utils/whats-new.js';
 import { handleBotsCommand as handleBotsCommandImpl } from './commands/bots-command.js';
+import { handlePluginsCommand, tryPluginCommand, pluginCommandHelp } from '../plugins/commands.js';
 import { handleChatCommand as handleChatCommandImpl } from './commands/chat-command.js';
 import { handleBgCommand as handleBgCommandImpl } from './commands/bg-command.js';
 import { handleSaverCommand as handleSaverCommandImpl } from './commands/saver-command.js';
@@ -747,6 +748,25 @@ export class Agent {
         });
       }
       return;
+    }
+
+    // /plugins is fast-path like /bots: installing or toggling a plugin must
+    // work while a turn is running (that's often when you notice you need it).
+    if (/^\/plugins?(\s|$)/.test(trimmed)) {
+      const channel = this.channels.getChannelForMessage(msg);
+      if (channel) {
+        handlePluginsCommand(trimmed, msg, channel).catch((err) => {
+          logger.error({ err: (err as any)?.message ?? err, content: trimmed.slice(0, 50) }, '/plugins command failed');
+        });
+      }
+      return;
+    }
+
+    // Slash commands contributed by plugins. Built-in names are reserved,
+    // so a plugin can never take over /help, /stop, /bots and so on.
+    if (trimmed.startsWith('/')) {
+      const channel = this.channels.getChannelForMessage(msg);
+      if (channel && tryPluginCommand(trimmed, msg, channel)) return;
     }
 
     // /bot <id> <message> — talk to a named bot from ANY channel (TUI,
