@@ -38,6 +38,8 @@ import type { CatalogEntry, DisabledCode, PluginListItem, PluginManifest, Plugin
 
 export const CIRCUIT_BREAKER_FAILURES = 5;
 export const BOOT_HEALTHY_AFTER_MS = 60_000;
+/** How long after start the missing-secret notice is sent (mutable for tests). */
+export const SECRET_NOTICE_DELAY = { ms: 15_000 };
 const BOOT_GUARD_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 interface Running {
@@ -276,6 +278,7 @@ export class PluginManager {
       this.running.set(id, { runtime, manifest, version, startedAt: Date.now(), consecutiveFailures: 0, channel });
       this.lastErrors.delete(id);
       logger.info({ plugin: id, version, kind: manifest.kind }, 'Plugin started');
+      this.noticeMissingSecrets(id, manifest);
     } finally {
       this.starting.delete(id);
     }
@@ -296,6 +299,35 @@ export class PluginManager {
       unpublishPlugin(id);
       run.channel?.detach();
     }
+  }
+
+  /**
+   * Tell the owner, once per plugin version, about optional secrets that
+   * aren't set (e.g. "Voice calls need OPENAI_API_KEY"). Delayed a little
+   * so it lands after channels have connected at startup.
+   */
+  private noticeMissingSecrets(id: string, manifest: PluginManifest): void {
+    const missing = missingOptionalSecrets(manifest);
+    if (!missing.length) return;
+    const entry = readState().plugins[id];
+    const fresh = missing.filter((m) => entry?.secretNotices?.[m.name] !== manifest.version);
+    if (!fresh.length) return;
+    const timer = setTimeout(() => {
+      if (!this.running.has(id)) return;
+      const lines = fresh.map((m) => `• ${m.unlocks}: needs ${m.name}`);
+      void this.notifyFn([
+        `🧩 ${manifest.name} is running. Some features are off until you add a key:`,
+        ...lines,
+        `Add it to ~/.mercury/.env (or set up that provider with \`mercury doctor\`), then restart Mercury.`,
+      ].join('\n'));
+      void updateState((s) => {
+        const e = s.plugins[id];
+        if (!e) return;
+        e.secretNotices = { ...(e.secretNotices ?? {}) };
+        for (const m of fresh) e.secretNotices[m.name] = manifest.version;
+      }).catch(() => {});
+    }, SECRET_NOTICE_DELAY.ms);
+    timer.unref?.();
   }
 
   // ── health ───────────────────────────────────────────────────────────
@@ -568,6 +600,7 @@ export class PluginManager {
         : undefined,
       permissions: manifest?.permissions ?? (cat ? { network: cat.permissions.network, secrets: cat.permissions.secrets } : undefined),
       disabled: inst?.disabled,
+      missingOptionalSecrets: manifest ? missingOptionalSecrets(manifest) : undefined,
       lastError: run?.lastError ?? this.lastErrors.get(id),
       incompatibleReason: instIncompat ?? catIncompat ?? undefined,
     };
@@ -635,4 +668,11 @@ export function peekPluginManager(): PluginManager | null {
 /** Test hook. */
 export function resetPluginManager(): void {
   instance = null;
+}
+
+/** Optional secrets this plugin declares that aren't set in the environment. */
+export function missingOptionalSecrets(manifest: PluginManifest): Array<{ name: string; unlocks: string }> {
+  return Object.entries(manifest.permissions.optionalSecrets ?? {})
+    .filter(([name]) => !process.env[name])
+    .map(([name, unlocks]) => ({ name, unlocks }));
 }

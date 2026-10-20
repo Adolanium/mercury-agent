@@ -145,3 +145,41 @@ describe('web API', () => {
     expect((await pluginRoutes.request('/api/plugins/install', post({ source: 'http://insecure.example/p.tgz' }), loopback)).status).toBe(400);
   });
 });
+
+describe('optional secrets', () => {
+  it('tells the owner once per version when an optional secret is missing', async () => {
+    const { SECRET_NOTICE_DELAY } = await import('./manager.js');
+    const saved = SECRET_NOTICE_DELAY.ms;
+    SECRET_NOTICE_DELAY.ms = 20;
+    const prev = process.env.FIXTURE_VOICE_KEY;
+    delete process.env.FIXTURE_VOICE_KEY;
+    const notices: string[] = [];
+    const m = new PluginManager({ safeMode: false, notify: (n) => { notices.push(n); } });
+    try {
+      const manifest = { permissions: { network: [], secrets: ['FIXTURE_VOICE_KEY'], optionalSecrets: { FIXTURE_VOICE_KEY: 'Voice calls' } } };
+      await m.install(inProcessPlugin(src, { id: 'voicey', manifest }));
+      await new Promise((r) => setTimeout(r, 80));
+      expect(notices).toHaveLength(1);
+      expect(notices[0]).toMatch(/Voice calls: needs FIXTURE_VOICE_KEY/);
+      expect((await m.info('voicey'))?.missingOptionalSecrets).toEqual([{ name: 'FIXTURE_VOICE_KEY', unlocks: 'Voice calls' }]);
+      // Restarting the same version doesn't repeat it.
+      await m.disable('voicey');
+      await m.enable('voicey');
+      await new Promise((r) => setTimeout(r, 80));
+      expect(notices).toHaveLength(1);
+      // With the key set, nothing is missing.
+      process.env.FIXTURE_VOICE_KEY = 'k';
+      expect((await m.info('voicey'))?.missingOptionalSecrets).toEqual([]);
+    } finally {
+      await m.shutdown();
+      SECRET_NOTICE_DELAY.ms = saved;
+      if (prev === undefined) delete process.env.FIXTURE_VOICE_KEY; else process.env.FIXTURE_VOICE_KEY = prev;
+    }
+  });
+
+  it('an optional secret must also be declared in permissions.secrets', () => {
+    const base = JSON.parse(readFileSync(join(inProcessPlugin(src, { id: 'bad-secret' }), 'mercury-plugin.json'), 'utf8'));
+    const bad = { ...base, permissions: { network: [], secrets: [], optionalSecrets: { OPENAI_API_KEY: 'Voice calls' } } };
+    expect(manifestSchema.safeParse(bad).success).toBe(false);
+  });
+});

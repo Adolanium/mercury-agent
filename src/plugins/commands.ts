@@ -81,6 +81,7 @@ function describe(i: PluginListItem): string {
   const p = i.permissions;
   lines.push(`Network: ${p?.network.length ? p.network.join(', ') : 'none'}`);
   lines.push(`Secrets it can read: ${p?.secrets.length ? p.secrets.join(', ') : 'none'}`);
+  for (const m of i.missingOptionalSecrets ?? []) lines.push(`⚠️ ${m.unlocks} is off: add ${m.name} to ~/.mercury/.env`);
   if (i.lastError && i.status !== 'enabled') lines.push(`Last error: ${i.lastError}`);
   return lines.join('\n');
 }

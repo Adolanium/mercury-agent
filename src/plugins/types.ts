@@ -138,6 +138,12 @@ export const manifestSchema = z.object({
     network: z.array(z.string().min(1).max(253)).max(32).default([]),
     /** Secret names from ~/.mercury/.env the plugin may read. Nothing else is visible to it. */
     secrets: z.array(z.string().regex(SECRET_NAME_RE)).max(16).default([]),
+    /**
+     * Secrets the plugin works without, and what they unlock, e.g.
+     * { "OPENAI_API_KEY": "Voice calls" }. A missing one is reported to the
+     * owner once per plugin version, and shown in /plugins info.
+     */
+    optionalSecrets: z.record(z.string().regex(SECRET_NAME_RE), z.string().min(1).max(200)).optional(),
   }).strict().default({ network: [], secrets: [] }),
   settings: z.object({
     /** Bump when a field is renamed, removed or changes meaning, and add a migration. */
@@ -158,6 +164,9 @@ export const manifestSchema = z.object({
   if (m.kind === 'out-of-process' && !m.server) ctx.addIssue({ code: 'custom', path: ['server'], message: 'out-of-process plugins need a "server"' });
   if (m.kind === 'out-of-process' && m.contributes.commands.length > 0) {
     ctx.addIssue({ code: 'custom', path: ['contributes', 'commands'], message: 'slash commands are only supported for in-process plugins in plugin API 1.0' });
+  }
+  for (const name of Object.keys(m.permissions.optionalSecrets ?? {})) {
+    if (!m.permissions.secrets.includes(name)) ctx.addIssue({ code: 'custom', path: ['permissions', 'optionalSecrets'], message: `${name} must also be listed in permissions.secrets` });
   }
   if (m.contributes.channel && m.kind !== 'out-of-process') {
     ctx.addIssue({ code: 'custom', path: ['contributes', 'channel'], message: 'only out-of-process plugins can provide a channel' });
@@ -210,6 +219,8 @@ export interface PluginStateEntry {
   installedAt: string;
   updatedAt: string;
   disabled?: { code: DisabledCode; message: string; at: string };
+  /** Optional secrets the owner was already told are missing, at this version. */
+  secretNotices?: Record<string, string>;
 }
 
 export interface PluginsState {
@@ -241,6 +252,8 @@ export interface PluginListItem {
   verified: boolean;
   tools: string[];
   commands: string[];
+  /** Optional secrets that aren't set, with what each would unlock. */
+  missingOptionalSecrets?: Array<{ name: string; unlocks: string }>;
   /** Plugin API 1.1: the chat channel this plugin provides, and its live state. */
   channel?: { type: string; state?: string; detail?: string; account?: string };
   permissions?: PluginManifest['permissions'];
