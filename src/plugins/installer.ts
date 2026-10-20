@@ -11,7 +11,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { chmodSync, cpSync, createReadStream, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 import { guardedFetch } from '../utils/ssrf.js';
 import { logger } from '../utils/logger.js';
@@ -146,7 +146,9 @@ async function extractTgz(archive: string, into: string): Promise<void> {
   // System tar (bsdtar on macOS/Windows, GNU tar on Linux): both refuse
   // absolute paths and ".." members by default. We re-check every entry below.
   try {
-    await execFileAsync('tar', ['-xzf', archive, '-C', into], { timeout: 120_000, windowsHide: true, maxBuffer: 1024 * 1024 });
+    // Run from the archive's folder and pass only its name: GNU tar (e.g. Git
+    // for Windows' tar on PATH) reads "C:\\…" as a remote host "C".
+    await execFileAsync('tar', ['-xzf', basename(archive), '-C', into], { cwd: dirname(archive), timeout: 120_000, windowsHide: true, maxBuffer: 1024 * 1024 });
   } catch (err) {
     throw new Error(`Couldn't unpack the plugin archive: ${(err as Error).message.split('\n')[0]}`);
   }

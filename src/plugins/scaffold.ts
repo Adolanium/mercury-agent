@@ -6,7 +6,7 @@
  */
 import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { basename, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import semver from 'semver';
 import { checkTree, loadManifest, sha256File } from './installer.js';
@@ -211,7 +211,8 @@ export async function packPlugin(dir: string, outDir = process.cwd()): Promise<P
   const file = join(resolve(outDir), `${manifest.id}-${manifest.version}.tgz`);
   const skip = new Set(['.git', 'node_modules', '.DS_Store']);
   const members = readdirSync(root).filter((n) => !skip.has(n) && !n.endsWith('.tgz') && !n.endsWith('.d.ts'));
-  await execFileAsync('tar', ['-czf', file, '-C', root, ...members]);
+  // Archive name relative to cwd: GNU tar reads "C:\\…" as a remote host.
+  await execFileAsync('tar', ['-czf', basename(file), '-C', root, ...members], { cwd: dirname(file), windowsHide: true });
   const sha256 = await sha256File(file);
   const size = statSync(file).size;
   return {
