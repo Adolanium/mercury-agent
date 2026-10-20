@@ -54,6 +54,7 @@ import { buildConversationHistoryPayload, CloudSessionSynchronizer, SessionRepos
 import { UserMemoryStore } from './memory/user-memory.js';
 import { BotManager } from './bots/bot-manager.js';
 import { getPluginManager, peekPluginManager } from './plugins/manager.js';
+import { setChannelHost } from './plugins/channel-bridge.js';
 import { registerPluginsCli } from './cli/plugins-cli.js';
 import { SECOND_BRAIN_UNAVAILABLE_MESSAGE } from './memory/second-brain-db.js';
 import { isSqliteAvailable } from './utils/sqlite-driver.js';
@@ -2672,6 +2673,11 @@ async function runAgent(isDaemon: boolean = false): Promise<void> {
   // a broken plugin is disabled, never a reason for Mercury not to start.
   const pluginManager = daemonOwnsRuntime ? undefined : getPluginManager();
   if (pluginManager) {
+    // Plugin API 1.1: channels provided by plugins (e.g. WhatsApp) join the registry while they run.
+    setChannelHost({
+      register: (type, channel) => channels.register(type, channel),
+      unregister: (type, channel) => channels.unregister(type, channel),
+    });
     pluginManager.setRunsPlugins(true);
     pluginManager.setNotifier((m) => agent.notifyAllChannels(m));
     void pluginManager.boot().catch((err) => logger.error({ err }, 'Plugin boot failed'));
@@ -3605,6 +3611,11 @@ async function runAgent(isDaemon: boolean = false): Promise<void> {
     }
     if (channelType === 'web' && webChannel) {
       return webChannel.askPermission(prompt, channelId);
+    }
+    // Any other channel that can ask (plugin channels such as WhatsApp).
+    const asking = channels.get(channelType as Parameters<typeof channels.get>[0]) as { askPermission?: (p: string, id?: string) => Promise<string> } | undefined;
+    if (channelType !== 'cli' && typeof asking?.askPermission === 'function') {
+      return asking.askPermission(prompt, channelId);
     }
     if (cliChannel) {
       return cliChannel.askPermission(prompt);

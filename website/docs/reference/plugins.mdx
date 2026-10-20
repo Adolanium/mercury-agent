@@ -143,6 +143,47 @@ What your server receives:
 
 Write logs to stderr. Stdout is the protocol channel.
 
+## Chat channels (plugin API 1.1)
+
+An out-of-process plugin can provide a chat channel (today: `whatsapp`).
+Declare it and require API 1.1:
+
+```json
+"engines": { "mercury": ">=1.4.0 <2.0.0", "pluginApi": "^1.1.0" },
+"contributes": { "channel": { "type": "whatsapp" } },
+"settings": { "version": 1, "fields": {
+  "owner": { "type": "string", "description": "The owner's phone number" },
+  "members": { "type": "string", "description": "Other numbers allowed to chat, comma separated" },
+  "allowGroups": { "type": "boolean", "default": false }
+} }
+```
+
+Mercury sends `capabilities.experimental["mercury/channel"]` in
+`initialize`. After that, the same stdio connection carries the following
+messages.
+
+| Direction | Message | Params |
+|---|---|---|
+| plugin → Mercury (notification) | `mercury/channel/status` | `state` (`starting`, `needs-pairing`, `pairing`, `connected`, `disconnected`, `logged-out`, `error`), `detail?`, `account?`, `qr?`, `pairCode?` |
+| plugin → Mercury (notification) | `mercury/channel/message` | `id`, `chatId`, `senderId`, `senderPhone?`, `senderName?`, `isGroup?`, `fromMe?`, `text?`, `attachments?` (each with `kind`, `path`, `mime?`, `name?`), `timestamp?` |
+| Mercury → plugin (request) | `mercury/channel/send` | `chatId`, `text` |
+| Mercury → plugin (request) | `mercury/channel/sendFile` | `chatId`, `path`, `caption?` |
+| Mercury → plugin (request) | `mercury/channel/typing` | `chatId`, `on` |
+| Mercury → plugin (request) | `mercury/channel/pair` | `method` (`qr` or `code`), `phone?` |
+| Mercury → plugin (request) | `mercury/channel/unlink` | none |
+
+Mercury, not the plugin, decides who can talk to the agent:
+
+- **Access:** only the `owner` number and listed `members` get through.
+  Unknown senders are dropped, groups are ignored unless `allowGroups` is
+  on, and your own messages are never answered.
+- **Formatting:** Mercury converts Markdown to the channel's formatting and
+  splits long replies.
+- **Approvals:** prompts are answered by a text reply: 1 for yes, 2 for no,
+  3 for always.
+- **Linking:** owners link the account with `mercury plugins pair ID` (QR
+  code) or `/plugins pair ID PHONE` (pairing code).
+
 ## Publishing
 
 `mercury plugins pack .` writes `ID-VERSION.tgz` and prints its SHA-256 and

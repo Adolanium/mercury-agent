@@ -17,6 +17,12 @@ export interface RuntimeDeps {
   onError(message: string): void;
   /** The runtime gave up (e.g. crashed too often). The manager disables the plugin. */
   onFatal?(code: 'crashed' | 'activation', message: string): void;
+  /** Plugin API 1.1 channels: a `mercury/…` notification from the plugin. */
+  onNotification?(method: string, params: unknown): void;
+  /** The plugin finished its handshake (first start and every restart). */
+  onReady?(): void;
+  /** The plugin process went away (crash, recycle or stop). */
+  onDown?(): void;
 }
 
 export interface PluginRuntime {

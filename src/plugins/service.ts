@@ -13,6 +13,7 @@ import { getWebPort, readAttachToken } from '../web/auth.js';
 import { getDaemonStatus, getForegroundRuntimeStatus } from '../cli/daemon.js';
 import { getPluginManager, type PluginManager } from './manager.js';
 import type { PluginListItem } from './types.js';
+import type { ChannelStatus } from './channel-bridge.js';
 
 export interface ListResult {
   items: PluginListItem[];
@@ -43,6 +44,10 @@ export interface PluginService {
   rollback(id: string): Promise<{ from: string; to: string }>;
   uninstall(id: string, purge?: boolean): Promise<void>;
   setSetting(id: string, key: string, value: unknown): Promise<void>;
+  /** Plugin API 1.1 channels. */
+  pair(id: string, opts: { method: 'qr' | 'code'; phone?: string }): Promise<ChannelStatus>;
+  channelStatus(id: string): Promise<ChannelStatus | null>;
+  unlink(id: string): Promise<void>;
 }
 
 export function localService(mgr: PluginManager, mode: 'local' | 'offline' = 'local'): PluginService {
@@ -60,6 +65,9 @@ export function localService(mgr: PluginManager, mode: 'local' | 'offline' = 'lo
     rollback: (id) => mgr.rollback(id),
     uninstall: (id, purge) => mgr.uninstall(id, { purge }),
     setSetting: (id, key, value) => mgr.setSetting(id, key, value),
+    pair: (id, opts) => mgr.pair(id, opts),
+    channelStatus: async (id) => mgr.channelStatus(id),
+    unlink: (id) => mgr.unlinkChannel(id),
   };
 }
 
@@ -95,6 +103,9 @@ export function daemonService(): PluginService {
     rollback: (id) => call<{ from: string; to: string }>('POST', `/api/plugins/${enc(id)}/rollback`),
     uninstall: async (id, purge) => { await call('DELETE', `/api/plugins/${enc(id)}${purge ? '?purge=1' : ''}`); },
     setSetting: async (id, key, value) => { await call('POST', `/api/plugins/${enc(id)}/settings`, { key, value }); },
+    pair: async (id, opts) => (await call<{ status: ChannelStatus }>('POST', `/api/plugins/${enc(id)}/pair`, opts, 60_000)).status,
+    channelStatus: async (id) => (await call<{ status: ChannelStatus | null }>('GET', `/api/plugins/${enc(id)}/channel`)).status,
+    unlink: async (id) => { await call('POST', `/api/plugins/${enc(id)}/unlink`, {}); },
   };
 }
 

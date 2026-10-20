@@ -24,7 +24,7 @@ export const MANIFEST_VERSION = 1 as const;
  * Minor bumps only add; a major bump is a breaking change and the previous
  * major stays supported for at least two Mercury minor releases.
  */
-export const PLUGIN_API_VERSION = '1.0.0';
+export const PLUGIN_API_VERSION = '1.1.0';
 
 export const PLUGIN_ID_RE = /^[a-z][a-z0-9-]{1,30}[a-z0-9]$/;
 /** Tool and command names a plugin declares (before namespacing). */
@@ -40,6 +40,10 @@ export const RESERVED_COMMANDS: ReadonlySet<string> = new Set([
   'approve', 'deny', 'yes', 'no', 'cancel', 'pair', 'unpair', 'telegram', 'discord', 'slack', 'signal', 'web', 'exit', 'quit',
   'usage', 'cost', 'doctor', 'settings', 'config', 'login', 'logout', 'upgrade', 'version', 'about',
 ]);
+
+/** Channel types a plugin may provide (Plugin API 1.1). */
+export const PLUGIN_CHANNEL_TYPES = ['whatsapp'] as const;
+export type PluginChannelType = (typeof PLUGIN_CHANNEL_TYPES)[number];
 
 export const SECRET_NAME_RE = /^[A-Z][A-Z0-9_]{1,63}$/;
 export const PLATFORM_KEYS = [
@@ -121,6 +125,12 @@ export const manifestSchema = z.object({
   contributes: z.object({
     tools: z.array(toolDecl).max(64).default([]),
     commands: z.array(commandDecl).max(32).default([]),
+    /**
+     * Plugin API 1.1: an out-of-process plugin can be a chat channel. Only
+     * channel types Mercury knows (sessions, approvals and the work ledger
+     * are keyed by them) can be provided by a plugin.
+     */
+    channel: z.object({ type: z.enum(PLUGIN_CHANNEL_TYPES) }).strict().optional(),
   }).strict().default({ tools: [], commands: [] }),
   /** What the plugin needs. Shown to the owner before install. */
   permissions: z.object({
@@ -148,6 +158,12 @@ export const manifestSchema = z.object({
   if (m.kind === 'out-of-process' && !m.server) ctx.addIssue({ code: 'custom', path: ['server'], message: 'out-of-process plugins need a "server"' });
   if (m.kind === 'out-of-process' && m.contributes.commands.length > 0) {
     ctx.addIssue({ code: 'custom', path: ['contributes', 'commands'], message: 'slash commands are only supported for in-process plugins in plugin API 1.0' });
+  }
+  if (m.contributes.channel && m.kind !== 'out-of-process') {
+    ctx.addIssue({ code: 'custom', path: ['contributes', 'channel'], message: 'only out-of-process plugins can provide a channel' });
+  }
+  if (m.contributes.channel && !semver.intersects(m.engines.pluginApi, '>=1.1.0', { includePrerelease: true })) {
+    ctx.addIssue({ code: 'custom', path: ['engines', 'pluginApi'], message: 'channels need plugin API 1.1 or later (e.g. "^1.1.0")' });
   }
   for (const c of m.contributes.commands) {
     if (RESERVED_COMMANDS.has(c.name)) ctx.addIssue({ code: 'custom', path: ['contributes', 'commands'], message: `/${c.name} is a built-in Mercury command and can't be used by a plugin` });
@@ -225,6 +241,8 @@ export interface PluginListItem {
   verified: boolean;
   tools: string[];
   commands: string[];
+  /** Plugin API 1.1: the chat channel this plugin provides, and its live state. */
+  channel?: { type: string; state?: string; detail?: string; account?: string };
   permissions?: PluginManifest['permissions'];
   disabled?: PluginStateEntry['disabled'];
   lastError?: string;

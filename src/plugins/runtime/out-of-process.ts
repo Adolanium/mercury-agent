@@ -139,13 +139,15 @@ export class OutOfProcessRuntime implements PluginRuntime {
     try {
       await this.request('initialize', {
         protocolVersion: MCP_PROTOCOL_VERSION,
-        capabilities: {},
+        // Plugin API 1.1: tell a channel plugin Mercury speaks the channel extension.
+        capabilities: this.manifest.contributes.channel ? { experimental: { 'mercury/channel': { version: 1 } } } : {},
         clientInfo: { name: 'mercury', version: this.deps.mercuryVersion },
       }, OUT_OF_PROCESS.initTimeoutMs);
       this.notify('notifications/initialized', {});
       await this.refreshTools();
       this.ready = true;
       this.backoff = OUT_OF_PROCESS.backoffStartMs;
+      try { this.deps.onReady?.(); } catch (err) { this.deps.log.warn(`onReady: ${(err as Error).message}`); }
     } catch (err) {
       const tail = this.stderrTail.slice(-3).join(' | ');
       await this.kill();
@@ -194,7 +196,18 @@ export class OutOfProcessRuntime implements PluginRuntime {
     return text || (res?.structuredContent !== undefined ? res.structuredContent : 'Done.');
   }
 
-  private request(method: string, params: unknown, timeoutMs: number, signal?: AbortSignal): Promise<unknown> {
+  /**
+   * Plugin API 1.1 channel calls (`mercury/channel/*`). A slow send (a large
+   * upload) times out for that call only; it never recycles the process,
+   * which would drop the plugin's connection to the chat service.
+   */
+  channelRequest(method: string, params: unknown, timeoutMs: number): Promise<unknown> {
+    if (!method.startsWith('mercury/channel/')) return Promise.reject(new Error(`not a channel method: ${method}`));
+    if (!this.ready) return Promise.reject(new Error('the plugin process is not running'));
+    return this.request(method, params, timeoutMs, undefined, false);
+  }
+
+  private request(method: string, params: unknown, timeoutMs: number, signal?: AbortSignal, recycleOnTimeout = true): Promise<unknown> {
     const child = this.child;
     if (!child || child.exitCode !== null || !child.stdin?.writable) return Promise.reject(new Error('the plugin process is not running'));
     const id = this.nextId++;
@@ -203,7 +216,7 @@ export class OutOfProcessRuntime implements PluginRuntime {
         this.pending.delete(id);
         rejectPromise(new Error(`${method} timed out after ${Math.round(timeoutMs / 1000)}s`));
         // A server that stops answering is treated as hung: restart it.
-        if (method !== 'initialize') void this.recycle(`${method} timed out`);
+        if (method !== 'initialize' && recycleOnTimeout) void this.recycle(`${method} timed out`);
       }, timeoutMs);
       this.pending.set(id, { resolve: resolvePromise, reject: rejectPromise, timer });
       if (signal) {
@@ -253,6 +266,12 @@ export class OutOfProcessRuntime implements PluginRuntime {
     if (msg.method) {
       if (msg.method === 'notifications/tools/list_changed' && this.ready) {
         this.refreshTools().catch((err) => this.deps.onError(`tools/list after change: ${(err as Error).message}`));
+      } else if (msg.method.startsWith('mercury/') && this.manifest.contributes.channel) {
+        try {
+          this.deps.onNotification?.(msg.method, msg.params);
+        } catch (err) {
+          this.deps.onError(`${msg.method}: ${(err as Error).message}`);
+        }
       }
       return;
     }
@@ -288,6 +307,9 @@ export class OutOfProcessRuntime implements PluginRuntime {
     this.ready = false;
     this.failPending('the plugin process exited');
     unpublishPlugin(this.manifest.id);
+    if (wasReady) {
+      try { this.deps.onDown?.(); } catch { /* best effort */ }
+    }
     if (!this.wanted) return;
     const tail = this.stderrTail.slice(-3).join(' | ');
     const why = `exited (${sig ?? `code ${code}`})${tail ? `: ${tail}` : ''}`;

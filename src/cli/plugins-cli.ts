@@ -64,6 +64,29 @@ export function registerPluginsCli(program: Command): void {
   plugins.command('set <id> <key> <value...>').description('Change a plugin setting').action((id: string, key: string, value: string[]) => run(`/plugins set ${id} ${key} ${value.join(' ')}`));
 
   plugins
+    .command('pair <id>')
+    .description('Link the account for a channel plugin (e.g. WhatsApp): scan a QR code, or use --code')
+    .option('--code <phone>', 'Get an 8-character pairing code for this phone number instead of a QR code')
+    .action(async (id: string, opts: { code?: string }) => {
+      await pairChannel(id, opts.code);
+      setTimeout(() => process.exit(process.exitCode ?? 0), 50).unref();
+    });
+
+  plugins
+    .command('unlink <id>')
+    .description('Log a channel plugin out of its account (you can pair again later)')
+    .action(async (id: string) => {
+      const { getPluginService } = await import('../plugins/service.js');
+      try {
+        await getPluginService().unlink(id);
+        console.log(chalk.green(`  ✓ ${id} unlinked.`));
+      } catch (err) {
+        console.error(chalk.red(`  ✗ ${(err as Error).message}`));
+        process.exitCode = 1;
+      }
+    });
+
+  plugins
     .command('init <id>')
     .description('Start a new plugin in ./<id> (for plugin authors)')
     .option('--out-of-process', 'An MCP server in its own process instead of a module inside Mercury')
@@ -163,4 +186,64 @@ export async function runPluginDoctor(): Promise<void> {
   }
   console.log('');
   if (problems) process.exitCode = 1;
+}
+
+async function pairChannel(id: string, phone?: string): Promise<void> {
+  const { getPluginService } = await import('../plugins/service.js');
+  const svc = getPluginService();
+  if (svc.mode === 'offline') {
+    console.error(chalk.red('  ✗ Mercury is not running. Start it (mercury start), then run this again.'));
+    process.exitCode = 1;
+    return;
+  }
+  const qrcode = (await import('qrcode-terminal')).default;
+  const show = (st: { qr?: string; pairCode?: string }) => {
+    if (st.pairCode) {
+      console.log('');
+      console.log(`  Pairing code: ${chalk.bold.cyan(st.pairCode)}`);
+      console.log(chalk.dim('  On the phone with the spare number: WhatsApp → Settings → Linked devices → Link a device → Link with phone number instead, then type the code.'));
+    } else if (st.qr) {
+      console.log('');
+      qrcode.generate(st.qr, { small: true }, (q: string) => console.log(q.replace(/^/gm, '  ')));
+      console.log(chalk.dim('  On the phone with the spare number: WhatsApp → Settings → Linked devices → Link a device, then scan. The code refreshes every ~20 seconds.'));
+    }
+  };
+  console.log('');
+  console.log(chalk.yellow('  ⚠ This uses an unofficial WhatsApp protocol. Link a spare number you can afford to lose, not your main one.'));
+  try {
+    let st = await svc.pair(id, phone ? { method: 'code', phone } : { method: 'qr' });
+    if (st.state === 'connected') {
+      console.log(chalk.green(`  ✓ Already linked${st.account ? ` as ${st.account}` : ''}.`));
+      return;
+    }
+    show(st);
+    let lastShown = st.qr ?? st.pairCode;
+    const deadline = Date.now() + 3 * 60_000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const next = await svc.channelStatus(id);
+      if (!next) continue;
+      st = next;
+      if (st.state === 'connected') {
+        console.log('');
+        console.log(chalk.green(`  ✓ Linked${st.account ? ` as ${st.account}` : ''}. Message this number from your owner number to talk to Mercury.`));
+        return;
+      }
+      if (st.state === 'error' || st.state === 'logged-out') {
+        console.error(chalk.red(`  ✗ ${st.detail ?? st.state}`));
+        process.exitCode = 1;
+        return;
+      }
+      const current = st.qr ?? st.pairCode;
+      if (current && current !== lastShown && !phone) {
+        lastShown = current;
+        show(st);
+      }
+    }
+    console.error(chalk.red('  ✗ Timed out waiting for the link. Run the command again.'));
+    process.exitCode = 1;
+  } catch (err) {
+    console.error(chalk.red(`  ✗ ${(err as Error).message}`));
+    process.exitCode = 1;
+  }
 }

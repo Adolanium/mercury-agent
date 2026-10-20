@@ -32,6 +32,7 @@ import {
 import { setToolOutcomeSink, unpublishPlugin, listLiveTools, listPluginCommands } from './tool-bridge.js';
 import { InProcessRuntime, inProcessLogger } from './runtime/in-process.js';
 import { OutOfProcessRuntime } from './runtime/out-of-process.js';
+import { PluginChannel, type ChannelStatus } from './channel-bridge.js';
 import type { PluginRuntime } from './runtime/types.js';
 import type { CatalogEntry, DisabledCode, PluginListItem, PluginManifest, PluginsState } from './types.js';
 
@@ -46,6 +47,8 @@ interface Running {
   startedAt: number;
   consecutiveFailures: number;
   lastError?: string;
+  /** Plugin API 1.1: the chat channel this plugin provides. */
+  channel?: PluginChannel;
 }
 
 export interface PluginManagerOptions {
@@ -228,7 +231,27 @@ export class PluginManager {
         // Never fatal: the plugin starts with defaults for anything unreadable.
         logger.warn({ plugin: id, err }, 'Plugin settings migration failed');
       }
+      // Plugin API 1.1: a channel plugin. One provider per channel type.
+      let channel: PluginChannel | undefined;
+      let runtimeRef: OutOfProcessRuntime | undefined;
+      const channelType = manifest.contributes.channel?.type;
+      if (channelType) {
+        const other = [...this.running.entries()].find(([oid, r]) => oid !== id && r.manifest.contributes.channel?.type === channelType);
+        if (other) {
+          await this.disableWith(id, 'activation', `The ${channelType} channel is already provided by "${other[0]}". Disable that plugin first.`);
+          return;
+        }
+        channel = new PluginChannel(
+          manifest,
+          { request: (method, params, timeoutMs) => runtimeRef ? runtimeRef.channelRequest(method, params, timeoutMs) : Promise.reject(new Error('not running')) },
+          () => resolvedSettings(manifest),
+          (m) => { void this.notifyFn(m); },
+        );
+      }
       const deps = {
+        onNotification: channel ? (method: string, params: unknown) => channel!.handleNotification(method, params) : undefined,
+        onReady: channel ? () => channel!.attach() : undefined,
+        onDown: channel ? () => channel!.down() : undefined,
         mercuryVersion: mercuryVersion(),
         dataDir: pluginDataDir(id),
         settings: resolvedSettings(manifest),
@@ -241,15 +264,16 @@ export class PluginManager {
       };
       const runtime: PluginRuntime = manifest.kind === 'in-process'
         ? new InProcessRuntime(manifest, dir, deps)
-        : new OutOfProcessRuntime(manifest, dir, deps);
+        : (runtimeRef = new OutOfProcessRuntime(manifest, dir, deps));
       try {
         await runtime.start();
       } catch (err) {
         try { await runtime.stop(); } catch { /* already down */ }
+        channel?.detach();
         await this.disableWith(id, 'activation', `Couldn't start: ${(err as Error).message}`);
         return;
       }
-      this.running.set(id, { runtime, manifest, version, startedAt: Date.now(), consecutiveFailures: 0 });
+      this.running.set(id, { runtime, manifest, version, startedAt: Date.now(), consecutiveFailures: 0, channel });
       this.lastErrors.delete(id);
       logger.info({ plugin: id, version, kind: manifest.kind }, 'Plugin started');
     } finally {
@@ -270,6 +294,7 @@ export class PluginManager {
       logger.warn({ err, plugin: id }, 'Plugin did not stop cleanly');
     } finally {
       unpublishPlugin(id);
+      run.channel?.detach();
     }
   }
 
@@ -432,6 +457,49 @@ export class PluginManager {
     }
   }
 
+  // ── channels (plugin API 1.1) ────────────────────────────────────────
+
+  private liveChannel(id: string): PluginChannel {
+    const run = this.running.get(id);
+    if (!run) {
+      if (!readState().plugins[id]) throw new Error(`Plugin "${id}" is not installed.`);
+      throw new Error(this.runs ? `"${id}" is not running. Enable it first: /plugins enable ${id}` : 'Mercury is not running. Start it (mercury start), then pair.');
+    }
+    if (!run.channel) throw new Error(`"${id}" doesn't provide a chat channel.`);
+    return run.channel;
+  }
+
+  channelStatus(id: string): ChannelStatus | null {
+    return this.running.get(id)?.channel?.getStatus() ?? null;
+  }
+
+  /**
+   * Start linking: QR (scan in the app) or a pairing code for a phone
+   * number (type it in the app). Resolves with the first status that has
+   * something to show, or the current one after 25 seconds.
+   */
+  async pair(id: string, opts: { method: 'qr' | 'code'; phone?: string }): Promise<ChannelStatus> {
+    const channel = this.liveChannel(id);
+    if (opts.method === 'code' && !opts.phone) throw new Error('A pairing code needs the phone number of the WhatsApp account being linked (the spare number).');
+    if (channel.getStatus().state === 'connected') return channel.getStatus();
+    const ready = new Promise<ChannelStatus>((resolve) => {
+      const timer = setTimeout(() => { off(); resolve(channel.getStatus()); }, 25_000);
+      const off = channel.onStatus((st) => {
+        if (st.qr || st.pairCode || st.state === 'connected' || st.state === 'error') {
+          clearTimeout(timer);
+          off();
+          resolve(st);
+        }
+      });
+    });
+    await channel.pair(opts.method, opts.phone);
+    return ready;
+  }
+
+  async unlinkChannel(id: string): Promise<void> {
+    await this.liveChannel(id).unlink();
+  }
+
   // ── views ────────────────────────────────────────────────────────────
 
   /** Catalog + installed plugins, merged into one list for every surface. */
@@ -492,6 +560,12 @@ export class PluginManager {
       verified: inst?.verified ?? false,
       tools: manifest ? manifest.contributes.tools.map((t) => `${id}__${t.name}`) : (cat?.tools ?? []),
       commands: manifest ? manifest.contributes.commands.map((c) => `/${c.name}`) : [],
+      channel: manifest?.contributes.channel
+        ? (() => {
+          const st = run?.channel?.getStatus();
+          return { type: manifest.contributes.channel!.type, state: st?.state, detail: st?.detail, account: st?.account };
+        })()
+        : undefined,
       permissions: manifest?.permissions ?? (cat ? { network: cat.permissions.network, secrets: cat.permissions.secrets } : undefined),
       disabled: inst?.disabled,
       lastError: run?.lastError ?? this.lastErrors.get(id),

@@ -157,6 +157,7 @@ export function getManual(): string {
     ['/plugins update [id]', 'Update plugins from the catalog'],
     ['/plugins rollback <id>', 'Go back to the previous version'],
     ['/plugins uninstall <id> [--purge]', 'Remove a plugin (keeps data unless --purge)'],
+    ['/plugins pair <id> <phone>', 'Link a channel plugin (e.g. WhatsApp) with a pairing code'],
     ['/permissions', 'Change permission mode (Ask Me / Allow All)'],
     ['/models', 'List configured providers and their models'],
     ['/models use <provider>', 'Switch the default model (saved across restarts)'],

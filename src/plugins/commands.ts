@@ -77,6 +77,7 @@ function describe(i: PluginListItem): string {
   ];
   if (i.tools.length) lines.push(`Tools: ${i.tools.join(', ')}`);
   if (i.commands.length) lines.push(`Commands: ${i.commands.join(', ')}`);
+  if (i.channel) lines.push(`Channel: ${i.channel.type}${i.channel.state ? ` · ${i.channel.state}` : ''}${i.channel.account ? ` · ${i.channel.account}` : ''}${i.channel.detail ? ` (${i.channel.detail})` : ''}`);
   const p = i.permissions;
   lines.push(`Network: ${p?.network.length ? p.network.join(', ') : 'none'}`);
   lines.push(`Secrets it can read: ${p?.secrets.length ? p.secrets.join(', ') : 'none'}`);
@@ -107,6 +108,8 @@ const HELP = [
   '  /plugins rollback <id>           go back to the previous version',
   '  /plugins uninstall <id> [--purge]  remove (keeps data unless --purge)',
   '  /plugins set <id> <key> <value>  change a plugin setting',
+  '  /plugins pair <id> <phone>       link a channel plugin\'s account (pairing code)',
+  '  /plugins unlink <id>             log a channel plugin out',
 ].join('\n');
 
 function isMember(msg: ChannelMessage): boolean {
@@ -122,7 +125,7 @@ export async function handlePluginsCommand(trimmed: string, msg: ChannelMessage,
   const args = tokens.filter((t) => !t.startsWith('--') && t !== '-y');
   const [sub = 'list', target, ...rest] = args;
   const mgr = getPluginService();
-  const mutating = ['install', 'enable', 'disable', 'update', 'rollback', 'uninstall', 'remove', 'set'].includes(sub);
+  const mutating = ['install', 'enable', 'disable', 'update', 'rollback', 'uninstall', 'remove', 'set', 'pair', 'unlink'].includes(sub);
   if (mutating && isMember(msg)) {
     await reply('Only the owner or an admin can change plugins.');
     return;
@@ -240,6 +243,26 @@ export async function handlePluginsCommand(trimmed: string, msg: ChannelMessage,
         if (!target || !key || !valueParts.length) { await reply('Usage: /plugins set <id> <key> <value>'); return; }
         await mgr.setSetting(target, key, valueParts.join(' '));
         await reply(`⚙ ${target}.${key} updated.`);
+        return;
+      }
+      case 'pair': {
+        if (!target) { await reply('Usage: /plugins pair <id> <phone number of the account to link>'); return; }
+        const phone = rest.join('');
+        if (!phone) {
+          await reply(`In chat, pairing uses a code: /plugins pair ${target} <phone number of the spare account>.\nFor a QR code, run \`mercury plugins pair ${target}\` in a terminal or use the dashboard.`);
+          return;
+        }
+        const st = await mgr.pair(target, { method: 'code', phone });
+        if (st.state === 'connected') { await reply(`✅ Already linked${st.account ? ` as ${st.account}` : ''}.`); return; }
+        await reply(st.pairCode
+          ? `🔗 Pairing code: *${st.pairCode}*\nOn the phone with that number: WhatsApp → Settings → Linked devices → Link a device → Link with phone number instead, then type the code.\n⚠️ Unofficial protocol: use a spare number, not your main one.`
+          : `Couldn't get a pairing code${st.detail ? `: ${st.detail}` : ''}.`);
+        return;
+      }
+      case 'unlink': {
+        if (!target) { await reply('Usage: /plugins unlink <id>'); return; }
+        await mgr.unlink(target);
+        await reply(`🔌 ${target} unlinked.`);
         return;
       }
       default:

@@ -109,6 +109,38 @@ plugins.post('/api/plugins/:id/settings', async (c) => {
   }
 });
 
+// Plugin API 1.1 channels. The status includes a live QR code, and linking
+// gives an account to Mercury, so all of these are loopback-only.
+plugins.get('/api/plugins/:id/channel', (c) => {
+  const denied = localOnly(c);
+  if (denied) return denied;
+  return c.json({ status: getPluginManager().channelStatus(c.req.param('id')) });
+});
+
+plugins.post('/api/plugins/:id/pair', async (c) => {
+  const denied = localOnly(c);
+  if (denied) return denied;
+  const body = (await c.req.json().catch(() => ({}))) as { method?: unknown; phone?: unknown };
+  const method = body.method === 'code' ? 'code' : 'qr';
+  const phone = typeof body.phone === 'string' && /^\+?[\d\s-]{6,20}$/.test(body.phone) ? body.phone : undefined;
+  try {
+    return c.json({ status: await svc().pair(c.req.param('id'), { method, phone }) });
+  } catch (err) {
+    return fail(c, err);
+  }
+});
+
+plugins.post('/api/plugins/:id/unlink', async (c) => {
+  const denied = localOnly(c);
+  if (denied) return denied;
+  try {
+    await svc().unlink(c.req.param('id'));
+    return c.json({ ok: true });
+  } catch (err) {
+    return fail(c, err);
+  }
+});
+
 plugins.delete('/api/plugins/:id', async (c) => {
   const denied = localOnly(c);
   if (denied) return denied;

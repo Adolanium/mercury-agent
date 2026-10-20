@@ -135,6 +135,8 @@ export const SLASH_COMMANDS: readonly string[] = [
   '/plugins rollback ',
   '/plugins uninstall ',
   '/plugins set ',
+  '/plugins pair ',
+  '/plugins unlink ',
   '/plugins help',
   '/stream',
   '/saver',
