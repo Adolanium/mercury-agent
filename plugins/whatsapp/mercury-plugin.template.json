@@ -1,0 +1,33 @@
+{
+  "manifestVersion": 1,
+  "id": "whatsapp",
+  "name": "WhatsApp",
+  "version": "0.1.0",
+  "description": "Chat with Mercury on WhatsApp from your phone. Mercury runs on a spare number as a linked device (unofficial protocol).",
+  "kind": "out-of-process",
+  "author": "Cosmic Stack",
+  "homepage": "https://github.com/cosmicstack-labs/mercury-agent/tree/main/plugins/whatsapp",
+  "license": "MIT",
+  "engines": { "mercury": ">=1.3.9 <2.0.0", "pluginApi": "^1.1.0" },
+  "server": {
+    "command": "bin/mercury-wa",
+    "args": [],
+    "platforms": { "win32-x64": { "command": "bin/mercury-wa.exe", "args": [] } }
+  },
+  "contributes": {
+    "tools": [],
+    "channel": { "type": "whatsapp" }
+  },
+  "permissions": {
+    "network": ["web.whatsapp.com", "*.whatsapp.net", "*.whatsapp.com"],
+    "secrets": []
+  },
+  "settings": {
+    "version": 1,
+    "fields": {
+      "owner": { "type": "string", "description": "Your own WhatsApp number (with country code). Only this number can talk to Mercury.", "default": "" },
+      "members": { "type": "string", "description": "Other numbers allowed to chat with Mercury, comma separated (they can't run admin commands).", "default": "" },
+      "allowGroups": { "type": "boolean", "description": "Answer in WhatsApp groups (owner and members only).", "default": false }
+    }
+  }
+}
