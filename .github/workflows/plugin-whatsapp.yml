@@ -42,6 +42,10 @@ jobs:
       - name: Build
         working-directory: plugins/whatsapp/companion
         run: cargo build --release --locked --target ${{ matrix.target }} || cargo build --release --target ${{ matrix.target }}
+      - name: Unit tests
+        if: matrix.platform == 'linux-x64'
+        working-directory: plugins/whatsapp/companion
+        run: cargo test --release --target ${{ matrix.target }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
