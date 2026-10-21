@@ -259,8 +259,9 @@ export class PluginChannel extends BaseChannel {
         const from = typeof p.fromPhone === 'string' && p.fromPhone ? p.fromPhone : String(p.from ?? '');
         if (this.roleOf(from) !== 'admin') return { accept: false, reason: 'only the owner can call Mercury' };
         if (p.voiceReady !== true) {
-          void this.send('📞 I couldn\'t answer your call: voice calls need an OpenAI provider. Add your OpenAI key once in the dashboard (Providers) or with `mercury doctor`, and calls will work.').catch(() => {});
-          return { accept: false, reason: 'no voice provider' };
+          const why = typeof p.voiceProblem === 'string' && p.voiceProblem ? p.voiceProblem : 'voice calls need an OpenAI provider: add your OpenAI key once in the dashboard (Providers) or with `mercury doctor`';
+          void this.send(`📞 I couldn't answer your call: ${why}.`).catch(() => {});
+          return { accept: false, reason: 'voice engine not ready' };
         }
         this.callStarted(String(p.callId ?? ''));
         return { accept: true, instructions: voiceBriefing() };

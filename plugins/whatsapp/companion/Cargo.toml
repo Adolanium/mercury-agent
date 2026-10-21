@@ -15,6 +15,8 @@ whatsapp-rust = { git = "https://github.com/oxidezap/whatsapp-rust", rev = "c373
 tokio-websockets = { version = "0.13.3", features = ["client", "rustls-webpki-roots", "rand", "ring"] }
 http = "1"
 base64 = "0.22"
+# Minting ElevenLabs Realtime session secrets (rustls, like everything else here).
+ureq = "3"
 tokio = { version = "1.47", features = ["full"] }
 serde_json = "1"
 anyhow = "1"

@@ -10,6 +10,7 @@
 //!
 //! stdout is the protocol channel: logs go to stderr only.
 
+mod links;
 mod voice;
 
 use std::collections::HashMap;
