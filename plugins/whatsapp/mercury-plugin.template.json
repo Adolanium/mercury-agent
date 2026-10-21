@@ -29,6 +29,12 @@
         "description": "Ring the owner on WhatsApp and talk to them by voice (only the owner can be called; rate-limited). Use for things that matter right now; send a message for everything else. To call later (\"call me in 10 minutes\", \"every day at 6pm\") or when something finishes or happens, use schedule_task with a prompt that ends by calling this tool, and put \"whatsapp__call_owner\" in allow_tools so it can call without asking again.",
         "readOnly": false,
         "timeoutMs": 120000
+      },
+      {
+        "name": "send_to_chat",
+        "readOnly": true,
+        "timeoutMs": 30000,
+        "description": "Send the owner a WhatsApp message: links, lists, prices, addresses, anything worth keeping. Only the owner receives it, so no approval is needed. On a voice call, use it instead of reading links or long details aloud, then say you've sent them to the chat."
       }
     ],
     "channel": {

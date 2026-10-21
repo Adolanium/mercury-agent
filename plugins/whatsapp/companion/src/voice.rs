@@ -174,6 +174,8 @@ fn instructions_for(instructions: &str) -> String {
         The user can send photos and documents in the WhatsApp chat during the call: Mercury can see them, so for 'what's in this photo?' call ask_mercury. \
         Some actions need the user's approval. When you get an approval request, ask the user plainly whether to go ahead, wait for their answer, \
         then call answer_approval. Never answer an approval yourself: only the user's own words count. \
+        Mercury can send things to the user's WhatsApp chat during the call (links, lists, details): when they ask for something to be sent, \
+        or say yes to an offer to send it, call ask_mercury with a request like 'send the phone links to my chat'. Never say you can't send things. \
         When the user says goodbye or is done, say goodbye and call end_call.";
     if instructions.is_empty() { base.to_string() } else { format!("{base}\n\n{instructions}") }
 }

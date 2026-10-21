@@ -7,7 +7,7 @@ import type { Channel } from '../channels/base.js';
 import type { ChannelMessage } from '../types/channel.js';
 import { PluginManager, setProviderLookup } from './manager.js';
 import { PluginChannel } from './channel-bridge.js';
-import { getPluginChannel, setChannelHost, splitMessage, toWhatsAppText } from './channel-bridge.js';
+import { getPluginChannel, setChannelHost, splitMessage, spokenPart, toWhatsAppText } from './channel-bridge.js';
 import { getPluginTools, resetToolBridge } from './tool-bridge.js';
 import { pluginDataDir } from './store.js';
 import { manifestSchema } from './types.js';
@@ -451,5 +451,12 @@ describe('plugin channels (plugin API 1.1)', () => {
       await waitFor(() => sent.length === 1);
       expect(sent[0]).toMatch(/couldn't understand that voice note \(insufficient_quota\)/);
     });
+  });
+
+  it('call answers: the "For the chat:" details are kept out of speech', () => {
+    expect(spokenPart('The Pixel 10 and iPhone 18 are the best picks. Want me to send the links to your chat?\n\nFor the chat:\n- Pixel 10: https://a.example\n- iPhone 18: https://b.example'))
+      .toBe('The Pixel 10 and iPhone 18 are the best picks. Want me to send the links to your chat?');
+    expect(spokenPart('Just a plain answer.')).toBe('Just a plain answer.');
+    expect(spokenPart('Answer.\n**For the chat:** links')).toBe('Answer.');
   });
 });

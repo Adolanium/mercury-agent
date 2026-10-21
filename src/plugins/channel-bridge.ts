@@ -320,7 +320,7 @@ export class PluginChannel extends BaseChannel {
         channelType: this.type,
         senderId: digits(owner),
         senderRole: 'admin',
-        content: `[Voice call: the owner asked this out loud. Use your tools to get the real answer: web_search for news and anything current, fetch_url, memory, skills. Then answer in one to three short spoken sentences, with no markdown, lists, links or code. Go ahead and do what they ask, including saving files or running things: if an action needs approval, Mercury asks the owner on the call and in the chat, and continues once they say yes. Don't ask them to confirm by message yourself.]${sentNote}\n${question}`,
+        content: `[Voice call: the owner asked this out loud. Use your tools to get the real answer: web_search for news and anything current, fetch_url, memory, skills. Then answer in one to three short spoken sentences, with no markdown, lists, links or code. Go ahead and do what they ask, including saving files or running things: if an action needs approval, Mercury asks the owner on the call and in the chat, and continues once they say yes. Don't ask them to confirm by message yourself. Links, lists, prices, addresses and other details worth keeping: never read them out. If they asked for them, send them with whatsapp__send_to_chat and say you've sent them to the chat. If you found something useful they didn't ask to receive, end your answer by offering to send it ("Want me to send the links to your chat?") and only send once they say yes. Whenever your answer involves links or details, add them after a final line "For the chat:" (that part isn't spoken, and lets you send them later without searching again).]${sentNote}\n${question}`,
         timestamp: Date.now(),
         metadata: { pluginId: this.manifest.id, voiceCall: true, callId, attachments: files.slice(-4), channelAccess: this.accessFor('admin'), channelGuidance: this.guidance('admin', false, true) },
       });
@@ -335,7 +335,7 @@ export class PluginChannel extends BaseChannel {
       clearTimeout(ask.timer);
       this.callAsks.delete(target);
       const answer = ask.chunks.filter((c) => !/^(☿|⚙|⏳|\s*\[)/.test(c.trim())).pop() ?? ask.chunks.pop() ?? '';
-      ask.resolve(answer.trim() || 'Done.');
+      ask.resolve(spokenPart(answer) || 'Done.');
     }
     this.overflow.delete(target);
   }
@@ -556,7 +556,7 @@ export class PluginChannel extends BaseChannel {
       `## Channel: ${name}`,
       `You're talking with ${who} on ${where}.`,
       voiceCall
-        ? 'Your answer is spoken aloud: one to three short sentences, no markdown, lists, links or code. Use your tools as usual during a call; approvals are asked on the call and answered by voice or in the chat.'
+        ? 'Your answer is spoken aloud: one to three short sentences, no markdown, lists, links or code. Use your tools as usual during a call; approvals are asked on the call and answered by voice or in the chat. Anything worth keeping (links, lists, details) goes to the chat with whatsapp__send_to_chat, sent when asked, or offered first when not.'
         : `Write like a text message: short and conversational. ${name} formatting only (*bold*, _italic_, ~strike~). No code blocks, tables, headings or long lists. If they need code, a document or long output, write it to a file and send it with send_file, then summarise it in a sentence. Never paste raw file contents, logs or stack traces.`,
     ];
     if (this.accessFor(role) === 'extended') {
@@ -733,4 +733,13 @@ export function voiceBriefing(): string {
     } catch { /* optional */ }
   }
   return parts.length ? `Who you are (from Mercury's soul files; keep this voice on the call):\n${parts.join('\n\n')}` : '';
+}
+
+/**
+ * The part of a call answer to speak: everything before a "For the chat:"
+ * section (links and details kept in the call's history for send_to_chat).
+ */
+export function spokenPart(answer: string): string {
+  const cut = answer.search(/(^|\n)\s*\**\s*for the chat\s*:?\**\s*:?/i);
+  return (cut >= 0 ? answer.slice(0, cut) : answer).trim();
 }

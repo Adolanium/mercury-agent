@@ -236,21 +236,32 @@ async fn handle(st: Arc<State>, msg: Value) {
             "serverInfo": { "name": "mercury-wa", "version": env!("CARGO_PKG_VERSION") },
         })),
         "ping" => Ok(json!({})),
-        "tools/list" => Ok(json!({ "tools": [{
-            "name": "call_owner",
-            "description": "Ring the owner on WhatsApp and talk to them by voice. Only the owner can be called.",
-            "inputSchema": { "type": "object", "properties": { "reason": { "type": "string", "description": "Why you're calling, in one sentence" } }, "required": ["reason"] },
-        }] })),
+        "tools/list" => Ok(json!({ "tools": [
+            {
+                "name": "call_owner",
+                "description": "Ring the owner on WhatsApp and talk to them by voice. Only the owner can be called.",
+                "inputSchema": { "type": "object", "properties": { "reason": { "type": "string", "description": "Why you're calling, in one sentence" } }, "required": ["reason"] },
+            },
+            {
+                "name": "send_to_chat",
+                "description": "Send the owner a WhatsApp message (links, lists, details). Only the owner receives it.",
+                "inputSchema": { "type": "object", "properties": { "text": { "type": "string", "description": "The message, with any links in full" } }, "required": ["text"] },
+            },
+        ] })),
         "tools/call" => {
             let name = params.get("name").and_then(Value::as_str).unwrap_or("");
             let args = params.get("arguments").cloned().unwrap_or(json!({}));
-            if name != "call_owner" {
-                Err(format!("unknown tool {name}"))
-            } else {
-                Ok(match voice::call_owner(st.clone(), &args).await {
+            let result = match name {
+                "call_owner" => Some(voice::call_owner(st.clone(), &args).await),
+                "send_to_chat" => Some(send_to_owner(st.clone(), &args).await),
+                _ => None,
+            };
+            match result {
+                None => Err(format!("unknown tool {name}")),
+                Some(r) => Ok(match r {
                     Ok(text) => json!({ "content": [{ "type": "text", "text": text }] }),
                     Err(e) => json!({ "content": [{ "type": "text", "text": e }], "isError": true }),
-                })
+                }),
             }
         }
         "mercury/channel/pair" => pair(st.clone(), &params).await,
@@ -299,6 +310,19 @@ async fn pair(st: Arc<State>, params: &Value) -> Result<Value, String> {
     remove_session(&st.data_dir);
     start_bot(st.clone(), if method == "code" { phone } else { None }).await.map_err(|e| e.to_string())?;
     Ok(json!({}))
+}
+
+/// The send_to_chat tool: a WhatsApp message to the owner (and only the owner).
+async fn send_to_owner(st: Arc<State>, args: &Value) -> Result<String, String> {
+    let text = args.get("text").and_then(Value::as_str).unwrap_or("").trim().to_string();
+    if text.is_empty() { return Err("text is required".into()); }
+    let owner: String = voice::settings().get("owner").and_then(Value::as_str).unwrap_or("").chars().filter(char::is_ascii_digit).collect();
+    if owner.len() < 6 { return Err("No owner number is set. Run: mercury plugins set whatsapp owner +<number>".into()); }
+    let c = client(&st).await?;
+    let to: Jid = format!("{owner}@s.whatsapp.net").parse().map_err(|e| format!("bad owner number: {e}"))?;
+    let text: String = text.chars().take(4000).collect();
+    c.send_text(to, text).await.map_err(|e| e.to_string())?;
+    Ok("Sent to the owner's WhatsApp chat.".into())
 }
 
 fn remove_session(dir: &Path) {
