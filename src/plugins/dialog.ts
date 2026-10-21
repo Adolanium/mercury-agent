@@ -27,6 +27,8 @@ export interface DialogPrompt {
 }
 
 interface Step {
+  /** False to skip this step (a setting that doesn't apply to the current choices). */
+  applies?(): Promise<boolean>;
   prompt(): Promise<DialogPrompt>;
   /** Handle an answer. Return a message to show before the next prompt, if any. */
   answer(input: string, option: DialogOption | undefined): Promise<StepOutcome>;
@@ -75,6 +77,7 @@ export class PluginDialog {
 
   /** The prompt to show now, or null when the dialog has finished. */
   async current(): Promise<DialogPrompt | null> {
+    while (this.steps[0]?.applies && !(await this.steps[0].applies())) this.steps.shift();
     const step = this.steps[0];
     if (!step) return null;
     this.lastPrompt = await step.prompt();
@@ -126,10 +129,20 @@ export class PluginDialog {
   private settingStep(s: Setting, ctx: { index?: number; total?: number; setup?: boolean } = {}): Step {
     const title = s.label ?? s.key;
     const counter = ctx.index ? ` (${ctx.index}/${ctx.total})` : '';
-    const current = s.value === undefined || s.value === '' ? 'not set' : String(s.optionLabels?.[String(s.value)] ?? s.value);
-    const keep = ctx.setup && !s.required && s.value !== undefined && s.value !== '' ? [{ label: `Keep: ${current}`, value: '__keep' }] : [];
+    const current = s.type === 'secret' ? (s.isSet ? 'set ✓' : 'not set') : s.value === undefined || s.value === '' ? 'not set' : String(s.optionLabels?.[String(s.value)] ?? s.value);
+    const hasValue = s.type === 'secret' ? !!s.isSet : s.value !== undefined && s.value !== '';
+    const keep = ctx.setup && hasValue ? [{ label: `Keep: ${current}`, value: '__keep' }] : [];
     return {
+      applies: async () => settingApplies(s, (await this.svc.info(this.pluginId))?.settings ?? []),
       prompt: async () => {
+        if (s.type === 'secret') {
+          const head = `${ctx.setup ? `⚙️ ${this.title}${counter}\n` : ''}*${title}*${s.description ? `\n${s.description}` : ''}`;
+          return {
+            text: `${head}\nNow: ${current}`,
+            freeText: 'Paste the key here. It\'s stored with Mercury\'s keys (never shown again), and only this plugin can use it. You can delete your message afterwards.',
+            options: keep.length ? keep : (s.required ? undefined : [{ label: 'Skip', value: '__keep' }]),
+          };
+        }
         const head = `${ctx.setup ? `⚙️ ${this.title}${counter}\n` : ''}*${title}*${s.description ? `\n${s.description}` : ''}`;
         if (s.type === 'enum') {
           return { text: `${head}\nNow: ${current}`, options: (s.options ?? []).map((o) => ({ label: s.optionLabels?.[o] ?? o, value: o })) };
@@ -142,6 +155,11 @@ export class PluginDialog {
       },
       answer: async (input, option) => {
         if (option?.value === '__keep') return { kind: 'next' };
+        if (s.type === 'secret') {
+          if (!input || input.length < 8) return { kind: 'retry', message: 'Paste the whole key, or reply "skip".' };
+          await this.svc.setSetting(this.pluginId, s.key, input.trim());
+          return { kind: 'next', message: `✅ ${title} saved.` };
+        }
         let value: string;
         if (s.type === 'enum' || s.type === 'boolean') {
           if (!option) return { kind: 'retry', message: 'Reply with one of the numbers.' };
@@ -219,8 +237,8 @@ export class PluginDialog {
         const status = i.installedVersion ? (i.enabled ? (i.status === 'enabled' ? 'on' : i.status) : 'off') : 'not installed';
         lines.push('', `Status: ${status}`);
         if (i.channel) lines.push(`Account: ${i.channel.state === 'connected' ? `linked${i.channel.account ? ` as +${i.channel.account}` : ''}` : (i.channel.state ?? 'not linked')}`);
-        for (const s of (i.settings ?? []).filter((x) => x.setup || x.label)) {
-          const v = s.value === undefined || s.value === '' ? 'not set' : s.type === 'boolean' ? (s.value ? 'yes' : 'no') : String(s.optionLabels?.[String(s.value)]?.split(':')[0] ?? s.value);
+        for (const s of (i.settings ?? []).filter((x) => (x.setup || x.label) && settingApplies(x, i.settings ?? []))) {
+          const v = s.type === 'secret' ? (s.isSet ? 'set ✓' : 'not set') : s.value === undefined || s.value === '' ? 'not set' : s.type === 'boolean' ? (s.value ? 'yes' : 'no') : String(s.optionLabels?.[String(s.value)]?.split(':')[0] ?? s.value);
           lines.push(`${s.label ?? s.key}: ${v}`);
         }
         for (const m of i.missing ?? []) lines.push(`⚠️ ${m.unlocks} is off: needs ${m.needs}.`);
@@ -290,7 +308,7 @@ export class PluginDialog {
   }
 
   private pickSettingStep(i: PluginListItem): Step {
-    const settings = i.settings ?? [];
+    const settings = (i.settings ?? []).filter((x) => settingApplies(x, i.settings ?? []));
     return {
       prompt: async () => ({
         text: '*Which setting?*',
@@ -333,6 +351,15 @@ export class PluginDialog {
       },
     };
   }
+}
+
+/** Does a setting apply, given the current values of the settings it depends on (`when`)? */
+export function settingApplies(s: Setting, all: Setting[]): boolean {
+  if (!s.when) return true;
+  return Object.entries(s.when).every(([key, want]) => {
+    const v = all.find((x) => x.key === key)?.value;
+    return Array.isArray(want) ? want.includes(String(v)) : String(v) === String(want);
+  });
 }
 
 /** Plain-text rendering (WhatsApp, terminal, any chat without buttons). */

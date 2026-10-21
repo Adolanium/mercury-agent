@@ -432,21 +432,28 @@ function PermissionList({ p }: { p: PluginItem }) {
 }
 
 function SettingField({ s, disabled, onSave }: { s: PluginSetting; disabled: boolean; onSave: (v: unknown) => void }) {
-  const [draft, setDraft] = useState(s.value === undefined ? "" : String(s.value));
-  useEffect(() => setDraft(s.value === undefined ? "" : String(s.value)), [s.value]);
+  const [draft, setDraft] = useState(s.value === undefined || s.type === "secret" ? "" : String(s.value));
+  useEffect(() => setDraft(s.value === undefined || s.type === "secret" ? "" : String(s.value)), [s.value, s.type]);
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-3">
         <label className="text-sm font-medium text-foreground" htmlFor={`setting-${s.key}`}>
           {s.label ?? s.key}
-          {s.required && (s.value === undefined || s.value === "") && <span className="ml-2 text-xs text-amber-500">needed</span>}
+          {s.required && (s.type === "secret" ? !s.isSet : s.value === undefined || s.value === "") && <span className="ml-2 text-xs text-amber-500">needed</span>}
+          {s.type === "secret" && s.isSet && <span className="ml-2 text-xs text-emerald-500">set ✓</span>}
         </label>
         {s.type === "boolean" && (
           <Switch id={`setting-${s.key}`} checked={s.value === true} disabled={disabled} onCheckedChange={(v) => onSave(v)} />
         )}
       </div>
       {s.description && <p className="text-xs text-muted-foreground">{s.description}</p>}
-      {s.type === "enum" ? (
+      {s.type === "secret" ? (
+        <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (draft.trim()) { onSave(draft.trim()); setDraft(""); } }}>
+          <Input id={`setting-${s.key}`} value={draft} onChange={(e) => setDraft(e.target.value)} type="password" autoComplete="off" placeholder={s.isSet ? "Saved ✓ (paste to replace)" : "Paste API key"} disabled={disabled} className="h-8 text-sm" />
+          <Button size="sm" variant="outline" type="submit" disabled={disabled || !draft.trim()}>Save</Button>
+          {s.isSet && <Button size="sm" variant="ghost" type="button" disabled={disabled} onClick={() => onSave("")}>Remove</Button>}
+        </form>
+      ) : s.type === "enum" ? (
         <select
           id={`setting-${s.key}`}
           className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
@@ -502,7 +509,7 @@ function PluginDetails({ p, busy, safeMode, onAct, onInstall, onClose }: {
         {p.settings && p.settings.length > 0 && (
           <div className="space-y-3 rounded-lg border border-border p-3">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Settings</p>
-            {[...p.settings].sort((a, b) => Number(!!b.setup) - Number(!!a.setup)).map((setting) => (
+            {[...p.settings].filter((x) => settingApplies(x, p.settings ?? [])).sort((a, b) => Number(!!b.setup) - Number(!!a.setup)).map((setting) => (
               <SettingField
                 key={setting.key}
                 s={setting}
@@ -679,4 +686,13 @@ function ChannelPanel({ id, enabled }: { id: string; enabled: boolean }) {
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );
+}
+
+/** Hide settings that only apply to other choices (manifest `when`). */
+function settingApplies(s: PluginSetting, all: PluginSetting[]): boolean {
+  if (!s.when) return true;
+  return Object.entries(s.when).every(([key, want]) => {
+    const v = all.find((x) => x.key === key)?.value;
+    return Array.isArray(want) ? want.includes(String(v)) : String(v) === String(want);
+  });
 }

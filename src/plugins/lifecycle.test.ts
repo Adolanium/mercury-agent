@@ -224,3 +224,59 @@ describe('Mercury providers for plugins', () => {
     }
   });
 });
+
+describe('secret settings (API keys a plugin asks for)', () => {
+  const manifest = {
+    permissions: { network: [], secrets: ['FIXTURE_VOICE_KEY'] },
+    settings: { version: 1, fields: {
+      engine: { type: 'enum', options: ['openai', 'other'], default: 'openai', setup: true },
+      otherKey: { type: 'secret', secret: 'FIXTURE_VOICE_KEY', label: 'Other key', setup: true, when: { engine: 'other' } },
+    } },
+  };
+  const code = `export async function activate(ctx) {
+  ctx.tools.register({ name: 'echo', inputSchema: { type: 'object' }, execute: async () => String(ctx.secrets.get('FIXTURE_VOICE_KEY') ?? 'none') });
+}`;
+
+  it('are kept in the key store, never in settings, shown only as set, and reach the plugin', async () => {
+    const prev = process.env.FIXTURE_VOICE_KEY;
+    delete process.env.FIXTURE_VOICE_KEY;
+    try {
+      await mgr.install(inProcessPlugin(src, { id: 'keyed', code, manifest }));
+      await mgr.setSetting('keyed', 'otherKey', 'sk-test-1234567890');
+      const settingsFile = existsSync(pluginSettingsPath('keyed')) ? readFileSync(pluginSettingsPath('keyed'), 'utf8') : '';
+      expect(settingsFile).not.toContain('sk-test');
+      const { readPluginKeys } = await import('./store.js');
+      expect(readPluginKeys().FIXTURE_VOICE_KEY).toBe('sk-test-1234567890');
+      const s = (await mgr.info('keyed'))?.settings?.find((x) => x.key === 'otherKey');
+      expect(s).toMatchObject({ type: 'secret', isSet: true, value: undefined });
+      const t = listLiveTools().find((x) => x.pluginId === 'keyed')!;
+      expect(await t.invoke({}, new AbortController().signal)).toBe('sk-test-1234567890'); // restarted with the key
+      await mgr.setSetting('keyed', 'otherKey', '');
+      expect((await mgr.info('keyed'))?.settings?.find((x) => x.key === 'otherKey')?.isSet).toBe(false);
+      await expect(mgr.setSetting('keyed', 'otherKey', 'short')).rejects.toThrow(/API key/);
+    } finally {
+      if (prev !== undefined) process.env.FIXTURE_VOICE_KEY = prev;
+    }
+  });
+
+  it('a secret setting must name a declared secret; "when" must refer to a real setting', () => {
+    const base = JSON.parse(readFileSync(join(inProcessPlugin(src, { id: 'bad-keys' }), 'mercury-plugin.json'), 'utf8'));
+    expect(manifestSchema.safeParse({ ...base, settings: { version: 1, fields: { k: { type: 'secret', secret: 'UNDECLARED_KEY' } } } }).success).toBe(false);
+    expect(manifestSchema.safeParse({ ...base, settings: { version: 1, fields: { k: { type: 'secret' } } } }).success).toBe(false);
+    expect(manifestSchema.safeParse({ ...base, settings: { version: 1, fields: { a: { type: 'string', when: { nope: 'x' } } } } }).success).toBe(false);
+  });
+
+  it('setup skips settings that do not apply to the choices made so far', async () => {
+    const { PluginDialog, renderPrompt } = await import('./dialog.js');
+    const { localService } = await import('./service.js');
+    await mgr.install(inProcessPlugin(src, { id: 'keyed', code, manifest }));
+    const d = (await PluginDialog.setup(localService(mgr), 'keyed'))!;
+    expect(renderPrompt((await d.current())!, false)).toMatch(/engine/);
+    await d.answer('1'); // openai: the "Other key" question doesn't apply
+    expect(renderPrompt((await d.current())!, false)).toMatch(/is set up/);
+    const d2 = (await PluginDialog.setup(localService(mgr), 'keyed'))!;
+    await d2.current();
+    await d2.answer('2'); // other: now it asks for the key
+    expect(renderPrompt((await d2.current())!, false)).toMatch(/Other key[\s\S]*Paste the key here/);
+  });
+});

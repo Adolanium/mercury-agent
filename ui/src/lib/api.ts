@@ -271,11 +271,13 @@ export type PluginStatus = "available" | "installed" | "enabled" | "disabled" | 
 
 export interface PluginSetting {
   key: string;
-  type: "string" | "number" | "boolean" | "enum";
+  type: "string" | "number" | "boolean" | "enum" | "secret";
   description: string;
   options?: string[];
   value: unknown;
   label?: string;
+  when?: Record<string, string | boolean | string[]>;
+  isSet?: boolean;
   setup?: boolean;
   required?: boolean;
   optionLabels?: Record<string, string>;

@@ -311,6 +311,7 @@ export function resolvedSettings(manifest: PluginManifest): Record<string, unkno
   const saved = !file ? {} : file.settingsVersion < target ? migrateSettingValues(manifest, file.values, file.settingsVersion) : file.settingsVersion > target ? {} : file.values;
   const out: Record<string, unknown> = {};
   for (const [key, field] of Object.entries(fields)) {
+    if (field.type === 'secret') continue; // keys live in the key store, not settings
     const v = saved[key];
     let value: unknown = field.default;
     if (field.type === 'boolean' && typeof v === 'boolean') value = v;
@@ -325,4 +326,36 @@ export function resolvedSettings(manifest: PluginManifest): Record<string, unkno
 export function writeSettings(id: string, values: Record<string, unknown>, settingsVersion: number): void {
   mkdirSync(pluginDir(id), { recursive: true });
   writeJsonAtomic(pluginSettingsPath(id), { settingsVersion, values });
+}
+
+// ── key store ─────────────────────────────────────────────────────────────
+
+/**
+ * API keys plugin settings ask for (type "secret"), e.g. an ElevenLabs key
+ * for WhatsApp voice. One owner-only file for every plugin; each plugin only
+ * ever receives the names it declares in permissions.secrets.
+ */
+export function pluginKeysPath(): string {
+  return join(getMercuryHome(), 'plugin-keys.json');
+}
+
+export function readPluginKeys(): Record<string, string> {
+  try {
+    const raw = JSON.parse(readFileSync(pluginKeysPath(), 'utf8')) as Record<string, unknown>;
+    return Object.fromEntries(Object.entries(raw).filter((e): e is [string, string] => typeof e[1] === 'string' && e[1].length > 0));
+  } catch {
+    return {};
+  }
+}
+
+export function setPluginKey(name: string, value: string | null): void {
+  const keys = readPluginKeys();
+  if (value) keys[name] = value;
+  else delete keys[name];
+  writeJsonAtomic(pluginKeysPath(), keys);
+}
+
+/** A declared secret: Mercury's environment first (~/.mercury/.env), then the key store. */
+export function secretValue(name: string): string | undefined {
+  return process.env[name] || readPluginKeys()[name] || undefined;
 }

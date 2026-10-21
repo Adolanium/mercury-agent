@@ -27,7 +27,7 @@ import {
   type InstallResult,
 } from './installer.js';
 import {
-  incompatibility, mercuryVersion, pluginDataDir, pluginDir, pluginVersionDir, readState, resolvedSettings, updateState, writeSettings, migrateSettings,
+  incompatibility, mercuryVersion, pluginDataDir, pluginDir, pluginVersionDir, readState, resolvedSettings, updateState, writeSettings, migrateSettings, secretValue, setPluginKey,
 } from './store.js';
 import { setToolOutcomeSink, unpublishPlugin, listLiveTools, listPluginCommands } from './tool-bridge.js';
 import { InProcessRuntime, inProcessLogger } from './runtime/in-process.js';
@@ -291,7 +291,7 @@ export class PluginManager {
         mercuryVersion: mercuryVersion(),
         dataDir: pluginDataDir(id),
         settings: resolvedSettings(manifest),
-        secrets: { ...Object.fromEntries(manifest.permissions.secrets.map((k) => [k, process.env[k]])), ...providerCredentials(manifest) },
+        secrets: { ...Object.fromEntries(manifest.permissions.secrets.map((k) => [k, secretValue(k)])), ...providerCredentials(manifest) },
         log: inProcessLogger(id),
         onError: (message: string) => this.recordFailure(id, message),
         onFatal: (code: 'crashed' | 'activation', message: string) => {
@@ -511,6 +511,18 @@ export class PluginManager {
     const manifest = installedManifest(id, entry.version);
     const field = manifest?.settings?.fields?.[key];
     if (!manifest || !field) throw new Error(`"${id}" has no setting called "${key}".`);
+    if (field.type === 'secret') {
+      // Keys go to Mercury's key store, never the plugin's settings file; the
+      // plugin gets them at start, so restart it if it's running.
+      const v = typeof value === 'string' ? value.trim() : '';
+      if (v && v.length < 8) throw new Error('That doesn\'t look like an API key.');
+      setPluginKey(field.secret!, v || null);
+      if (this.running.has(id)) {
+        await this.stopRuntime(id);
+        await this.reconcile();
+      }
+      return;
+    }
     const coerced = coerceSetting(field.type, field.options, value, field.format);
     const values = { ...resolvedSettings(manifest), [key]: coerced };
     writeSettings(id, values, manifest.settings?.version ?? 1);
@@ -600,8 +612,10 @@ export class PluginManager {
     if (manifest && Object.keys(fields).length) {
       const values = resolvedSettings(manifest);
       item.settings = Object.entries(fields).map(([key, f]) => ({
-        key, type: f.type, description: f.description, options: f.options, value: values[key],
-        label: f.label, setup: f.setup, required: f.required, optionLabels: f.optionLabels, format: f.format,
+        key, type: f.type, description: f.description, options: f.options,
+        value: f.type === 'secret' ? undefined : values[key],
+        isSet: f.type === 'secret' ? !!secretValue(f.secret!) : undefined,
+        label: f.label, setup: f.setup, required: f.required, optionLabels: f.optionLabels, format: f.format, when: f.when,
       }));
     }
     return item;
@@ -722,7 +736,7 @@ export function resetPluginManager(): void {
   instance = null;
 }
 
-const PROVIDER_LABEL: Record<PluginProviderId, string> = { openai: 'OpenAI' };
+const PROVIDER_LABEL: Record<PluginProviderId, string> = { openai: 'OpenAI', grok: 'xAI Grok' };
 
 type ProviderLookup = (id: PluginProviderId) => { apiKey?: string; baseUrl?: string } | undefined;
 

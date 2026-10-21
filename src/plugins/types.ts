@@ -42,7 +42,7 @@ export const RESERVED_COMMANDS: ReadonlySet<string> = new Set([
 ]);
 
 /** Mercury providers a plugin can ask to use (Plugin API 1.1). */
-export const PLUGIN_PROVIDER_IDS = ['openai'] as const;
+export const PLUGIN_PROVIDER_IDS = ['openai', 'grok'] as const;
 export type PluginProviderId = (typeof PLUGIN_PROVIDER_IDS)[number];
 
 /** Env names a plugin gets for a provider it declared. */
@@ -84,8 +84,15 @@ const commandDecl = z.object({
   description: z.string().min(1).max(200),
 }).strict();
 
+const settingKey = z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,40}$/);
+
 const settingField = z.object({
-  type: z.enum(['string', 'number', 'boolean', 'enum']),
+  /**
+   * 'secret': an API key the owner pastes once. Stored in Mercury's key store
+   * (never in the plugin's settings file), shown only as "set", and passed to
+   * the plugin as the env var named by `secret`.
+   */
+  type: z.enum(['string', 'number', 'boolean', 'enum', 'secret']),
   description: z.string().max(300).default(''),
   default: z.union([z.string(), z.number(), z.boolean()]).optional(),
   options: z.array(z.string()).max(50).optional(),
@@ -99,9 +106,12 @@ const settingField = z.object({
   optionLabels: z.record(z.string(), z.string().max(160)).optional(),
   /** Input format for string settings, validated and normalised on save. */
   format: z.enum(['text', 'phone']).default('text'),
+  /** For type 'secret': the env var name the plugin receives it as (must be in permissions.secrets). */
+  secret: z.string().regex(SECRET_NAME_RE).optional(),
+  /** Only relevant when other settings have these values, e.g. { "voiceEngine": ["elevenlabs"] }. */
+  when: z.record(settingKey, z.union([z.string(), z.boolean(), z.array(z.string())])).optional(),
 }).strict();
 
-const settingKey = z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,40}$/);
 
 const settingsMigration = z.object({
   /** The settings version this step produces. */
@@ -193,6 +203,13 @@ export const manifestSchema = z.object({
   if (m.kind === 'out-of-process' && !m.server) ctx.addIssue({ code: 'custom', path: ['server'], message: 'out-of-process plugins need a "server"' });
   if (m.kind === 'out-of-process' && m.contributes.commands.length > 0) {
     ctx.addIssue({ code: 'custom', path: ['contributes', 'commands'], message: 'slash commands are only supported for in-process plugins in plugin API 1.0' });
+  }
+  for (const [key, f] of Object.entries(m.settings?.fields ?? {})) {
+    if (f.type === 'secret' && !f.secret) ctx.addIssue({ code: 'custom', path: ['settings', 'fields', key], message: 'secret settings need "secret": the env var name' });
+    if (f.secret && !m.permissions.secrets.includes(f.secret)) ctx.addIssue({ code: 'custom', path: ['settings', 'fields', key], message: `${f.secret} must also be listed in permissions.secrets` });
+    for (const dep of Object.keys(f.when ?? {})) {
+      if (!m.settings?.fields[dep]) ctx.addIssue({ code: 'custom', path: ['settings', 'fields', key, 'when'], message: `"when" refers to unknown setting ${dep}` });
+    }
   }
   for (const name of Object.keys(m.permissions.optionalSecrets ?? {})) {
     if (!m.permissions.secrets.includes(name)) ctx.addIssue({ code: 'custom', path: ['permissions', 'optionalSecrets'], message: `${name} must also be listed in permissions.secrets` });
@@ -292,7 +309,7 @@ export interface PluginListItem {
   /** Only in `info`: the settings the plugin declares, with current values. */
   settings?: Array<{
     key: string;
-    type: 'string' | 'number' | 'boolean' | 'enum';
+    type: 'string' | 'number' | 'boolean' | 'enum' | 'secret';
     description: string;
     options?: string[];
     value: unknown;
@@ -301,6 +318,10 @@ export interface PluginListItem {
     required?: boolean;
     optionLabels?: Record<string, string>;
     format?: 'text' | 'phone';
+    /** Only relevant when these other settings match (the menu and setup hide it otherwise). */
+    when?: Record<string, string | boolean | string[]>;
+    /** Secret settings: whether a value is stored (the value itself is never shown). */
+    isSet?: boolean;
   }>;
 }
 
