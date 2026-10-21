@@ -1,0 +1,79 @@
+{
+  "catalogVersion": 1,
+  "updatedAt": "2026-10-22T00:00:00Z",
+  "plugins": [
+    {
+      "id": "whatsapp",
+      "name": "WhatsApp",
+      "description": "Chat with Mercury on WhatsApp and talk to it by voice call. Runs on a spare number as a linked device (unofficial protocol).",
+      "version": "0.1.0",
+      "kind": "out-of-process",
+      "tier": "official",
+      "homepage": "https://github.com/cosmicstack-labs/mercury-agent/tree/main/plugins/whatsapp",
+      "engines": {
+        "mercury": ">=1.3.9 <2.0.0",
+        "pluginApi": "^1.1.0"
+      },
+      "artifacts": {
+        "darwin-arm64": {
+          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/mercury-dev-latest/mercury-plugin-whatsapp-darwin-arm64.tgz",
+          "sha256": "8cd755190bceab2404bb1314b13cb55b183fefb61e7f3e52528fc6acce650b03",
+          "size": 4192333
+        },
+        "darwin-x64": {
+          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/mercury-dev-latest/mercury-plugin-whatsapp-darwin-x64.tgz",
+          "sha256": "1cef9d413a7d8f61dafd1db0d3d6552838345702daaf4b981524b4aec04cd474",
+          "size": 4533334
+        },
+        "linux-x64": {
+          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/mercury-dev-latest/mercury-plugin-whatsapp-linux-x64.tgz",
+          "sha256": "b386087bb5431322710f2d10c54f54b7024808115cd01147a1f7ef5d2bfca69a",
+          "size": 4868614
+        },
+        "linux-arm64": {
+          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/mercury-dev-latest/mercury-plugin-whatsapp-linux-arm64.tgz",
+          "sha256": "afdad0bac67314622d0f54898feba31446870d0ce2bd8957efe07c8e0cc23cf3",
+          "size": 4681966
+        },
+        "win32-x64": {
+          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/mercury-dev-latest/mercury-plugin-whatsapp-win32-x64.tgz",
+          "sha256": "295735cbe9c8b3853cf52fde7e68f7849ee5a380a233d7c29a86e18fed704548",
+          "size": 4459462
+        }
+      },
+      "tools": [
+        "call_owner",
+        "send_to_chat"
+      ],
+      "permissions": {
+        "network": [
+          "*.aliyuncs.com",
+          "*.openai.azure.com",
+          "*.whatsapp.com",
+          "*.whatsapp.net",
+          "api.cartesia.ai",
+          "api.deepgram.com",
+          "api.elevenlabs.io",
+          "api.minimax.io",
+          "api.openai.com",
+          "api.sarvam.ai",
+          "api.x.ai",
+          "generativelanguage.googleapis.com",
+          "streaming.assemblyai.com",
+          "web.whatsapp.com"
+        ],
+        "secrets": [
+          "GEMINI_API_KEY",
+          "ELEVENLABS_API_KEY",
+          "AZURE_OPENAI_API_KEY",
+          "DASHSCOPE_API_KEY",
+          "DEEPGRAM_API_KEY",
+          "ASSEMBLYAI_API_KEY",
+          "SARVAM_API_KEY",
+          "CARTESIA_API_KEY",
+          "MINIMAX_API_KEY"
+        ]
+      }
+    }
+  ]
+}
