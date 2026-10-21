@@ -2641,6 +2641,10 @@ export class Agent {
       // e.g. WhatsApp): "general" means no tools, no personal memory and no
       // learning from the turn; the guidance tells the model where it is and
       // how to write for it.
+      // A scheduled task the owner approved with specific plugin tools runs them unattended.
+      this.capabilities.permissions.setTurnPluginGrants(
+        msg.senderId === 'system' && Array.isArray(msg.metadata?.allowTools) ? (msg.metadata.allowTools as unknown[]).filter((t): t is string => typeof t === 'string') : [],
+      );
       const generalAccess = msg.metadata?.channelAccess === 'general';
       this.capabilities.setToolsDisabled(generalAccess);
       const guidance = typeof msg.metadata?.channelGuidance === 'string' ? msg.metadata.channelGuidance.slice(0, 2000) : '';
@@ -4194,6 +4198,7 @@ export class Agent {
       stopHeartbeat();
       this.finalizeChannelTask(msg);
       this.capabilities.setToolsDisabled(false);
+      this.capabilities.permissions.setTurnPluginGrants([]);
       this.currentMessage = null;
       this.currentAbort = null;
       this.currentAbortReason = null;
@@ -4254,7 +4259,7 @@ export class Agent {
     });
   }
 
-  async processInternalPrompt(prompt: string, channelId?: string, channelType?: string): Promise<void> {
+  async processInternalPrompt(prompt: string, channelId?: string, channelType?: string, opts: { allowTools?: string[]; scheduledTaskId?: string } = {}): Promise<void> {
     const syntheticMsg: ChannelMessage = {
       id: `internal-${Date.now().toString(36)}`,
       channelId: channelId || 'internal',
@@ -4262,6 +4267,9 @@ export class Agent {
       senderId: 'system',
       content: prompt,
       timestamp: Date.now(),
+      ...(opts.allowTools?.length || opts.scheduledTaskId
+        ? { metadata: { ...(opts.allowTools?.length ? { allowTools: opts.allowTools } : {}), ...(opts.scheduledTaskId ? { scheduledTaskId: opts.scheduledTaskId } : {}) } }
+        : {}),
     };
     this.enqueueMessage(syntheticMsg);
   }
@@ -4309,7 +4317,7 @@ export class Agent {
       if (!prompt) {
         prompt = `Execute scheduled task: ${manifest.description}`;
       }
-      await this.processInternalPrompt(prompt, manifest.sourceChannelId, manifest.sourceChannelType);
+      await this.processInternalPrompt(prompt, manifest.sourceChannelId, manifest.sourceChannelType, { allowTools: manifest.allowTools, scheduledTaskId: manifest.id });
     } catch (err) {
       logger.error({ err, task: manifest.id }, 'Scheduled task execution failed');
     }

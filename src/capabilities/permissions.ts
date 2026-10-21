@@ -529,9 +529,17 @@ export class PermissionManager {
    * - "always" is remembered per channel for this plugin tool.
    * - otherwise the user sees the plugin, tool and arguments.
    */
+  /** Plugin tools pre-approved for the current turn only (a scheduled task's allowTools). */
+  private turnPluginGrants = new Set<string>();
+
+  setTurnPluginGrants(tools: string[]): void {
+    this.turnPluginGrants = new Set(tools);
+  }
+
   async approvePluginTool(toolKey: string, prompt: string): Promise<boolean> {
     const ctx = this.ctx();
     if (this.failClosed) return true;
+    if (this.turnPluginGrants.has(toolKey)) return true;
     if (ctx.channelType === 'internal') return ctx.autoApprove;
     if (this.isGlobalAutoApproveActive()) return true;
     if (this.approvedPluginToolsByContext.get(ctx.channelId)?.has(toolKey)) return true;
