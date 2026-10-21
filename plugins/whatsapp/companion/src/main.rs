@@ -94,6 +94,8 @@ pub struct State {
     pub call_activity: std::sync::Mutex<HashMap<String, String>>,
     /// Things that happened in the chat during a call (a photo arrived), to mention at the next pause.
     pub call_context: std::sync::Mutex<HashMap<String, Vec<String>>>,
+    /// Approvals Mercury needs on a call: (approval id, what it wants to do), per call.
+    pub call_approvals: std::sync::Mutex<HashMap<String, Vec<(String, String)>>>,
 }
 
 pub fn log(msg: impl AsRef<str>) {
@@ -141,6 +143,7 @@ async fn main() -> anyhow::Result<()> {
         call_watchers: Arc::new(Mutex::new(HashMap::new())),
         call_activity: std::sync::Mutex::new(HashMap::new()),
         call_context: std::sync::Mutex::new(HashMap::new()),
+        call_approvals: std::sync::Mutex::new(HashMap::new()),
     });
 
     let mut lines = BufReader::new(tokio::io::stdin()).lines();
@@ -175,6 +178,34 @@ async fn handle(st: Arc<State>, msg: Value) {
         if method == "mercury/call/progress" {
             if let (Some(call), Some(activity)) = (params.get("callId").and_then(Value::as_str), params.get("activity").and_then(Value::as_str)) {
                 st.call_activity.lock().unwrap().insert(call.to_string(), activity.chars().take(80).collect());
+            }
+            return;
+        }
+        if method == "mercury/call/approval" {
+            if let (Some(call), Some(id), Some(prompt)) = (
+                params.get("callId").and_then(Value::as_str),
+                params.get("approvalId").and_then(Value::as_str),
+                params.get("prompt").and_then(Value::as_str),
+            ) {
+                st.call_approvals.lock().unwrap().entry(call.to_string()).or_default().push((id.to_string(), prompt.chars().take(600).collect()));
+            }
+            return;
+        }
+        if method == "mercury/call/approval-resolved" {
+            if let (Some(call), Some(id)) = (params.get("callId").and_then(Value::as_str), params.get("approvalId").and_then(Value::as_str)) {
+                if let Some(list) = st.call_approvals.lock().unwrap().get_mut(call) {
+                    list.retain(|(a, _)| a != id);
+                }
+                let via = params.get("via").and_then(Value::as_str).unwrap_or("");
+                if via != "voice" {
+                    let approved = params.get("decision").and_then(Value::as_str) != Some("no");
+                    let note = if via == "chat" {
+                        format!("RESOLVED:{id}:The owner {} that in the WhatsApp chat.", if approved { "approved" } else { "declined" })
+                    } else {
+                        format!("RESOLVED:{id}:Nobody answered that approval in time, so it wasn't done. Offer to try again.")
+                    };
+                    st.call_context.lock().unwrap().entry(call.to_string()).or_default().push(note);
+                }
             }
             return;
         }

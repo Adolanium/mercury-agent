@@ -27,9 +27,14 @@
  *   Mercury → plugin during a call
  *     mercury/call/progress    notification { callId, activity }   (what an ask_mercury turn is doing now)
  *     mercury/call/context     notification { callId, text }       (something happened in the chat, e.g. a photo arrived)
+ *     mercury/call/approval    notification { callId, approvalId, prompt }   (ask the owner by voice)
+ *     mercury/call/approval-resolved notification { callId, approvalId, decision, via }
+ *   plugin → Mercury
+ *     mercury/call/approve     request { callId, approvalId, approved } (after checking the owner said yes)
  *
- * During a call nobody can approve anything: approvals asked on a call are
- * refused (fail-closed), and the model is told to offer doing it by message.
+ * Approvals during a call are asked by voice and in the chat at once; the
+ * first answer wins. The plugin accepts a spoken yes only when the owner's own
+ * transcribed words say yes, and a spoken yes never becomes "always".
  */
 import { basename } from 'node:path';
 import { existsSync, readFileSync, statSync } from 'node:fs';
@@ -156,6 +161,14 @@ export class PluginChannel extends BaseChannel {
   readonly type: ChannelType;
   private status: ChannelStatus = { state: 'starting', at: Date.now() };
   private pending = new Map<string, { resolve: (v: string) => void; timer: ReturnType<typeof setTimeout> }>();
+  /**
+   * Approvals asked on a call. Answerable by voice (the plugin checks the
+   * owner actually said yes) or by replying in the chat; first answer wins.
+   */
+  private callApprovals = new Map<string, { callId: string; prompt: string; resolve: (v: string) => void; timer: ReturnType<typeof setTimeout> }>();
+  private approvalSeq = 0;
+  /** The owner's chat as WhatsApp addresses it (often a LID, not their phone JID). */
+  private ownerChatId: string | undefined;
   private seen = new Set<string>();
   private statusListeners = new Set<(s: ChannelStatus) => void>();
   /** In-flight `ask_mercury` turns, by call target (`call:<callId>`). */
@@ -255,6 +268,12 @@ export class PluginChannel extends BaseChannel {
       case 'mercury/call/briefing':
         this.callStarted(String(p.callId ?? ''));
         return { instructions: voiceBriefing() };
+      case 'mercury/call/approve': {
+        // The plugin only sends this after checking the owner's own words on the call.
+        const approvalId = String(p.approvalId ?? '');
+        const ok = this.resolveCallApproval(approvalId, p.approved === true ? 'yes' : 'no', 'voice');
+        return { ok, reason: ok ? undefined : 'that approval is no longer open (answered in the chat, or timed out)' };
+      }
       case 'mercury/call/ask': {
         const callId = typeof p.callId === 'string' ? p.callId.replace(/[^\w.-]/g, '').slice(0, 80) : '';
         const question = typeof p.question === 'string' ? p.question.trim().slice(0, 4000) : '';
@@ -277,11 +296,18 @@ export class PluginChannel extends BaseChannel {
         clearTimeout(previous.timer);
         previous.resolve('(superseded by a newer question)');
       }
-      const timer = setTimeout(() => {
+      const giveUp = () => {
+        // Waiting on the owner's approval isn't "stuck": keep the question open.
+        if ([...this.callApprovals.values()].some((a) => a.callId === callId)) {
+          const entry = this.callAsks.get(target);
+          if (entry) entry.timer = setTimeout(giveUp, 30_000);
+          return;
+        }
         this.callAsks.delete(target);
         this.overflow.add(target);
         resolve('Mercury is still working on that. It will send the answer to WhatsApp when it\'s done.');
-      }, 90_000);
+      };
+      const timer = setTimeout(giveUp, 90_000);
       this.callAsks.set(target, { chunks: [], resolve, timer });
       const files = this.activeCalls.get(callId)?.files ?? [];
       const sentNote = files.length
@@ -293,7 +319,7 @@ export class PluginChannel extends BaseChannel {
         channelType: this.type,
         senderId: digits(owner),
         senderRole: 'admin',
-        content: `[Voice call: the owner asked this out loud. Use your tools to get the real answer: web_search for news and anything current, fetch_url, memory, skills. Then answer in one to three short spoken sentences, with no markdown, lists, links or code. Only actions that change something (files, commands, sending messages, purchases) need approval, and that can't be given on a call; for those, say you'll do it once they confirm by message.]${sentNote}\n${question}`,
+        content: `[Voice call: the owner asked this out loud. Use your tools to get the real answer: web_search for news and anything current, fetch_url, memory, skills. Then answer in one to three short spoken sentences, with no markdown, lists, links or code. Go ahead and do what they ask, including saving files or running things: if an action needs approval, Mercury asks the owner on the call and in the chat, and continues once they say yes. Don't ask them to confirm by message yourself.]${sentNote}\n${question}`,
         timestamp: Date.now(),
         metadata: { pluginId: this.manifest.id, voiceCall: true, callId, attachments: files.slice(-4), channelAccess: this.accessFor('admin'), channelGuidance: this.guidance('admin', false, true) },
       });
@@ -316,6 +342,7 @@ export class PluginChannel extends BaseChannel {
   private onCallEnded(params: unknown): void {
     const p = (params ?? {}) as Record<string, unknown>;
     this.activeCalls.delete(String(p.callId ?? ''));
+    for (const [id, a] of this.callApprovals) if (a.callId === String(p.callId ?? '')) this.resolveCallApproval(id, 'no', 'timeout');
     const secs = typeof p.durationSec === 'number' ? Math.round(p.durationSec) : 0;
     const dur = secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`;
     const outcome = String(p.outcome ?? '');
@@ -397,6 +424,16 @@ export class PluginChannel extends BaseChannel {
     }
 
     const text = typeof p.text === 'string' ? p.text.slice(0, 20_000) : '';
+    if (role === 'admin' && p.isGroup !== true) this.ownerChatId = p.chatId;
+    if (role === 'admin' && text && this.callApprovals.size) {
+      const answer = normalizeReply(text);
+      if (answer) {
+        // The oldest open approval from a call; the chat reply answers it.
+        const [approvalId] = this.callApprovals.keys();
+        this.resolveCallApproval(approvalId, answer, 'chat');
+        return;
+      }
+    }
     const pending = this.pending.get(p.chatId);
     if (pending && text) {
       const answer = normalizeReply(text);
@@ -518,7 +555,7 @@ export class PluginChannel extends BaseChannel {
       `## Channel: ${name}`,
       `You're talking with ${who} on ${where}.`,
       voiceCall
-        ? 'Your answer is spoken aloud: one to three short sentences, no markdown, lists, links or code. Looking things up (web_search, fetch_url, memory, skills) is fine during a call.'
+        ? 'Your answer is spoken aloud: one to three short sentences, no markdown, lists, links or code. Use your tools as usual during a call; approvals are asked on the call and answered by voice or in the chat.'
         : `Write like a text message: short and conversational. ${name} formatting only (*bold*, _italic_, ~strike~). No code blocks, tables, headings or long lists. If they need code, a document or long output, write it to a file and send it with send_file, then summarise it in a sentence. Never paste raw file contents, logs or stack traces.`,
     ];
     if (this.accessFor(role) === 'extended') {
@@ -631,9 +668,39 @@ export class PluginChannel extends BaseChannel {
 
   /** Approval prompt answered by text: 1/yes, 2/no, 3/always. No reply in 2 minutes is no. */
   async askPermission(prompt: string, targetId?: string): Promise<string> {
-    // Nobody can approve mid-call: refuse (fail-closed). The model offers to do it by message.
-    if (this.callTarget(targetId)) return 'no';
+    const call = this.callTarget(targetId);
+    if (call) return this.askOnCall(call.slice('call:'.length), prompt);
     return this.ask(`🔐 ${prompt}\n\nReply *1* (yes), *2* (no) or *3* (always for this chat).`, targetId);
+  }
+
+  /**
+   * An approval needed by a turn running for a call: asked by voice and in
+   * the chat at once. A spoken yes approves this once (never "always").
+   */
+  private askOnCall(callId: string, prompt: string): Promise<string> {
+    const approvalId = `ap${++this.approvalSeq}`;
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => this.resolveCallApproval(approvalId, 'no', 'timeout'), APPROVAL_TIMEOUT_MS);
+      this.callApprovals.set(approvalId, { callId, prompt, resolve, timer });
+      this.transport.notify?.('mercury/call/approval', { callId, approvalId, prompt: prompt.slice(0, 600) });
+      const chat = this.ownerChatId ? `${this.type}:${this.ownerChatId}` : undefined;
+      void this.send(`🔐 From your call: ${prompt}\n\nSay *yes* on the call, or reply *1* (yes) or *2* (no) here.`, chat).catch(() => {});
+    });
+  }
+
+  private resolveCallApproval(approvalId: string, answer: string, via: 'voice' | 'chat' | 'timeout'): boolean {
+    const a = this.callApprovals.get(approvalId);
+    if (!a) return false;
+    clearTimeout(a.timer);
+    this.callApprovals.delete(approvalId);
+    // A spoken answer never widens to "always".
+    const decision = via === 'voice' && answer === 'always' ? 'yes' : answer;
+    a.resolve(decision);
+    this.transport.notify?.('mercury/call/approval-resolved', { callId: a.callId, approvalId, decision, via });
+    if (via === 'chat') {
+      void this.send(decision === 'no' ? '✖ Declined. I told the call.' : '✅ Approved. Carrying on in the call.', this.ownerChatId ? `${this.type}:${this.ownerChatId}` : undefined).catch(() => {});
+    }
+    return true;
   }
 
   async askToContinue(question: string, targetId?: string): Promise<boolean> {

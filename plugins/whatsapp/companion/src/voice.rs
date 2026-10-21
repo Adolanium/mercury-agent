@@ -29,7 +29,9 @@ const WA_RATE: u32 = 16_000;
 const AI_RATE: u32 = 24_000;
 const FRAME: usize = 960;
 const RING_TIMEOUT: Duration = Duration::from_secs(45);
-const ASK_TIMEOUT: Duration = Duration::from_secs(100);
+// Long enough for a turn that waits on the owner's approval; Mercury itself replies
+// "still working" well before this when a turn is merely slow.
+const ASK_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// Outcomes of outgoing calls, keyed by call id, fed from the client event bus.
 pub type CallWatchers = Arc<Mutex<HashMap<String, mpsc::UnboundedSender<&'static str>>>>;
@@ -205,6 +207,8 @@ fn session_config(instructions: &str) -> Value {
         (for example: 'Let me look that up, it'll take a few seconds, stay with me'). Then speak its answer in your own words. \
         If you get a status update while Mercury is still working, give the user one short, natural sentence about it so they know you're still there. \
         The user can send photos and documents in the WhatsApp chat during the call: Mercury can see them, so for 'what's in this photo?' call ask_mercury. \
+        Some actions need the user's approval. When you get an approval request, ask the user plainly whether to go ahead, wait for their answer, \
+        then call answer_approval. Never answer an approval yourself: only the user's own words count. \
         Only actions that change something need the user's approval, which can't be given on a call; if ask_mercury says so, offer to do it by message. When the user says goodbye or is done, say goodbye and call end_call.";
     json!({
         "type": "session.update",
@@ -227,6 +231,12 @@ fn session_config(instructions: &str) -> Value {
                     "parameters": { "type": "object", "properties": { "question": { "type": "string" } }, "required": ["question"] },
                 },
                 { "type": "function", "name": "end_call", "description": "Hang up after saying goodbye.", "parameters": { "type": "object", "properties": {} } },
+                {
+                    "type": "function",
+                    "name": "answer_approval",
+                    "description": "Report the user's answer to the approval you just asked them about. Only call it after they answered out loud.",
+                    "parameters": { "type": "object", "properties": { "approved": { "type": "boolean", "description": "true only if the user clearly said yes" } }, "required": ["approved"] },
+                },
             ],
         },
     })
@@ -340,6 +350,11 @@ async fn bridge(
     // Answers from Mercury, spoken as soon as the voice is free (only one response may be active).
     let (answer_tx, mut answer_rx) = mpsc::unbounded_channel::<(String, String)>();
     let mut ready_answers: VecDeque<(String, String)> = VecDeque::new();
+    // The approval being asked out loud right now, and what the user has said since (transcripts).
+    let mut awaiting: Option<(String, Instant)> = None;
+    let mut user_said: Vec<(Instant, String)> = Vec::new();
+    // A spoken "yes" waiting for its transcript: (function call id, approval id, asked at, deadline).
+    let mut verifying: Option<(String, String, Instant, Instant)> = None;
     let mut status_tick = tokio::time::interval(Duration::from_secs(1));
     status_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
@@ -359,14 +374,39 @@ async fn bridge(
                 if !responding { deliver(&send_q, &mut ready_answers, &mut responding); }
             }
             _ = status_tick.tick() => {
+                if let Some((fc, _id, _asked, deadline)) = verifying.clone() {
+                    if Instant::now() >= deadline {
+                        verifying = None;
+                        ready_answers.push_back((fc, "Not approved: the user hasn't clearly said yes in their own words. Ask them again, or they can reply 1 in the WhatsApp chat.".to_string()));
+                    }
+                }
                 if !responding && !ready_answers.is_empty() {
                     deliver(&send_q, &mut ready_answers, &mut responding);
                     continue;
                 }
                 if responding || !playout.lock().unwrap().is_empty() { continue; }
-                // Something arrived in the chat (a photo, a document): let the voice mention it.
+                // Mercury needs the user's go-ahead: ask out loud.
+                if awaiting.is_none() {
+                    let next = st.call_approvals.lock().unwrap().get_mut(call_id).and_then(|l| if l.is_empty() { None } else { Some(l.remove(0)) });
+                    if let Some((id, prompt)) = next {
+                        awaiting = Some((id, Instant::now()));
+                        let text = format!("[Approval needed, not said by the user] Mercury wants to: {prompt}. Ask the user plainly, in one or two sentences, whether to go ahead. Then wait for their answer and call answer_approval. (They can also reply 1 in the WhatsApp chat.)");
+                        let _ = send_q.send(json!({ "type": "conversation.item.create", "item": { "type": "message", "role": "user", "content": [{ "type": "input_text", "text": text }] } }));
+                        let _ = send_q.send(json!({ "type": "response.create" }));
+                        responding = true;
+                        continue;
+                    }
+                }
+                // Something arrived in the chat (a photo, a document, an approval given there): let the voice mention it.
                 let context = st.call_context.lock().unwrap().remove(call_id);
-                if let Some(notes) = context.filter(|n| !n.is_empty()) {
+                if let Some(mut notes) = context.filter(|n| !n.is_empty()) {
+                    for n in notes.iter_mut() {
+                        if let Some(rest) = n.strip_prefix("RESOLVED:") {
+                            let (id, text) = rest.split_once(':').unwrap_or(("", rest));
+                            if awaiting.as_ref().map(|(a, _)| a == id).unwrap_or(false) { awaiting = None; }
+                            *n = text.to_string();
+                        }
+                    }
                     let text = format!("[Status update, not said by the user] {} Acknowledge it in one short sentence (for example 'Got your photo, want me to take a look?'), unless they're mid-sentence.", notes.join(" "));
                     let _ = send_q.send(json!({ "type": "conversation.item.create", "item": { "type": "message", "role": "user", "content": [{ "type": "input_text", "text": text }] } }));
                     let _ = send_q.send(json!({ "type": "response.create" }));
@@ -425,6 +465,17 @@ async fn bridge(
                     "conversation.item.input_audio_transcription.completed" => {
                         if let Some(t) = ev.get("transcript").and_then(Value::as_str) {
                             transcript.lock().await.push(json!({ "role": "owner", "text": t.trim() }));
+                            user_said.push((Instant::now(), t.trim().to_string()));
+                            if user_said.len() > 20 { user_said.remove(0); }
+                            if let Some((fc, id, asked_at, _)) = verifying.clone() {
+                                if let Some(v) = spoken_verdict(&user_said, asked_at) {
+                                    verifying = None;
+                                    awaiting = None;
+                                    let out = finalize_approval(st, call_id, &id, v).await;
+                                    ready_answers.push_back((fc, out));
+                                    if !responding { deliver(&send_q, &mut ready_answers, &mut responding); }
+                                }
+                            }
                         }
                     }
                     "response.output_audio_transcript.done" | "response.audio_transcript.done" => {
@@ -444,6 +495,35 @@ async fn bridge(
                             }
                             hang_up = true;
                             break Ok(());
+                        }
+                        if name == "answer_approval" {
+                            let approved = args.get("approved").and_then(Value::as_bool).unwrap_or(false);
+                            match awaiting.clone() {
+                                None => {
+                                    ready_answers.push_back((fc_id, "No approval is waiting right now.".to_string()));
+                                }
+                                Some((id, asked_at)) => {
+                                    // The user's own words decide, not the model. Transcription can lag the
+                                    // model a little, so an undecided "yes" waits up to 3s for the transcript.
+                                    match (approved, spoken_verdict(&user_said, asked_at)) {
+                                        (false, _) | (true, Some(false)) => {
+                                            awaiting = None;
+                                            let out = finalize_approval(st, call_id, &id, false).await;
+                                            ready_answers.push_back((fc_id, out));
+                                        }
+                                        (true, Some(true)) => {
+                                            awaiting = None;
+                                            let out = finalize_approval(st, call_id, &id, true).await;
+                                            ready_answers.push_back((fc_id, out));
+                                        }
+                                        (true, None) => {
+                                            verifying = Some((fc_id, id, asked_at, Instant::now() + Duration::from_secs(3)));
+                                        }
+                                    }
+                                }
+                            }
+                            if !responding { deliver(&send_q, &mut ready_answers, &mut responding); }
+                            continue;
                         }
                         if name == "ask_mercury" {
                             let q = args.get("question").and_then(Value::as_str).unwrap_or("").to_string();
@@ -483,6 +563,30 @@ async fn bridge(
     result
 }
 
+async fn finalize_approval(st: &Arc<State>, call_id: &str, approval_id: &str, yes: bool) -> String {
+    match st.out.request("mercury/call/approve", json!({ "callId": call_id, "approvalId": approval_id, "approved": yes }), Duration::from_secs(10)).await {
+        Ok(v) if v.get("ok").and_then(Value::as_bool) == Some(true) => {
+            if yes { "Approved. Mercury is carrying on; tell the user briefly.".into() } else { "Declined. Tell the user it won't be done.".into() }
+        }
+        Ok(v) => format!("That approval was already settled ({}).", v.get("reason").and_then(Value::as_str).unwrap_or("closed")),
+        Err(e) => format!("Couldn't reach Mercury: {e}"),
+    }
+}
+
+/// Did the user say yes (or no) out loud since the approval question?
+/// Only their transcribed speech counts; the model's own reading doesn't.
+pub fn spoken_verdict(said: &[(Instant, String)], since: Instant) -> Option<bool> {
+    for (at, text) in said.iter().rev() {
+        if *at < since { break; }
+        let t = format!(" {} ", text.to_lowercase().replace(|c: char| !c.is_alphanumeric() && !c.is_whitespace() && (c as u32) < 128, " "));
+        const NO: &[&str] = &[" no ", " nope ", " don't ", " dont ", " do not ", " cancel ", " stop ", " wait ", " nahi ", " nahin ", " mat ", "नहीं", "मत", "نہیں"];
+        const YES: &[&str] = &[" yes ", " yeah ", " yep ", " yup ", " sure ", " ok ", " okay ", " go ahead ", " do it ", " approve", " confirm", " please do ", " haan ", " han ", " ha ji ", " ji ", " theek ", " thik ", " kar do ", " karo ", "हाँ", "हां", "ठीक", "कर दो", "ہاں", "جی", "ٹھیک"];
+        if NO.iter().any(|w| t.contains(w)) { return Some(false); }
+        if YES.iter().any(|w| t.contains(w)) { return Some(true); }
+    }
+    None
+}
+
 /// Hand Mercury's answer to the voice model and have it speak.
 fn deliver(send_q: &mpsc::UnboundedSender<Value>, ready: &mut VecDeque<(String, String)>, responding: &mut bool) {
     if let Some((fc_id, answer)) = ready.pop_front() {
@@ -518,6 +622,18 @@ mod tests {
     fn resample_lengths() {
         assert_eq!(resample(&[0i16; 960], WA_RATE, AI_RATE).len(), 1440);
         assert_eq!(resample(&[0i16; 1440], AI_RATE, WA_RATE).len(), 960);
+    }
+
+    #[test]
+    fn only_the_users_own_yes_counts() {
+        let asked = Instant::now();
+        let after = asked + Duration::from_millis(10);
+        assert_eq!(spoken_verdict(&[(after, "Yes, go ahead".into())], asked), Some(true));
+        assert_eq!(spoken_verdict(&[(after, "haan kar do".into())], asked), Some(true));
+        assert_eq!(spoken_verdict(&[(after, "No, don't do that".into())], asked), Some(false));
+        assert_eq!(spoken_verdict(&[(after, "what did you say?".into())], asked), None);
+        // Words from before the question don't count.
+        assert_eq!(spoken_verdict(&[(asked - Duration::from_secs(5), "yes".into())], asked), None);
     }
 
     #[test]

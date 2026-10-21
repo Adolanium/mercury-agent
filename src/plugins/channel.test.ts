@@ -61,6 +61,9 @@ rl.on('line', (line) => {
       return log('progress.jsonl', msg.params);
     case 'mercury/call/context':
       return log('context.jsonl', msg.params);
+    case 'mercury/call/approval':
+    case 'mercury/call/approval-resolved':
+      return log('approvals.jsonl', { method: msg.method, ...msg.params });
     case 'mercury/channel/unlink':
       ok({});
       return notify('mercury/channel/status', { state: 'logged-out', detail: 'unlinked by owner' });
@@ -225,7 +228,7 @@ describe('plugin channels (plugin API 1.1)', () => {
   describe('voice calls', () => {
     const replies = () => {
       const f = join(pluginDataDir('whatsapp'), 'replies.jsonl');
-      return existsSync(f) ? readFileSync(f, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
+      return existsSync(f) ? readFileSync(f, 'utf8').split('\n').filter((l) => l.trim().endsWith('}')).map((l) => JSON.parse(l)) : [];
     };
     const sent = () => {
       const f = join(pluginDataDir('whatsapp'), 'out.jsonl');
@@ -256,7 +259,6 @@ describe('plugin channels (plugin API 1.1)', () => {
       expect(msg.senderRole).toBe('admin');
       expect(msg.content).toMatch(/Voice call[\s\S]*What is the weather\?/);
       // The agent replies on the call target, then finishes the turn.
-      expect(await ch.askPermission('Run git push?', msg.channelId)).toBe('no');
       await ch.send('☿ Working on it…', msg.channelId);
       await ch.send('It is sunny and 24 degrees.', msg.channelId);
       ch.endTask(msg.channelId);
@@ -287,6 +289,51 @@ describe('plugin channels (plugin API 1.1)', () => {
       await inject({ id: 'p2', senderPhone: '15550002', attachments: [{ kind: 'image', path: photo }] });
       await waitFor(() => received.length === 2); // after the call, photos are ordinary chat messages again
       expect(received[1].channelId).toBe('whatsapp:15550002@s.whatsapp.net');
+    });
+
+    describe('approvals during a call', () => {
+      const approvals = () => {
+        const f = join(pluginDataDir('whatsapp'), 'approvals.jsonl');
+        return existsSync(f) ? readFileSync(f, 'utf8').split('\n').filter((l) => l.trim().endsWith('}')).map((l) => JSON.parse(l)) : [];
+      };
+
+      it('are asked by voice and in the chat; a chat reply answers that exact approval', async () => {
+        const ch = await installChannel();
+        await inject({ id: 'o1', senderPhone: '15550002', chatId: '229012387459114@lid', text: 'hi' }); // the owner's chat, as WhatsApp addresses it
+        const answer = ch.askPermission('Write ~/Desktop/research.md', 'whatsapp:call:c3');
+        await waitFor(() => approvals().length === 1 && sent().some((m) => /From your call/.test(m.text ?? '')));
+        expect(approvals()[0]).toMatchObject({ method: 'mercury/call/approval', callId: 'c3', prompt: 'Write ~/Desktop/research.md' });
+        const prompt = sent().find((m) => /From your call/.test(m.text ?? ''));
+        expect(prompt).toMatchObject({ chatId: '229012387459114@lid' });
+        await inject({ id: 'o2', senderPhone: '15550002', chatId: '229012387459114@lid', text: '1' });
+        expect(await answer).toBe('yes');
+        expect(received.map((m) => m.content)).toEqual(['hi']); // "1" answered the approval, not a new turn
+        await waitFor(() => approvals().some((a) => a.method === 'mercury/call/approval-resolved'));
+        expect(approvals()[1]).toMatchObject({ approvalId: approvals()[0].approvalId, decision: 'yes', via: 'chat' });
+      });
+
+      it('a spoken answer approves once and never becomes "always"', async () => {
+        const ch = await installChannel();
+        const answer = ch.askPermission('Run the build', 'whatsapp:call:c4');
+        await waitFor(() => approvals().length === 1);
+        const { approvalId } = approvals()[0];
+        await callsim('mercury/call/approve', { callId: 'c4', approvalId, approved: true });
+        expect(await answer).toBe('yes');
+        await waitFor(() => replies().length === 1);
+        expect(replies()[0].result).toEqual({ ok: true });
+        // Answering again (e.g. in the chat afterwards) finds nothing open.
+        await callsim('mercury/call/approve', { callId: 'c4', approvalId, approved: true });
+        await waitFor(() => replies().length === 2);
+        expect(replies()[1].result.ok).toBe(false);
+      });
+
+      it('hanging up declines anything still waiting', async () => {
+        const ch = await installChannel();
+        const answer = ch.askPermission('Delete old logs', 'whatsapp:call:c5');
+        await waitFor(() => approvals().length === 1);
+        await inject({ callId: 'c5', direction: 'incoming', outcome: 'completed', durationSec: 10, transcript: [] }, 'callend');
+        expect(await answer).toBe('no');
+      });
     });
 
     it('tells the plugin what Mercury is doing during a call, in words a voice can say', async () => {
