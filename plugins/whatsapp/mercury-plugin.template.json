@@ -55,10 +55,29 @@
         "description": "Your own WhatsApp number (with country code). Only this number can talk to Mercury.",
         "default": ""
       },
+      "access": {
+        "type": "enum",
+        "description": "What Mercury may do in your chat: general (chat only) or extended (memory, files, tools). 'ask' asks you after linking.",
+        "options": [
+          "ask",
+          "general",
+          "extended"
+        ],
+        "default": "ask"
+      },
       "members": {
         "type": "string",
         "description": "Other numbers allowed to chat with Mercury, comma separated (they can't run admin commands).",
         "default": ""
+      },
+      "memberAccess": {
+        "type": "enum",
+        "description": "What members may do (never more than you).",
+        "options": [
+          "general",
+          "extended"
+        ],
+        "default": "general"
       },
       "allowGroups": {
         "type": "boolean",

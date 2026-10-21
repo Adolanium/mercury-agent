@@ -41,6 +41,8 @@ export const CIRCUIT_BREAKER_FAILURES = 5;
 export const BOOT_HEALTHY_AFTER_MS = 60_000;
 /** How long after start the missing-secret notice is sent (mutable for tests). */
 export const SECRET_NOTICE_DELAY = { ms: 15_000 };
+/** Channel-plugin settings read by Mercury on every message, so changing them needs no restart. */
+const LIVE_CHANNEL_SETTINGS = new Set(['access', 'memberAccess', 'members', 'allowGroups']);
 const BOOT_GUARD_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 interface Running {
@@ -269,6 +271,7 @@ export class PluginManager {
           { request: (method, params, timeoutMs) => runtimeRef ? runtimeRef.channelRequest(method, params, timeoutMs) : Promise.reject(new Error('not running')) },
           () => resolvedSettings(manifest),
           (m) => { void this.notifyFn(m); },
+          (key, value) => this.setSetting(id, key, value),
         );
       }
       const deps = {
@@ -503,7 +506,9 @@ export class PluginManager {
     const values = { ...resolvedSettings(manifest), [key]: coerced };
     writeSettings(id, values, manifest.settings?.version ?? 1);
     // Settings are read at start: restart a running plugin so it sees them.
-    if (this.running.has(id)) {
+    // Channel settings Mercury itself reads (who may talk, at what level) apply
+    // live: restarting would drop the plugin's connection for nothing.
+    if (this.running.has(id) && !(manifest.contributes.channel && LIVE_CHANNEL_SETTINGS.has(key))) {
       await this.stopRuntime(id);
       await this.reconcile();
     }

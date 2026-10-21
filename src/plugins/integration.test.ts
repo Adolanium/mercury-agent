@@ -77,3 +77,17 @@ describe('approvePluginTool', () => {
     expect(await pm.approvePluginTool('notes__write', 'x')).toBe(false);
   });
 });
+
+describe('general access disables every tool for the turn', () => {
+  it('getTools and getPlanTools return nothing while disabled', async () => {
+    const { CapabilityRegistry } = await import('../capabilities/registry.js');
+    const reg = new CapabilityRegistry();
+    reg.registerAll();
+    expect(Object.keys(reg.getTools()).length).toBeGreaterThan(0);
+    reg.setToolsDisabled(true);
+    expect(reg.getTools()).toEqual({});
+    expect(reg.getPlanTools()).toEqual({});
+    reg.setToolsDisabled(false);
+    expect(Object.keys(reg.getTools()).length).toBeGreaterThan(0);
+  });
+});

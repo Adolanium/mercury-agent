@@ -146,6 +146,21 @@ export class CapabilityRegistry {
     return { channelId: ctx.channelId, channelType: ctx.channelType };
   }
 
+  private toolsDisabled = false;
+
+  /**
+   * No tools at all for the current turn (a chat channel at "general"
+   * access). Enforced here so every code path that asks for tools, including
+   * the plan and narration-guard paths, gets none.
+   */
+  setToolsDisabled(disabled: boolean): void {
+    this.toolsDisabled = disabled;
+  }
+
+  areToolsDisabled(): boolean {
+    return this.toolsDisabled;
+  }
+
   getCwd(): string {
     return this.currentCwd;
   }
@@ -281,6 +296,7 @@ export class CapabilityRegistry {
   }
 
   getTools(): Record<string, Tool> {
+    if (this.toolsDisabled) return {};
     // Members on a channel that distinguishes roles (e.g. Telegram) must not be
     // able to install skills: `install_skill` is the escalation path from chat
     // access to arbitrary local execution and is documented as admin-only.
@@ -312,6 +328,7 @@ export class CapabilityRegistry {
 
   /** Return tools filtered for plan mode — read-only tools only */
   getPlanTools(): Record<string, Tool> {
+    if (this.toolsDisabled) return {};
     const blocked = new Set([
       'write_file', 'create_file', 'delete_file', 'edit_file',
       'run_command', 'cd',

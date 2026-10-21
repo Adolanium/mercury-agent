@@ -148,10 +148,18 @@ export class PluginChannel extends BaseChannel {
     /** The plugin's current settings (owner, members, allowGroups). */
     private readonly settings: () => Record<string, unknown>,
     private readonly notifyOwner: (message: string) => void,
+    /** Persist a plugin setting without restarting it (access level, members). */
+    private readonly saveSetting: (key: string, value: unknown) => Promise<void> = async () => {},
   ) {
     super();
     this.type = manifest.contributes.channel!.type as ChannelType;
   }
+
+  /** Phone chats: no per-step messages or "Working…" heartbeats; keep "typing…" alive instead. */
+  readonly quietProgress = true;
+
+  /** Owner chats waiting for the one-time "how much can Mercury do here?" answer. */
+  private awaitingAccessChoice = new Set<string>();
 
   get pluginId(): string {
     return this.manifest.id;
@@ -245,7 +253,7 @@ export class PluginChannel extends BaseChannel {
         senderRole: 'admin',
         content: `[Voice call — the owner asked this out loud. Answer in one to three short spoken sentences: no markdown, lists, links or code. Anything that needs approval can't be done during a call; say so and offer to do it by message.]\n${question}`,
         timestamp: Date.now(),
-        metadata: { pluginId: this.manifest.id, voiceCall: true, callId },
+        metadata: { pluginId: this.manifest.id, voiceCall: true, callId, channelAccess: this.accessFor('admin'), channelGuidance: this.guidance('admin', false, true) },
       });
     });
   }
@@ -299,6 +307,10 @@ export class PluginChannel extends BaseChannel {
       pairCode: str(p.pairCode, 32),
       at: Date.now(),
     });
+    if (state === 'connected' && prev !== 'connected' && this.ownerAccess() === 'ask') {
+      // Linked: ask the owner once how much Mercury may do here.
+      setTimeout(() => this.askAccessChoice(), 3000).unref?.();
+    }
     if (state === 'logged-out' && prev !== 'logged-out') {
       this.notifyOwner(`⚠️ ${this.manifest.name} was logged out${this.status.detail ? `: ${this.status.detail}` : ''}. Link it again with /plugins pair ${this.manifest.id}.`);
     }
@@ -342,6 +354,7 @@ export class PluginChannel extends BaseChannel {
     }
 
     const text = typeof p.text === 'string' ? p.text.slice(0, 20_000) : '';
+    if (role === 'admin' && text && this.handleAccessReply(p.chatId, text)) return;
     const pending = this.pending.get(p.chatId);
     if (pending && text) {
       const answer = normalizeReply(text);
@@ -375,9 +388,102 @@ export class PluginChannel extends BaseChannel {
       senderRole: role,
       content,
       timestamp: typeof p.timestamp === 'number' ? p.timestamp : Date.now(),
-      metadata: { pluginId: this.manifest.id, chatId: p.chatId, isGroup: p.isGroup === true, attachments: files },
+      metadata: {
+        pluginId: this.manifest.id,
+        chatId: p.chatId,
+        isGroup: p.isGroup === true,
+        attachments: files,
+        channelAccess: this.accessFor(role),
+        channelGuidance: this.guidance(role, p.isGroup === true),
+      },
     };
+    if (role === 'admin' && this.ownerAccess() === 'ask' && !this.awaitingAccessChoice.has(p.chatId)) {
+      // Not chosen yet: answer at General, and ask (once) after this reply.
+      setTimeout(() => this.askAccessChoice(), 1500).unref?.();
+    }
     this.emit(msg);
+  }
+
+  // ── access levels ────────────────────────────────────────────────────
+
+  /** The owner's chosen level: 'ask' until they pick one after linking. */
+  ownerAccess(): 'ask' | 'general' | 'extended' {
+    const v = String(this.settings().access ?? 'ask');
+    return v === 'general' || v === 'extended' ? v : 'ask';
+  }
+
+  /** What a sender may do here. Members never exceed the owner's level. */
+  accessFor(role: 'admin' | 'member'): 'general' | 'extended' {
+    const owner = this.ownerAccess() === 'extended' ? 'extended' : 'general';
+    if (role === 'admin') return owner;
+    return owner === 'extended' && String(this.settings().memberAccess ?? 'general') === 'extended' ? 'extended' : 'general';
+  }
+
+  /** Told to the model every turn: where it is, who it's talking to, what it may do, how to write. */
+  guidance(role: 'admin' | 'member', isGroup: boolean, voiceCall = false): string {
+    const name = this.manifest.name;
+    const who = role === 'admin' ? 'the owner (the person you work for)' : 'an approved member, not the owner';
+    const where = voiceCall ? `a ${name} voice call` : `${name}${isGroup ? ', in a group chat' : ''}, a phone chat app`;
+    const lines = [
+      `## Channel: ${name}`,
+      `You're talking with ${who} on ${where}.`,
+      voiceCall
+        ? 'Your answer is spoken aloud: one to three short sentences, no markdown, lists, links or code.'
+        : `Write like a text message: short and conversational. ${name} formatting only (*bold*, _italic_, ~strike~). No code blocks, tables, headings or long lists. If they need code, a document or long output, write it to a file and send it with send_file, then summarise it in a sentence. Never paste raw file contents, logs or stack traces.`,
+    ];
+    if (this.accessFor(role) === 'extended') {
+      lines.push(role === 'admin'
+        ? 'Access: Extended. Use your tools, files and memory as you normally would. Actions that need approval are confirmed by the owner replying 1 (yes), 2 (no) or 3 (always) in this chat: ask once, clearly, saying what will happen.'
+        : 'Access: Extended for members. You may use tools, but never share the owner\'s private details (memory, files, contacts, accounts) with this member unless the owner told you to.');
+    } else {
+      lines.push(role === 'admin'
+        ? 'Access: General. In this chat you have no tools, files or personal memory. Help with conversation and general knowledge. If something needs tools or personal context, say so in one line and that they can switch this chat to Extended by sending: /access extended'
+        : 'Access: General. You have no tools, files or memory here, and must not share anything personal about the owner. Help with general questions only. If they ask for more, say only the owner can allow it.');
+    }
+    return lines.join('\n');
+  }
+
+  private askAccessChoice(): void {
+    const chat = this.defaultTarget();
+    if (!chat || this.ownerAccess() !== 'ask' || this.awaitingAccessChoice.has(chat)) return;
+    this.awaitingAccessChoice.add(chat);
+    void this.send([
+      `☿ How much should I do for you on ${this.manifest.name}?`,
+      '',
+      '*1 · General*: chat and general knowledge only. No tools, files or personal memory.',
+      '*2 · Extended*: everything I can do elsewhere (memory, files, tools, actions). Anything risky still asks you first.',
+      '',
+      'Reply *1* or *2*. You can change it anytime with /access general or /access extended.',
+    ].join('\n')).catch(() => this.awaitingAccessChoice.delete(chat));
+  }
+
+  /** Owner messages that set the access level. Returns true when handled (not passed to the agent). */
+  private handleAccessReply(chatId: string, text: string): boolean {
+    const t = text.trim().toLowerCase().replace(/[.!]/g, '');
+    let choice: 'general' | 'extended' | null = null;
+    const cmd = /^\/access(?:\s+(\S+))?$/.exec(t);
+    if (cmd) {
+      if (!cmd[1]) {
+        void this.send(`Access here is *${this.ownerAccess() === 'extended' ? 'Extended' : 'General'}*. Change it with /access general or /access extended.`, `${this.type}:${chatId}`).catch(() => {});
+        return true;
+      }
+      choice = cmd[1] === 'extended' || cmd[1] === 'full' || cmd[1] === '2' ? 'extended' : cmd[1] === 'general' || cmd[1] === '1' ? 'general' : null;
+      if (!choice) {
+        void this.send('Use /access general or /access extended.', `${this.type}:${chatId}`).catch(() => {});
+        return true;
+      }
+    } else if (this.awaitingAccessChoice.size && (t === '1' || t === '2' || t === 'general' || t === 'extended')) {
+      choice = t === '2' || t === 'extended' ? 'extended' : 'general';
+    } else {
+      return false;
+    }
+    this.awaitingAccessChoice.clear();
+    void this.saveSetting('access', choice)
+      .then(() => this.send(choice === 'extended'
+        ? '✅ *Extended*: I can use my memory, files and tools here. I\'ll still ask before anything risky. Switch back anytime with /access general.'
+        : '✅ *General*: chat and general knowledge only here. Switch anytime with /access extended.', `${this.type}:${chatId}`))
+      .catch((err) => this.send(`Couldn't change access: ${(err as Error).message}`, `${this.type}:${chatId}`).catch(() => {}));
+    return true;
   }
 
   // ── Channel ──────────────────────────────────────────────────────────

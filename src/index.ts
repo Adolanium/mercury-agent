@@ -2614,6 +2614,16 @@ async function runAgent(isDaemon: boolean = false): Promise<void> {
       return;
     }
 
+    // Any other chat channel (plugin channels such as WhatsApp): the file goes
+    // back to the chat that asked for it.
+    if (channelType !== 'cli' && channelType !== 'web' && channelType !== 'internal') {
+      const current = channels.get(channelType as Parameters<typeof channels.get>[0]);
+      if (current) {
+        await current.sendFile(filePath, channelId);
+        return;
+      }
+    }
+
     if (config.channels.telegram.enabled && telegram && getTelegramApprovedUsers(config).length > 0) {
       await telegram.sendFile(filePath);
       return;

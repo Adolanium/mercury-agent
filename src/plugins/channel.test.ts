@@ -71,7 +71,13 @@ function channelPlugin(root: string, id = 'whatsapp', extra: Record<string, unkn
     engines: { mercury: '>=1.0.0', pluginApi: '^1.1.0' },
     server: { command: 'node', args: ['server.cjs'] },
     contributes: { tools: ['inject', 'callsim', 'callend'].map((name) => ({ name, description: 'Test hook.', readOnly: true })), channel: { type: 'whatsapp' } },
-    settings: { version: 1, fields: { owner: { type: 'string', default: '' }, members: { type: 'string', default: '' }, allowGroups: { type: 'boolean', default: false } } },
+    settings: { version: 1, fields: {
+      owner: { type: 'string', default: '' },
+      access: { type: 'enum', options: ['ask', 'general', 'extended'], default: 'ask' },
+      members: { type: 'string', default: '' },
+      memberAccess: { type: 'enum', options: ['general', 'extended'], default: 'general' },
+      allowGroups: { type: 'boolean', default: false },
+    } },
     ...extra,
   }));
   writeFileSync(join(dir, 'server.cjs'), CHANNEL_SERVER);
@@ -262,6 +268,68 @@ describe('plugin channels (plugin API 1.1)', () => {
       expect(texts[0]).toMatch(/Call with you ended · 1m 15s[\s\S]*You: Any news\?[\s\S]*Mercury: Two new emails\./);
       expect(texts[1]).toMatch(/tried to call you about: The deploy failed\. No answer/);
       expect(sent().every((m) => m.chatId === '15550002@s.whatsapp.net')).toBe(true);
+    });
+  });
+
+  describe('access levels', () => {
+    const sentTexts = () => {
+      const f = join(pluginDataDir('whatsapp'), 'out.jsonl');
+      return existsSync(f) ? readFileSync(f, 'utf8').trim().split('\n').map((l) => JSON.parse(l).text as string) : [];
+    };
+
+    it('before the owner chooses: General, told it is on WhatsApp, and asked once', async () => {
+      await installChannel();
+      await inject({ id: 'g1', senderPhone: '15550002', text: 'hello' });
+      await inject({ id: 'g2', senderPhone: '15550002', text: 'and again' });
+      expect(received[0].metadata?.channelAccess).toBe('general');
+      const g = String(received[0].metadata?.channelGuidance);
+      expect(g).toMatch(/talking with the owner \(the person you work for\) on WhatsApp, a phone chat app/);
+      expect(g).toMatch(/No code blocks/);
+      expect(g).toMatch(/Access: General[\s\S]*\/access extended/);
+      await waitFor(() => sentTexts().some((t) => /How much should I do/.test(t)), 4000);
+      await sleep(1600);
+      expect(sentTexts().filter((t) => /How much should I do/.test(t))).toHaveLength(1);
+    });
+
+    it('replying 2 switches to Extended live, without restarting the plugin', async () => {
+      await installChannel();
+      const before = (await mgr.info('whatsapp'))?.running;
+      await inject({ id: 'e1', senderPhone: '15550002', text: 'hi' });
+      await waitFor(() => sentTexts().some((t) => /How much should I do/.test(t)), 4000);
+      await inject({ id: 'e2', senderPhone: '15550002', text: '2' });
+      await waitFor(() => sentTexts().some((t) => /Extended/.test(t) && /✅/.test(t)));
+      await inject({ id: 'e3', senderPhone: '15550002', text: 'what is on my calendar' });
+      expect(received.map((m) => m.content)).toEqual(['hi', 'what is on my calendar']); // "2" never reached the agent
+      expect(received[1].metadata?.channelAccess).toBe('extended');
+      expect(String(received[1].metadata?.channelGuidance)).toMatch(/Access: Extended/);
+      expect(before).toBe(true);
+      expect(getPluginChannel('whatsapp')?.isReady() !== undefined).toBe(true);
+      expect(registered).toHaveLength(1); // same channel instance: no restart happened
+    });
+
+    it('/access general goes back; /access shows the level', async () => {
+      await installChannel();
+      await mgr.setSetting('whatsapp', 'access', 'extended');
+      await inject({ id: 'a1', senderPhone: '15550002', text: '/access' });
+      await inject({ id: 'a2', senderPhone: '15550002', text: '/access general' });
+      await waitFor(() => sentTexts().some((t) => /✅ \*General\*/.test(t)));
+      await inject({ id: 'a3', senderPhone: '15550002', text: 'hello' });
+      expect(sentTexts().some((t) => /Access here is \*Extended\*/.test(t))).toBe(true);
+      expect(received.map((m) => [m.content, m.metadata?.channelAccess])).toEqual([['hello', 'general']]);
+    });
+
+    it('members never exceed the owner, and default to General', async () => {
+      await installChannel('+15550002', '15550003');
+      await mgr.setSetting('whatsapp', 'access', 'extended');
+      await inject({ id: 'm1', senderPhone: '15550003', text: 'hi' });
+      expect(received[0].metadata?.channelAccess).toBe('general');
+      expect(String(received[0].metadata?.channelGuidance)).toMatch(/approved member, not the owner[\s\S]*only the owner can allow/);
+      await mgr.setSetting('whatsapp', 'memberAccess', 'extended');
+      await inject({ id: 'm2', senderPhone: '15550003', text: 'hi again' });
+      expect(received[1].metadata?.channelAccess).toBe('extended');
+      await mgr.setSetting('whatsapp', 'access', 'general');
+      await inject({ id: 'm3', senderPhone: '15550003', text: 'and now' });
+      expect(received[2].metadata?.channelAccess).toBe('general');
     });
   });
 });

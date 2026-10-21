@@ -1611,6 +1611,9 @@ export class Agent {
         (channel as CLIChannel).sendHeartbeat(heartbeatText);
       } else if (channel instanceof WebChannel) {
         (channel as WebChannel).sendHeartbeat(heartbeatText, msg.channelId);
+      } else if (channel && (channel as { quietProgress?: boolean }).quietProgress) {
+        // Phone chats (plugin channels like WhatsApp): keep "typing…" alive instead of messages.
+        void channel.typing(msg.channelId).catch(() => {});
       } else if (channel) {
         void channel.send(heartbeatText, msg.channelId).catch((e) => logger.warn({ e }, 'channel send failed'));
       }
@@ -2609,7 +2612,15 @@ export class Agent {
       const loopWarning = detectRepetitionLoop(recentMemory);
       if (loopWarning) contextBlocks.push(loopWarning);
 
-      contextBlocks.push(...(await this.retrieveMemoryContext(msg)));
+      // Chat channels can carry an access level and guidance (plugin API 1.1,
+      // e.g. WhatsApp): "general" means no tools, no personal memory and no
+      // learning from the turn; the guidance tells the model where it is and
+      // how to write for it.
+      const generalAccess = msg.metadata?.channelAccess === 'general';
+      this.capabilities.setToolsDisabled(generalAccess);
+      const guidance = typeof msg.metadata?.channelGuidance === 'string' ? msg.metadata.channelGuidance.slice(0, 2000) : '';
+      if (guidance) contextBlocks.unshift(guidance);
+      if (!generalAccess) contextBlocks.push(...(await this.retrieveMemoryContext(msg)));
 
       for (const m of recentMemory) messages.push(toModelMessage(m));
 
@@ -3035,7 +3046,8 @@ export class Agent {
                         }
                       }
                     } else {
-                      void channel.send(`  [Using: ${names}]`, msg.channelId).catch((e) => logger.warn({ e }, 'channel send failed'));
+                      if ((channel as { quietProgress?: boolean }).quietProgress) void channel.typing(msg.channelId).catch(() => {});
+                      else void channel.send(`  [Using: ${names}]`, msg.channelId).catch((e) => logger.warn({ e }, 'channel send failed'));
                     }
                     this.markProgress();
                   }
@@ -3565,6 +3577,7 @@ export class Agent {
       while (
         !loopAbortController.signal.aborted
         && this.programmingMode.isExecute()
+        && !this.capabilities.areToolsDisabled()
         && executeGuardRounds < (narrationSecondWind ? MAX_EXECUTE_CONTINUATIONS * 2 : MAX_EXECUTE_CONTINUATIONS)
         // A turn that ends by asking the user something in plain text is a
         // legitimate pause — forcing rounds here looped the model forever
@@ -3822,6 +3835,7 @@ export class Agent {
         !loopAbortController.signal.aborted
         && turnEnd() === 'text-stop'
         && this.programmingMode.isExecute()
+        && !this.capabilities.areToolsDisabled()
         && verificationContinuations < MAX_VERIFICATION_CONTINUATIONS
         && shouldRequireVerification({
           taskText: msg.content,
@@ -3908,6 +3922,7 @@ export class Agent {
       if (
         !loopAbortController.signal.aborted
         && this.programmingMode.isExecute()
+        && !this.capabilities.areToolsDisabled()
         && !responseAsksUser(result.text || '')
         && shouldForceExecuteContinuation({
           taskText: msg.content,
@@ -3934,6 +3949,7 @@ export class Agent {
       if (
         !loopAbortController.signal.aborted
         && this.programmingMode.isExecute()
+        && !this.capabilities.areToolsDisabled()
         && lastVerification != null
         && !verifiedAfterLastMutation()
         && !responseAsksUser(result.text || '')
@@ -4049,7 +4065,7 @@ export class Agent {
         channelType: msg.channelType,
       });
 
-      if (msg.channelType !== 'internal') {
+      if (msg.channelType !== 'internal' && msg.metadata?.channelAccess !== 'general') {
         this.extractMemory(msg.content, finalText).catch(err => {
           logger.warn({ err }, 'Memory extraction failed');
         });
@@ -4151,6 +4167,7 @@ export class Agent {
       stallWatchdog.stop();
       stopHeartbeat();
       this.finalizeChannelTask(msg);
+      this.capabilities.setToolsDisabled(false);
       this.currentMessage = null;
       this.currentAbort = null;
       this.currentAbortReason = null;
