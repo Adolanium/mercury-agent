@@ -11,6 +11,7 @@ import { Hono, type Context } from 'hono';
 import { isLoopbackRequest } from '../middleware.js';
 import { getPluginManager } from '../../plugins/manager.js';
 import { localService } from '../../plugins/service.js';
+import { qrSvg } from '../../plugins/qr-svg.js';
 
 const plugins = new Hono();
 
@@ -114,7 +115,10 @@ plugins.post('/api/plugins/:id/settings', async (c) => {
 plugins.get('/api/plugins/:id/channel', (c) => {
   const denied = localOnly(c);
   if (denied) return denied;
-  return c.json({ status: getPluginManager().channelStatus(c.req.param('id')) });
+  const status = getPluginManager().channelStatus(c.req.param('id'));
+  // qr for the terminal (`mercury plugins pair`), qrImage for the dashboard.
+  const qrImage = status?.qr ? `data:image/svg+xml;base64,${Buffer.from(qrSvg(status.qr)).toString('base64')}` : undefined;
+  return c.json({ status: status ? { ...status, qrImage } : null });
 });
 
 plugins.post('/api/plugins/:id/pair', async (c) => {

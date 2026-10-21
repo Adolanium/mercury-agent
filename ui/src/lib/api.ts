@@ -297,6 +297,16 @@ export interface PluginItem {
   lastError?: string;
   incompatibleReason?: string;
   settings?: PluginSetting[];
+  channel?: { type: string; state?: string; detail?: string; account?: string };
+  missing?: Array<{ key: string; unlocks: string; needs: string; fix: string }>;
+}
+
+export interface PluginChannelStatus {
+  state: string;
+  detail?: string;
+  account?: string;
+  pairCode?: string;
+  qrImage?: string;
 }
 
 export const plugins = {
@@ -312,6 +322,10 @@ export const plugins = {
   uninstall: (id: string, purge = false) => del<{ ok: boolean }>(`/api/plugins/${encodeURIComponent(id)}${purge ? "?purge=1" : ""}`),
   setSetting: (id: string, key: string, value: unknown) =>
     post<{ ok: boolean }>(`/api/plugins/${encodeURIComponent(id)}/settings`, { key, value }),
+  channel: (id: string) => get<{ status: PluginChannelStatus | null }>(`/api/plugins/${encodeURIComponent(id)}/channel`),
+  pair: (id: string, method: "qr" | "code", phone?: string) =>
+    post<{ status: PluginChannelStatus }>(`/api/plugins/${encodeURIComponent(id)}/pair`, { method, phone }),
+  unlink: (id: string) => post<{ ok: boolean }>(`/api/plugins/${encodeURIComponent(id)}/unlink`, {}),
 };
 
 // ── Permissions ──

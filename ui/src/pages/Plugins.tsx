@@ -19,6 +19,9 @@ import {
   Search,
   Cpu,
   Boxes,
+  Link2,
+  Unlink,
+  AlertTriangle,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -44,7 +47,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
-import api, { type PluginItem, type PluginSetting } from "@/lib/api";
+import api, { type PluginChannelStatus, type PluginItem, type PluginSetting } from "@/lib/api";
 
 /* ── Helpers ────────────────────────────────────────────────── */
 
@@ -486,6 +489,13 @@ function PluginDetails({ p, busy, safeMode, onAct, onInstall, onClose }: {
         </p>
         {note && <p className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">{note}</p>}
         <PermissionList p={p} />
+        {(p.missing ?? []).map((m) => (
+          <p key={m.key} className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-xs">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+            <span><strong>{m.unlocks}</strong> needs {m.needs}. {m.fix}</span>
+          </p>
+        ))}
+        {p.channel && p.installedVersion && <ChannelPanel id={p.id} enabled={p.enabled} />}
         {p.settings && p.settings.length > 0 && (
           <div className="space-y-3 rounded-lg border border-border p-3">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Settings</p>
@@ -551,5 +561,119 @@ function PluginDetails({ p, busy, safeMode, onAct, onInstall, onClose }: {
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+/* ── Channel plugins (e.g. WhatsApp): link, status, unlink ───── */
+
+const CHANNEL_STATE: Record<string, string> = {
+  connected: "Linked",
+  "needs-pairing": "Not linked yet",
+  pairing: "Waiting for you to link",
+  starting: "Starting…",
+  disconnected: "Reconnecting…",
+  "logged-out": "Logged out",
+  error: "Error",
+};
+
+function ChannelPanel({ id, enabled }: { id: string; enabled: boolean }) {
+  const [status, setStatus] = useState<PluginChannelStatus | null>(null);
+  const [linking, setLinking] = useState(false);
+  const [phone, setPhone] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const r = await api.plugins.channel(id);
+      setStatus(r.status);
+      return r.status;
+    } catch (err) {
+      setError(errorText(err, "Couldn't read the connection status"));
+      return null;
+    }
+  }, [id]);
+
+  useEffect(() => {
+    if (enabled) void refresh();
+  }, [enabled, refresh]);
+
+  // While linking, poll so the QR refreshes and "Linked" shows up by itself.
+  useEffect(() => {
+    if (!linking) return;
+    const t = setInterval(async () => {
+      const s = await refresh();
+      if (s?.state === "connected" || s?.state === "error") setLinking(false);
+    }, 2000);
+    const stop = setTimeout(() => setLinking(false), 3 * 60_000);
+    return () => { clearInterval(t); clearTimeout(stop); };
+  }, [linking, refresh]);
+
+  async function pair(method: "qr" | "code") {
+    setError(null);
+    try {
+      const r = await api.plugins.pair(id, method, method === "code" ? phone : undefined);
+      setStatus(r.status);
+      setLinking(r.status.state !== "connected");
+      if (method === "qr") await refresh();
+    } catch (err) {
+      setError(errorText(err, "Couldn't start linking"));
+    }
+  }
+
+  async function unlink() {
+    if (!window.confirm("Log Mercury out of this account? You can link it again any time.")) return;
+    setError(null);
+    try {
+      await api.plugins.unlink(id);
+      await refresh();
+    } catch (err) {
+      setError(errorText(err, "Couldn't unlink"));
+    }
+  }
+
+  if (!enabled) return <p className="text-xs text-muted-foreground">Enable the plugin to link an account.</p>;
+  const state = status?.state ?? "starting";
+  const connected = state === "connected";
+  return (
+    <div className="space-y-3 rounded-lg border border-border p-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Account</p>
+        <Badge variant={connected ? "success" : state === "error" || state === "logged-out" ? "destructive" : "secondary"}>
+          {CHANNEL_STATE[state] ?? state}
+        </Badge>
+      </div>
+      {status?.account && <p className="text-sm">Linked as <span className="font-mono">+{status.account}</span></p>}
+      {status?.detail && !connected && <p className="text-xs text-muted-foreground">{status.detail}</p>}
+      {linking && status?.qrImage && (
+        <div className="flex flex-col items-center gap-2">
+          <img src={status.qrImage} alt="Scan this QR code with the phone you are linking" className="h-56 w-56 rounded-md bg-white p-2" />
+          <p className="text-center text-xs text-muted-foreground">On the spare phone: WhatsApp → Settings → Linked devices → Link a device, then scan. It refreshes every ~20 seconds.</p>
+        </div>
+      )}
+      {linking && status?.pairCode && (
+        <div className="text-center">
+          <p className="font-mono text-2xl tracking-widest">{status.pairCode}</p>
+          <p className="text-xs text-muted-foreground">On the spare phone: Linked devices → Link a device → Link with phone number instead, then type this code.</p>
+        </div>
+      )}
+      {!connected && (
+        <div className="space-y-2">
+          <Button size="sm" onClick={() => pair("qr")} className="w-full">
+            <Link2 className="h-4 w-4" />Link with QR code
+          </Button>
+          <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (phone.trim()) void pair("code"); }}>
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Or the spare number, e.g. +15550001111" className="h-8 text-sm" />
+            <Button size="sm" variant="outline" type="submit" disabled={!phone.trim()}>Get code</Button>
+          </form>
+          <p className="text-xs text-amber-600 dark:text-amber-400">Unofficial protocol: link a spare number you can afford to lose, not your main one.</p>
+        </div>
+      )}
+      {connected && (
+        <Button size="sm" variant="outline" onClick={unlink}>
+          <Unlink className="h-4 w-4" />Unlink
+        </Button>
+      )}
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
   );
 }
