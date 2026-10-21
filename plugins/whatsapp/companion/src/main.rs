@@ -92,6 +92,8 @@ pub struct State {
     pub call_watchers: voice::CallWatchers,
     /// What Mercury is doing right now for each call's pending question (from mercury/call/progress).
     pub call_activity: std::sync::Mutex<HashMap<String, String>>,
+    /// Things that happened in the chat during a call (a photo arrived), to mention at the next pause.
+    pub call_context: std::sync::Mutex<HashMap<String, Vec<String>>>,
 }
 
 pub fn log(msg: impl AsRef<str>) {
@@ -138,6 +140,7 @@ async fn main() -> anyhow::Result<()> {
         recent_calls: Mutex::new(Vec::new()),
         call_watchers: Arc::new(Mutex::new(HashMap::new())),
         call_activity: std::sync::Mutex::new(HashMap::new()),
+        call_context: std::sync::Mutex::new(HashMap::new()),
     });
 
     let mut lines = BufReader::new(tokio::io::stdin()).lines();
@@ -172,6 +175,12 @@ async fn handle(st: Arc<State>, msg: Value) {
         if method == "mercury/call/progress" {
             if let (Some(call), Some(activity)) = (params.get("callId").and_then(Value::as_str), params.get("activity").and_then(Value::as_str)) {
                 st.call_activity.lock().unwrap().insert(call.to_string(), activity.chars().take(80).collect());
+            }
+            return;
+        }
+        if method == "mercury/call/context" {
+            if let (Some(call), Some(text)) = (params.get("callId").and_then(Value::as_str), params.get("text").and_then(Value::as_str)) {
+                st.call_context.lock().unwrap().entry(call.to_string()).or_default().push(text.chars().take(400).collect());
             }
             return;
         }

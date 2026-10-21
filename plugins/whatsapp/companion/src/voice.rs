@@ -204,6 +204,7 @@ fn session_config(instructions: &str) -> Value {
         Before calling it for anything that searches the web or reads pages, tell the user it can take a few seconds and they can stay on the line \
         (for example: 'Let me look that up, it'll take a few seconds, stay with me'). Then speak its answer in your own words. \
         If you get a status update while Mercury is still working, give the user one short, natural sentence about it so they know you're still there. \
+        The user can send photos and documents in the WhatsApp chat during the call: Mercury can see them, so for 'what's in this photo?' call ask_mercury. \
         Only actions that change something need the user's approval, which can't be given on a call; if ask_mercury says so, offer to do it by message. When the user says goodbye or is done, say goodbye and call end_call.";
     json!({
         "type": "session.update",
@@ -362,9 +363,18 @@ async fn bridge(
                     deliver(&send_q, &mut ready_answers, &mut responding);
                     continue;
                 }
+                if responding || !playout.lock().unwrap().is_empty() { continue; }
+                // Something arrived in the chat (a photo, a document): let the voice mention it.
+                let context = st.call_context.lock().unwrap().remove(call_id);
+                if let Some(notes) = context.filter(|n| !n.is_empty()) {
+                    let text = format!("[Status update, not said by the user] {} Acknowledge it in one short sentence (for example 'Got your photo, want me to take a look?'), unless they're mid-sentence.", notes.join(" "));
+                    let _ = send_q.send(json!({ "type": "conversation.item.create", "item": { "type": "message", "role": "user", "content": [{ "type": "input_text", "text": text }] } }));
+                    let _ = send_q.send(json!({ "type": "response.create" }));
+                    responding = true;
+                    continue;
+                }
                 // Keep the caller company while a lookup runs: a short spoken update
                 // after ~8s, then every ~14s, never over the model or the caller.
-                if responding || !playout.lock().unwrap().is_empty() { continue; }
                 let due = {
                     let mut p = pending.lock().unwrap();
                     let now = Instant::now();

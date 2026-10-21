@@ -26,6 +26,7 @@
  *     mercury/call/ended       notification { callId, direction, outcome, durationSec, transcript, reason? }
  *   Mercury → plugin during a call
  *     mercury/call/progress    notification { callId, activity }   (what an ask_mercury turn is doing now)
+ *     mercury/call/context     notification { callId, text }       (something happened in the chat, e.g. a photo arrived)
  *
  * During a call nobody can approve anything: approvals asked on a call are
  * refused (fail-closed), and the model is told to offer doing it by message.
@@ -161,6 +162,21 @@ export class PluginChannel extends BaseChannel {
   private callAsks = new Map<string, { chunks: string[]; resolve: (answer: string) => void; timer: ReturnType<typeof setTimeout> }>();
   /** Call targets whose turn outlived the call question: later output goes to the owner's chat. */
   private overflow = new Set<string>();
+  /** Calls in progress, and the files the owner sent in the chat during each (for the voice to ask about). */
+  private activeCalls = new Map<string, { since: number; files: Array<{ path: string; kind: string; name: string; mime?: string }> }>();
+
+  private callStarted(callId: string): void {
+    if (!callId) return;
+    this.activeCalls.set(callId, { since: Date.now(), files: [] });
+    // A call that never reported its end is forgotten after 2 hours.
+    for (const [id, c] of this.activeCalls) if (Date.now() - c.since > 2 * 3600_000) this.activeCalls.delete(id);
+  }
+
+  private currentCall(): [string, { since: number; files: Array<{ path: string; kind: string; name: string; mime?: string }> }] | undefined {
+    let latest: [string, { since: number; files: Array<{ path: string; kind: string; name: string; mime?: string }> }] | undefined;
+    for (const e of this.activeCalls) if (!latest || e[1].since > latest[1].since) latest = e;
+    return latest;
+  }
 
   constructor(
     private readonly manifest: PluginManifest,
@@ -233,9 +249,11 @@ export class PluginChannel extends BaseChannel {
           void this.send('📞 I couldn\'t answer your call: voice calls need an OpenAI provider. Add your OpenAI key once in the dashboard (Providers) or with `mercury doctor`, and calls will work.').catch(() => {});
           return { accept: false, reason: 'no voice provider' };
         }
+        this.callStarted(String(p.callId ?? ''));
         return { accept: true, instructions: voiceBriefing() };
       }
       case 'mercury/call/briefing':
+        this.callStarted(String(p.callId ?? ''));
         return { instructions: voiceBriefing() };
       case 'mercury/call/ask': {
         const callId = typeof p.callId === 'string' ? p.callId.replace(/[^\w.-]/g, '').slice(0, 80) : '';
@@ -265,15 +283,19 @@ export class PluginChannel extends BaseChannel {
         resolve('Mercury is still working on that. It will send the answer to WhatsApp when it\'s done.');
       }, 90_000);
       this.callAsks.set(target, { chunks: [], resolve, timer });
+      const files = this.activeCalls.get(callId)?.files ?? [];
+      const sentNote = files.length
+        ? `\n[During this call the owner sent ${files.map((f) => `a ${f.kind === 'image' ? 'photo' : f.kind} (${f.name})`).join(', ')} in the WhatsApp chat; ${files.length === 1 ? 'it is' : 'they are'} attached to this message. "It", "this" or "the photo" means ${files.length === 1 ? 'that file' : 'the latest one'}.]`
+        : '';
       this.emit({
         id: `call-${callId}-${Date.now()}`,
         channelId: `${this.type}:${target}`,
         channelType: this.type,
         senderId: digits(owner),
         senderRole: 'admin',
-        content: `[Voice call: the owner asked this out loud. Use your tools to get the real answer: web_search for news and anything current, fetch_url, memory, skills. Then answer in one to three short spoken sentences, with no markdown, lists, links or code. Only actions that change something (files, commands, sending messages, purchases) need approval, and that can't be given on a call; for those, say you'll do it once they confirm by message.]\n${question}`,
+        content: `[Voice call: the owner asked this out loud. Use your tools to get the real answer: web_search for news and anything current, fetch_url, memory, skills. Then answer in one to three short spoken sentences, with no markdown, lists, links or code. Only actions that change something (files, commands, sending messages, purchases) need approval, and that can't be given on a call; for those, say you'll do it once they confirm by message.]${sentNote}\n${question}`,
         timestamp: Date.now(),
-        metadata: { pluginId: this.manifest.id, voiceCall: true, callId, channelAccess: this.accessFor('admin'), channelGuidance: this.guidance('admin', false, true) },
+        metadata: { pluginId: this.manifest.id, voiceCall: true, callId, attachments: files.slice(-4), channelAccess: this.accessFor('admin'), channelGuidance: this.guidance('admin', false, true) },
       });
     });
   }
@@ -293,6 +315,7 @@ export class PluginChannel extends BaseChannel {
 
   private onCallEnded(params: unknown): void {
     const p = (params ?? {}) as Record<string, unknown>;
+    this.activeCalls.delete(String(p.callId ?? ''));
     const secs = typeof p.durationSec === 'number' ? Math.round(p.durationSec) : 0;
     const dur = secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`;
     const outcome = String(p.outcome ?? '');
@@ -413,6 +436,19 @@ export class PluginChannel extends BaseChannel {
         } catch (err) {
           await this.send(`🎤 I couldn't understand that voice note (${(err as Error).message.slice(0, 160)}). Could you type it?`, `${this.type}:${chatId}`).catch(() => {});
         }
+      }
+      // On a call: files sent in the chat belong to the conversation on the
+      // phone. Keep them for the voice to ask about, and tell it they arrived.
+      const call = role === 'admin' && others.length ? this.currentCall() : undefined;
+      if (call) {
+        call[1].files.push(...others);
+        if (call[1].files.length > 8) call[1].files.splice(0, call[1].files.length - 8);
+        const what = others.map((f) => (f.kind === 'image' ? 'a photo' : f.kind === 'document' ? `a document (${f.name})` : `a ${f.kind}`)).join(' and ');
+        this.transport.notify?.('mercury/call/context', {
+          callId: call[0],
+          text: `The owner just sent ${what} in the WhatsApp chat${content ? ` with the message "${content.slice(0, 200)}"` : ''}. Mercury can see it: if they ask about it (or to confirm you got it), use ask_mercury.`,
+        });
+        if (!content) return; // a bare photo during a call is for the call, not a separate chat reply
       }
       if (others.length) {
         const list = others.map((f) => `${f.kind}: ${f.path}`).join('\n');

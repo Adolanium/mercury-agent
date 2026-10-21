@@ -45,7 +45,7 @@ rl.on('line', (line) => {
         notify('mercury/call/ended', a);
         return ok({ content: [{ type: 'text', text: 'sent' }] });
       }
-      notify('mercury/channel/message', { id: a.id, chatId: a.chatId || '15550002@s.whatsapp.net', senderId: a.senderId || 'x@lid', senderPhone: a.senderPhone, isGroup: !!a.isGroup, fromMe: !!a.fromMe, text: a.text });
+      notify('mercury/channel/message', { id: a.id, chatId: a.chatId || '15550002@s.whatsapp.net', senderId: a.senderId || 'x@lid', senderPhone: a.senderPhone, isGroup: !!a.isGroup, fromMe: !!a.fromMe, text: a.text, attachments: a.attachments });
       return ok({ content: [{ type: 'text', text: 'injected' }] });
     }
     case 'mercury/channel/pair':
@@ -59,6 +59,8 @@ rl.on('line', (line) => {
       return ok({});
     case 'mercury/call/progress':
       return log('progress.jsonl', msg.params);
+    case 'mercury/call/context':
+      return log('context.jsonl', msg.params);
     case 'mercury/channel/unlink':
       ok({});
       return notify('mercury/channel/status', { state: 'logged-out', detail: 'unlinked by owner' });
@@ -261,6 +263,30 @@ describe('plugin channels (plugin API 1.1)', () => {
       await waitFor(() => replies().length === 1);
       expect(replies()[0].result.answer).toBe('It is sunny and 24 degrees.');
       expect(sent().filter((m) => m.method === 'mercury/channel/send')).toEqual([]);
+    });
+
+    it('a photo sent in the chat during a call goes to the call: the voice hears about it and Mercury sees it', async () => {
+      await installChannel();
+      await callsim('mercury/call/incoming', { callId: 'k1', from: 'x@lid', fromPhone: '15550002', voiceReady: true });
+      await waitFor(() => replies().length === 1);
+      const photo = join(src, 'photo.jpg');
+      writeFileSync(photo, Buffer.from([0xff, 0xd8, 0xff]));
+      await inject({ id: 'p1', senderPhone: '15550002', attachments: [{ kind: 'image', path: photo }] });
+      expect(received).toEqual([]); // a bare photo during a call isn't a separate chat turn
+      const ctx = join(pluginDataDir('whatsapp'), 'context.jsonl');
+      await waitFor(() => existsSync(ctx));
+      expect(JSON.parse(readFileSync(ctx, 'utf8').trim())).toMatchObject({ callId: 'k1', text: expect.stringMatching(/just sent a photo[\s\S]*ask_mercury/) });
+
+      await callsim('mercury/call/ask', { callId: 'k1', question: 'What is in the photo?' });
+      await waitFor(() => received.length === 1);
+      expect(received[0].content).toMatch(/During this call the owner sent a photo \(photo\.jpg\)[\s\S]*What is in the photo\?/);
+      expect(received[0].metadata?.attachments).toEqual([expect.objectContaining({ kind: 'image', path: photo })]);
+
+      await inject({ callId: 'k1', direction: 'incoming', outcome: 'completed', durationSec: 30, transcript: [] }, 'callend');
+      await sleep(50);
+      await inject({ id: 'p2', senderPhone: '15550002', attachments: [{ kind: 'image', path: photo }] });
+      await waitFor(() => received.length === 2); // after the call, photos are ordinary chat messages again
+      expect(received[1].channelId).toBe('whatsapp:15550002@s.whatsapp.net');
     });
 
     it('tells the plugin what Mercury is doing during a call, in words a voice can say', async () => {
