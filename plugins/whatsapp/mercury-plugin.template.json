@@ -52,23 +52,34 @@
     "fields": {
       "owner": {
         "type": "string",
-        "description": "Your own WhatsApp number (with country code). Only this number can talk to Mercury.",
-        "default": ""
+        "description": "Your own WhatsApp number. Only this number can talk to Mercury.",
+        "default": "",
+        "label": "Which number will you chat from?",
+        "setup": true,
+        "required": true,
+        "format": "phone"
       },
       "access": {
         "type": "enum",
-        "description": "What Mercury may do in your chat: general (chat only) or extended (memory, files, tools). 'ask' asks you after linking.",
+        "label": "What can Mercury do in your chat?",
+        "description": "You can change this anytime in /plugins whatsapp.",
         "options": [
-          "ask",
           "general",
           "extended"
         ],
-        "default": "ask"
+        "default": "general",
+        "setup": true,
+        "optionLabels": {
+          "general": "General: chat and general knowledge only. No tools, files or personal memory.",
+          "extended": "Extended: memory, files, tools and actions. Anything risky still asks you first."
+        }
       },
       "members": {
         "type": "string",
         "description": "Other numbers allowed to chat with Mercury, comma separated (they can't run admin commands).",
-        "default": ""
+        "default": "",
+        "label": "Other numbers allowed to chat",
+        "format": "text"
       },
       "memberAccess": {
         "type": "enum",
@@ -77,27 +88,37 @@
           "general",
           "extended"
         ],
-        "default": "general"
+        "default": "general",
+        "label": "What can those numbers do?",
+        "optionLabels": {
+          "general": "General: chat only",
+          "extended": "Extended (never more than you)"
+        }
       },
       "allowGroups": {
         "type": "boolean",
         "description": "Answer in WhatsApp groups (owner and members only).",
-        "default": false
+        "default": false,
+        "label": "Answer in WhatsApp groups"
       },
       "answerCalls": {
         "type": "boolean",
         "description": "Answer voice calls from the owner.",
-        "default": true
+        "default": true,
+        "label": "Answer your voice calls",
+        "setup": true
       },
       "maxCallsPerHour": {
         "type": "number",
         "description": "Most times Mercury may call you in an hour.",
-        "default": 4
+        "default": 4,
+        "label": "Most calls from Mercury per hour"
       },
       "maxCallMinutes": {
         "type": "number",
         "description": "Longest a call can last, in minutes.",
-        "default": 15
+        "default": 15,
+        "label": "Longest call, in minutes"
       },
       "voice": {
         "type": "enum",
@@ -114,12 +135,14 @@
           "shimmer",
           "verse"
         ],
-        "default": "marin"
+        "default": "marin",
+        "label": "Mercury's voice on calls"
       },
       "voiceModel": {
         "type": "string",
         "description": "OpenAI realtime model for calls.",
-        "default": "gpt-realtime"
+        "default": "gpt-realtime",
+        "label": "Voice model (OpenAI)"
       }
     }
   }

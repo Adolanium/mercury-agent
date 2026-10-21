@@ -30,6 +30,8 @@ away without a restart.
 | Chat | Shell | What it does |
 |------|-------|--------------|
 | `/plugins` | `mercury plugins` | Installed and available plugins, with status |
+| `/plugins ID` | `mercury plugins open ID` | That plugin's menu: its settings, linking, test, turn off, uninstall. Reply with a number (or tap a button on Telegram) |
+| `/plugins setup ID` | `mercury plugins setup ID` | Walk through the plugin's setup again |
 | `/plugins search weather` | `mercury plugins search weather` | Find plugins in the catalog |
 | `/plugins info ID` | `mercury plugins info ID` | Tools, network access, secrets it reads, settings |
 | `/plugins install ID` | `mercury plugins install ID` | Install. Shows what the plugin needs first and asks you to confirm |
@@ -39,6 +41,11 @@ away without a restart.
 | `/plugins rollback ID` | `mercury plugins rollback ID` | Go back to the version you had before |
 | `/plugins uninstall ID` | `mercury plugins uninstall ID` | Remove it. Add `--purge` to delete its data too |
 | `/plugins set ID KEY VALUE` | `mercury plugins set ID KEY VALUE` | Change a plugin setting |
+
+After install, Mercury walks you through the plugin's setup, one question
+at a time, in the same chat. For WhatsApp that's your number, what Mercury
+may do in your chat, and linking the spare number. You never need to
+remember a plugin's settings: open `/plugins ID` and pick from the list.
 
 `install` accepts a catalog id, a folder, a `.tgz` file, an `https://` URL,
 or `github:owner/repo` (latest release). Only catalog plugins are verified

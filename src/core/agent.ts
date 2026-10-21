@@ -96,7 +96,7 @@ import { createTaskSurface } from './task-surface.js';
 import { buildFileChangePreview } from '../utils/file-preview.js';
 import { whatsNewText } from '../utils/whats-new.js';
 import { handleBotsCommand as handleBotsCommandImpl } from './commands/bots-command.js';
-import { handlePluginsCommand, tryPluginCommand, pluginCommandHelp } from '../plugins/commands.js';
+import { handlePluginsCommand, tryPluginCommand, pluginCommandHelp, hasPluginDialog, answerPluginDialog } from '../plugins/commands.js';
 import { handleChatCommand as handleChatCommandImpl } from './commands/chat-command.js';
 import { handleBgCommand as handleBgCommandImpl } from './commands/bg-command.js';
 import { handleSaverCommand as handleSaverCommandImpl } from './commands/saver-command.js';
@@ -748,6 +748,17 @@ export class Agent {
         });
       }
       return;
+    }
+
+    // A plugin setup or menu waiting for an answer in this chat ("2", "+91…").
+    if (!trimmed.startsWith('/') && hasPluginDialog(msg.channelId)) {
+      const channel = this.channels.getChannelForMessage(msg);
+      if (channel) {
+        answerPluginDialog(trimmed, msg, channel).catch((err) => {
+          logger.error({ err: (err as any)?.message ?? err }, 'plugin dialog failed');
+        });
+        return;
+      }
     }
 
     // /plugins is fast-path like /bots: installing or toggling a plugin must

@@ -437,7 +437,10 @@ function SettingField({ s, disabled, onSave }: { s: PluginSetting; disabled: boo
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-3">
-        <label className="font-mono text-xs text-foreground" htmlFor={`setting-${s.key}`}>{s.key}</label>
+        <label className="text-sm font-medium text-foreground" htmlFor={`setting-${s.key}`}>
+          {s.label ?? s.key}
+          {s.required && (s.value === undefined || s.value === "") && <span className="ml-2 text-xs text-amber-500">needed</span>}
+        </label>
         {s.type === "boolean" && (
           <Switch id={`setting-${s.key}`} checked={s.value === true} disabled={disabled} onCheckedChange={(v) => onSave(v)} />
         )}
@@ -451,11 +454,11 @@ function SettingField({ s, disabled, onSave }: { s: PluginSetting; disabled: boo
           disabled={disabled}
           onChange={(e) => onSave(e.target.value)}
         >
-          {(s.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+          {(s.options ?? []).map((o) => <option key={o} value={o}>{s.optionLabels?.[o] ?? o}</option>)}
         </select>
       ) : s.type !== "boolean" ? (
         <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); onSave(s.type === "number" ? Number(draft) : draft); }}>
-          <Input id={`setting-${s.key}`} value={draft} onChange={(e) => setDraft(e.target.value)} type={s.type === "number" ? "number" : "text"} disabled={disabled} className="h-8 text-sm" />
+          <Input id={`setting-${s.key}`} value={draft} onChange={(e) => setDraft(e.target.value)} type={s.type === "number" ? "number" : s.format === "phone" ? "tel" : "text"} placeholder={s.format === "phone" ? "+15551234567" : undefined} disabled={disabled} className="h-8 text-sm" />
           <Button size="sm" variant="outline" type="submit" disabled={disabled || draft === String(s.value ?? "")}>Save</Button>
         </form>
       ) : null}
@@ -499,7 +502,7 @@ function PluginDetails({ p, busy, safeMode, onAct, onInstall, onClose }: {
         {p.settings && p.settings.length > 0 && (
           <div className="space-y-3 rounded-lg border border-border p-3">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Settings</p>
-            {p.settings.map((setting) => (
+            {[...p.settings].sort((a, b) => Number(!!b.setup) - Number(!!a.setup)).map((setting) => (
               <SettingField
                 key={setting.key}
                 s={setting}

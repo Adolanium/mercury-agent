@@ -89,6 +89,16 @@ const settingField = z.object({
   description: z.string().max(300).default(''),
   default: z.union([z.string(), z.number(), z.boolean()]).optional(),
   options: z.array(z.string()).max(50).optional(),
+  /** Short question or title shown in setup and in /plugins <id>, e.g. "Your WhatsApp number". */
+  label: z.string().max(80).optional(),
+  /** Ask this during setup (right after install, and `/plugins setup <id>`), in declaration order. */
+  setup: z.boolean().default(false),
+  /** Setup can't finish without a value. */
+  required: z.boolean().default(false),
+  /** Plain-language labels for enum options, e.g. { "general": "General: chat only" }. */
+  optionLabels: z.record(z.string(), z.string().max(160)).optional(),
+  /** Input format for string settings, validated and normalised on save. */
+  format: z.enum(['text', 'phone']).default('text'),
 }).strict();
 
 const settingKey = z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,40}$/);
@@ -280,7 +290,18 @@ export interface PluginListItem {
   lastError?: string;
   incompatibleReason?: string;
   /** Only in `info`: the settings the plugin declares, with current values. */
-  settings?: Array<{ key: string; type: 'string' | 'number' | 'boolean' | 'enum'; description: string; options?: string[]; value: unknown }>;
+  settings?: Array<{
+    key: string;
+    type: 'string' | 'number' | 'boolean' | 'enum';
+    description: string;
+    options?: string[];
+    value: unknown;
+    label?: string;
+    setup?: boolean;
+    required?: boolean;
+    optionLabels?: Record<string, string>;
+    format?: 'text' | 'phone';
+  }>;
 }
 
 // ── catalog ──────────────────────────────────────────────────────────────

@@ -275,6 +275,11 @@ export interface PluginSetting {
   description: string;
   options?: string[];
   value: unknown;
+  label?: string;
+  setup?: boolean;
+  required?: boolean;
+  optionLabels?: Record<string, string>;
+  format?: "text" | "phone";
 }
 
 export interface PluginItem {

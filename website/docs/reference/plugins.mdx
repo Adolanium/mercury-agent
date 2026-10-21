@@ -53,6 +53,15 @@ No npm package is needed: `init` writes the API types next to your code as
 }
 ```
 
+- **Settings** can carry setup metadata. Settings with `"setup": true` are
+  asked in order right after install, in chat or in the terminal, and appear
+  in the plugin's `/plugins ID` menu. The metadata fields are:
+  - `label`: a plain question, such as "Which number will you chat from?";
+  - `required`;
+  - `optionLabels` for enum choices;
+  - `"format": "phone"`, which is validated and normalised to `+digits`.
+
+  Channel plugins also get a linking step at the end of setup.
 - **Tools** are shown to the model as `ID__name` (for example
   `weather__forecast`). `readOnly` tools skip approval and are available in
   plan mode; every other tool asks the owner first.

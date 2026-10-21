@@ -21,6 +21,7 @@ import { getPluginService } from './service.js';
 import { getCatalog } from './catalog.js';
 import { getPluginCommand, listPluginCommands } from './tool-bridge.js';
 import { RESERVED_COMMANDS, type PluginListItem } from './types.js';
+import { PluginDialog, renderPrompt } from './dialog.js';
 
 export { RESERVED_COMMANDS };
 
@@ -103,6 +104,8 @@ function actionsFor(i: PluginListItem): Array<{ label: string; command: string }
 const HELP = [
   'Usage:',
   '  /plugins                         list installed and available plugins',
+  '  /plugins <id>                    that plugin\'s menu: settings, link, turn off, uninstall',
+  '  /plugins setup <id>              walk through its setup again',
   '  /plugins search <text>           find plugins',
   '  /plugins info <id>               details, tools and permissions',
   '  /plugins install <id|path|url>   install (asks to confirm)',
@@ -119,6 +122,67 @@ function isMember(msg: ChannelMessage): boolean {
   return msg.senderRole === 'member';
 }
 
+// ── guided dialogs (setup, /plugins <id> menu) ───────────────────────────
+
+const DIALOG_TTL_MS = 15 * 60_000;
+const dialogs = new Map<string, { dialog: PluginDialog; at: number }>();
+
+function hasButtons(channel: ChannelLike): boolean {
+  return typeof channel.sendWithActions === 'function' && channel.type === 'telegram';
+}
+
+/** A dialog is waiting for an answer in this chat. */
+export function hasPluginDialog(chatId: string): boolean {
+  const d = dialogs.get(chatId);
+  if (d && Date.now() - d.at > DIALOG_TTL_MS) dialogs.delete(chatId);
+  return dialogs.has(chatId);
+}
+
+async function showDialog(dialog: PluginDialog, msg: ChannelMessage, channel: ChannelLike, lead?: string): Promise<void> {
+  const to = msg.channelId;
+  const prompt = await dialog.current();
+  if (!prompt) {
+    dialogs.delete(to);
+    if (lead) await channel.send(lead, to);
+    return;
+  }
+  dialogs.set(to, { dialog, at: Date.now() });
+  const text = [lead, renderPrompt(prompt, hasButtons(channel))].filter(Boolean).join('\n\n');
+  if (hasButtons(channel) && prompt.options?.length) {
+    const rows = prompt.options.map((o, i) => [{ label: o.label.slice(0, 40), command: `/plugins pick ${i + 1}` }]);
+    await channel.sendWithActions!(text, rows, to);
+  } else {
+    await channel.send(text, to);
+  }
+}
+
+/** Answer the dialog open in this chat (a number, an option's words, or free text). */
+export async function answerPluginDialog(text: string, msg: ChannelMessage, channel: ChannelLike): Promise<void> {
+  const entry = dialogs.get(msg.channelId);
+  if (!entry) return;
+  try {
+    const r = await entry.dialog.answer(text);
+    if (r.finished) {
+      dialogs.delete(msg.channelId);
+      if (r.message) await channel.send(r.message, msg.channelId);
+      return;
+    }
+    await showDialog(entry.dialog, msg, channel, r.message);
+  } catch (err) {
+    await channel.send(`✗ ${(err as Error).message}`, msg.channelId);
+  }
+}
+
+async function openDialog(dialog: PluginDialog | null, msg: ChannelMessage, channel: ChannelLike, fallback: string, lead?: string): Promise<void> {
+  if (!dialog) {
+    await channel.send([lead, fallback].filter(Boolean).join('\n\n'), msg.channelId);
+    return;
+  }
+  await showDialog(dialog, msg, channel, lead);
+}
+
+const SUBCOMMANDS = new Set(['list', 'ls', 'help', 'search', 'info', 'install', 'add', 'enable', 'disable', 'update', 'upgrade', 'rollback', 'uninstall', 'remove', 'set', 'pair', 'unlink', 'setup', 'pick', 'cancel', 'test']);
+
 export async function handlePluginsCommand(trimmed: string, msg: ChannelMessage, channel: ChannelLike): Promise<void> {
   const to = msg.channelId;
   const reply = (text: string) => channel.send(text, to);
@@ -126,9 +190,15 @@ export async function handlePluginsCommand(trimmed: string, msg: ChannelMessage,
   const yes = tokens.includes('--yes') || tokens.includes('-y');
   const purge = tokens.includes('--purge');
   const args = tokens.filter((t) => !t.startsWith('--') && t !== '-y');
-  const [sub = 'list', target, ...rest] = args;
+  let [sub = 'list', target, ...rest] = args;
   const mgr = getPluginService();
-  const mutating = ['install', 'enable', 'disable', 'update', 'rollback', 'uninstall', 'remove', 'set', 'pair', 'unlink'].includes(sub);
+  // `/plugins whatsapp` opens that plugin's menu.
+  if (sub && !SUBCOMMANDS.has(sub)) {
+    rest = [];
+    target = sub;
+    sub = 'menu';
+  }
+  const mutating = ['install', 'enable', 'disable', 'update', 'rollback', 'uninstall', 'remove', 'set', 'pair', 'unlink', 'setup', 'test'].includes(sub);
   if (mutating && isMember(msg)) {
     await reply('Only the owner or an admin can change plugins.');
     return;
@@ -158,6 +228,27 @@ export async function handlePluginsCommand(trimmed: string, msg: ChannelMessage,
       }
       case 'help':
         await reply(HELP);
+        return;
+      case 'menu': {
+        const d = await PluginDialog.menu(mgr, target!, !isMember(msg));
+        await openDialog(d, msg, channel, `No plugin called "${target}". Try /plugins.`);
+        return;
+      }
+      case 'setup': {
+        if (!target) { await reply('Usage: /plugins setup <id>'); return; }
+        await openDialog(await PluginDialog.setup(mgr, target), msg, channel, `"${target}" has nothing to set up (or isn't installed).`);
+        return;
+      }
+      case 'pick':
+        if (!hasPluginDialog(msg.channelId)) { await reply('That menu has expired. Open it again with /plugins <id>.'); return; }
+        await answerPluginDialog(target ?? '', msg, channel);
+        return;
+      case 'cancel':
+        if (hasPluginDialog(msg.channelId)) await answerPluginDialog('cancel', msg, channel);
+        return;
+      case 'test':
+        if (!target) { await reply('Usage: /plugins test <id>'); return; }
+        await reply(`✅ ${await mgr.testChannel(target)}`);
         return;
       case 'search': {
         const q = [target, ...rest].join(' ').toLowerCase();
@@ -191,9 +282,13 @@ export async function handlePluginsCommand(trimmed: string, msg: ChannelMessage,
         const r = await mgr.install(target);
         const info = await mgr.info(r.id);
         const verifiedNote = r.verified ? 'checksum verified' : (r.tier === 'local' ? 'unverified source' : 'not verified');
-        await reply(r.unchanged
+        const done = r.unchanged
           ? `${r.name} ${r.version} is already installed${info?.enabled ? ' and enabled' : ''}.`
-          : `✅ Installed ${r.name} ${r.version} (${verifiedNote})${info?.status === 'enabled' ? ' and enabled' : ''}.${info?.tools.length ? `\nTools: ${info.tools.join(', ')}` : ''}${r.previousVersion ? `\nPrevious version ${r.previousVersion} kept for /plugins rollback ${r.id}.` : ''}`);
+          : `✅ Installed ${r.name} ${r.version} (${verifiedNote})${info?.status === 'enabled' ? ' and enabled' : ''}.${info?.tools.length ? `\nTools: ${info.tools.join(', ')}` : ''}${r.previousVersion ? `\nPrevious version ${r.previousVersion} kept for /plugins rollback ${r.id}.` : ''}`;
+        // Walk the owner through the plugin's setup right away (CLI runs its own interactive setup).
+        const setup = channel.type === 'cli-batch' || r.unchanged ? null : await PluginDialog.setup(mgr, r.id);
+        if (setup) await showDialog(setup, msg, channel, done);
+        else await reply(done);
         return;
       }
       case 'enable':

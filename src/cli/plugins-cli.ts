@@ -21,7 +21,8 @@ async function run(line: string): Promise<void> {
   };
   let failed = false;
   await handlePluginsCommand(line, msg, {
-    type: 'cli',
+    // 'cli-batch': a one-shot shell command; guided setup runs interactively below instead.
+    type: 'cli-batch',
     send: async (text) => {
       if (text.startsWith('✗')) failed = true;
       // Chat wording says "/plugins x"; in a shell it's "mercury plugins x".
@@ -49,7 +50,25 @@ export function registerPluginsCli(program: Command): void {
     .alias('add')
     .description('Install from the catalog (id), a folder, a .tgz, an https URL or github:owner/repo')
     .option('-y, --yes', 'Skip the confirmation')
-    .action((source: string, opts: { yes?: boolean }) => run(`/plugins install ${source}${opts.yes ? ' --yes' : ''}`));
+    .option('--no-setup', 'Don\'t walk through the plugin\'s setup afterwards')
+    .action(async (source: string, opts: { yes?: boolean; setup?: boolean }) => {
+      const before = process.exitCode;
+      await run(`/plugins install ${source}${opts.yes ? ' --yes' : ''}`);
+      if (!opts.yes || process.exitCode !== before || opts.setup === false || !process.stdin.isTTY) return;
+      const id = await installedIdFor(source);
+      if (id) await interactive('setup', id);
+    });
+
+  plugins
+    .command('setup <id>')
+    .description('Walk through a plugin\'s setup (settings, and linking for channels like WhatsApp)')
+    .action((id: string) => interactive('setup', id));
+
+  plugins
+    .command('open <id>')
+    .alias('menu')
+    .description('A plugin\'s menu: settings, link, turn off, uninstall')
+    .action((id: string) => interactive('menu', id));
   plugins.command('enable <id>').description('Turn a plugin on').action((id: string) => run(`/plugins enable ${id}`));
   plugins.command('disable <id>').description('Turn a plugin off (keeps its data and settings)').action((id: string) => run(`/plugins disable ${id}`));
   plugins.command('update [id]').description('Update one plugin, or all from the catalog').action((id?: string) => run(`/plugins update ${id ?? 'all'}`));
@@ -259,4 +278,54 @@ async function pairChannel(id: string, phone?: string): Promise<void> {
     console.error(chalk.red(`  ✗ ${(err as Error).message}`));
     process.exitCode = 1;
   }
+}
+
+/** The plugin id a just-installed source refers to (catalog id, or read from the package). */
+async function installedIdFor(source: string): Promise<string | null> {
+  const { getPluginService } = await import('../plugins/service.js');
+  const { items } = await getPluginService().list();
+  const installed = items.filter((i) => i.installedVersion);
+  const direct = installed.find((i) => i.id === source);
+  if (direct) return direct.id;
+  // A path or URL: the most recently installed one is the best guess; ask the state file.
+  const { readState } = await import('../plugins/store.js');
+  const state = readState();
+  const latest = Object.entries(state.plugins).sort((a, b) => Date.parse(b[1].updatedAt) - Date.parse(a[1].updatedAt))[0];
+  return latest?.[0] ?? null;
+}
+
+/** Run a guided dialog in the terminal. */
+async function interactive(kind: 'setup' | 'menu', id: string): Promise<void> {
+  const { getPluginService } = await import('../plugins/service.js');
+  const { PluginDialog, renderPrompt } = await import('../plugins/dialog.js');
+  const svc = getPluginService();
+  const dialog = kind === 'setup' ? await PluginDialog.setup(svc, id) : await PluginDialog.menu(svc, id, true);
+  if (!dialog) {
+    console.log(kind === 'setup' ? `  ${id} has nothing to set up (or isn't installed).` : `  No plugin called "${id}".`);
+    return;
+  }
+  if (!process.stdin.isTTY) {
+    console.log('  This needs an interactive terminal. In chat, use /plugins ' + (kind === 'setup' ? `setup ${id}` : id) + '.');
+    process.exitCode = 1;
+    return;
+  }
+  const { createInterface } = await import('node:readline/promises');
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const clean = (t: string) => t.replace(/\*([^*\n]+)\*/g, (_m, x) => chalk.bold(x));
+  try {
+    for (;;) {
+      const prompt = await dialog.current();
+      if (!prompt) break;
+      console.log('');
+      console.log(clean(renderPrompt(prompt, false)).replace(/^/gm, '  '));
+      const answer = await rl.question(chalk.cyan('  › '));
+      const r = await dialog.answer(answer);
+      if (r.message) console.log(clean(r.message).replace(/^/gm, '  '));
+      if (r.finished) break;
+    }
+  } finally {
+    rl.close();
+  }
+  console.log('');
+  setTimeout(() => process.exit(process.exitCode ?? 0), 50).unref();
 }

@@ -26,3 +26,44 @@ describe('reserved command names', () => {
     expect(JSON.stringify(r.error?.issues)).toMatch(/\/help is a built-in Mercury command/);
   });
 });
+
+describe('guided setup from chat', () => {
+  it('install starts setup; numbered replies answer it; /plugins <id> opens the menu', async () => {
+    const { tempHome, inProcessPlugin } = await import('./test-fixtures.js');
+    const { handlePluginsCommand, answerPluginDialog, hasPluginDialog } = await import('./commands.js');
+    const { resetPluginManager } = await import('./manager.js');
+    const { readSettings } = await import('./store.js');
+    const env = tempHome();
+    resetPluginManager();
+    try {
+      const dir = inProcessPlugin(env.home, {
+        id: 'greeter',
+        manifest: { settings: { version: 1, fields: {
+          greeting: { type: 'string', label: 'How should I greet people?', setup: true, required: true },
+          tone: { type: 'enum', options: ['warm', 'formal'], default: 'warm', label: 'Tone', setup: true, optionLabels: { warm: 'Warm and friendly', formal: 'Formal' } },
+        } } },
+      });
+      const sent: string[] = [];
+      const channel = { type: 'cli', send: async (t: string) => { sent.push(t); } };
+      const msg = { id: '1', channelId: 'cli:test', channelType: 'cli' as const, senderId: 'owner', content: '', timestamp: Date.now() };
+
+      await handlePluginsCommand(`/plugins install ${dir} --yes`, msg, channel);
+      expect(sent.at(-1)).toMatch(/Installed[\s\S]*greeter setup \(1\/2\)[\s\S]*How should I greet people\?/);
+      expect(hasPluginDialog('cli:test')).toBe(true);
+      await answerPluginDialog('Salaam', msg, channel);
+      expect(sent.at(-1)).toMatch(/✅ How should I greet people\?: Salaam[\s\S]*Tone[\s\S]*1\* · Warm and friendly[\s\S]*2\* · Formal/);
+      await answerPluginDialog('2', msg, channel);
+      await answerPluginDialog('1', msg, channel); // "Done"
+      expect(hasPluginDialog('cli:test')).toBe(false);
+      expect(readSettings('greeter')).toMatchObject({ greeting: 'Salaam', tone: 'formal' });
+
+      await handlePluginsCommand('/plugins greeter', msg, channel);
+      expect(sent.at(-1)).toMatch(/How should I greet people\?: Salaam[\s\S]*Tone: Formal[\s\S]*Change a setting/);
+      await answerPluginDialog('cancel', msg, channel);
+      expect(hasPluginDialog('cli:test')).toBe(false);
+    } finally {
+      resetPluginManager();
+      env.restore();
+    }
+  });
+});

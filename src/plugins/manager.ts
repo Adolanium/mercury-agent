@@ -502,7 +502,7 @@ export class PluginManager {
     const manifest = installedManifest(id, entry.version);
     const field = manifest?.settings?.fields?.[key];
     if (!manifest || !field) throw new Error(`"${id}" has no setting called "${key}".`);
-    const coerced = coerceSetting(field.type, field.options, value);
+    const coerced = coerceSetting(field.type, field.options, value, field.format);
     const values = { ...resolvedSettings(manifest), [key]: coerced };
     writeSettings(id, values, manifest.settings?.version ?? 1);
     // Settings are read at start: restart a running plugin so it sees them.
@@ -590,7 +590,10 @@ export class PluginManager {
     const fields = manifest?.settings?.fields ?? {};
     if (manifest && Object.keys(fields).length) {
       const values = resolvedSettings(manifest);
-      item.settings = Object.entries(fields).map(([key, f]) => ({ key, type: f.type, description: f.description, options: f.options, value: values[key] }));
+      item.settings = Object.entries(fields).map(([key, f]) => ({
+        key, type: f.type, description: f.description, options: f.options, value: values[key],
+        label: f.label, setup: f.setup, required: f.required, optionLabels: f.optionLabels, format: f.format,
+      }));
     }
     return item;
   }
@@ -660,7 +663,13 @@ function isNewer(candidate: string, current: string): boolean {
   return semver.valid(candidate) !== null && semver.valid(current) !== null && semver.gt(candidate, current);
 }
 
-function coerceSetting(type: string, options: string[] | undefined, value: unknown): unknown {
+function coerceSetting(type: string, options: string[] | undefined, value: unknown, format: 'text' | 'phone' = 'text'): unknown {
+  if (type === 'string' && format === 'phone') {
+    if (value === '' || value === null || value === undefined) return '';
+    const digits = String(value).replace(/[^\d]/g, '');
+    if (digits.length < 7 || digits.length > 15) throw new Error('Expected a phone number with country code, like +15551234567.');
+    return `+${digits}`;
+  }
   if (type === 'boolean') {
     if (typeof value === 'boolean') return value;
     if (value === 'true' || value === 'on' || value === 'yes') return true;

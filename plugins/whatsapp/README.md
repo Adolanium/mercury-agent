@@ -11,32 +11,24 @@ account is needed.
 
 ## Set up
 
-1. Install it and set your own number as the owner:
+```sh
+mercury plugins install whatsapp
+```
 
-   ```sh
-   mercury plugins install whatsapp
-   mercury plugins set whatsapp owner +15551234567
-   ```
+Mercury then walks you through setup, one question at a time. It works the
+same in a chat (`/plugins install whatsapp`) or in the dashboard:
 
-   The owner is the number you'll chat *from*. Only the owner, and any
-   numbers you add to `members`, can talk to Mercury.
+1. **Which number will you chat from?** This is your own number, and only
+   it can talk to Mercury.
+2. **What can Mercury do in your chat?** General (chat only) or Extended
+   (memory, files, tools).
+3. **Answer your voice calls?**
+4. **Link the spare number:** a pairing code you type on the spare phone,
+   or a QR code to scan.
 
-2. Link the spare number. Either scan a QR code in the terminal:
-
-   ```sh
-   mercury plugins pair whatsapp
-   ```
-
-   Then, on the phone with the spare number, go to WhatsApp → Settings →
-   Linked devices → Link a device.
-
-   Or get a pairing code, which also works from chat:
-
-   ```sh
-   mercury plugins pair whatsapp --code +15550001111
-   ```
-
-3. Message the spare number from your own number. Mercury answers there.
+Change anything later with `/plugins whatsapp` (or `mercury plugins open
+whatsapp`): pick a setting from the list, link or unlink, send a test
+message, turn it off, or uninstall.
 
 ## What works
 

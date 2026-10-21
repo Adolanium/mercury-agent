@@ -277,45 +277,31 @@ describe('plugin channels (plugin API 1.1)', () => {
       return existsSync(f) ? readFileSync(f, 'utf8').trim().split('\n').map((l) => JSON.parse(l).text as string) : [];
     };
 
-    it('before the owner chooses: General, told it is on WhatsApp, and asked once', async () => {
+    it('General by default, and Mercury is told it is on WhatsApp and where to change it', async () => {
       await installChannel();
       await inject({ id: 'g1', senderPhone: '15550002', text: 'hello' });
-      await inject({ id: 'g2', senderPhone: '15550002', text: 'and again' });
       expect(received[0].metadata?.channelAccess).toBe('general');
       const g = String(received[0].metadata?.channelGuidance);
       expect(g).toMatch(/talking with the owner \(the person you work for\) on WhatsApp, a phone chat app/);
       expect(g).toMatch(/No code blocks/);
-      expect(g).toMatch(/Access: General[\s\S]*\/access extended/);
-      await waitFor(() => sentTexts().some((t) => /How much should I do/.test(t)), 4000);
-      await sleep(1600);
-      expect(sentTexts().filter((t) => /How much should I do/.test(t))).toHaveLength(1);
+      expect(g).toMatch(/Access: General[\s\S]*\/plugins whatsapp/);
+      expect(sentTexts()).toEqual([]); // no unsolicited prompts in the chat
     });
 
-    it('replying 2 switches to Extended live, without restarting the plugin', async () => {
+    it('switching to Extended applies live, without restarting the plugin', async () => {
       await installChannel();
-      const before = (await mgr.info('whatsapp'))?.running;
-      await inject({ id: 'e1', senderPhone: '15550002', text: 'hi' });
-      await waitFor(() => sentTexts().some((t) => /How much should I do/.test(t)), 4000);
-      await inject({ id: 'e2', senderPhone: '15550002', text: '2' });
-      await waitFor(() => sentTexts().some((t) => /Extended/.test(t) && /✅/.test(t)));
-      await inject({ id: 'e3', senderPhone: '15550002', text: 'what is on my calendar' });
-      expect(received.map((m) => m.content)).toEqual(['hi', 'what is on my calendar']); // "2" never reached the agent
-      expect(received[1].metadata?.channelAccess).toBe('extended');
-      expect(String(received[1].metadata?.channelGuidance)).toMatch(/Access: Extended/);
-      expect(before).toBe(true);
-      expect(getPluginChannel('whatsapp')?.isReady() !== undefined).toBe(true);
+      await mgr.setSetting('whatsapp', 'access', 'extended');
+      await inject({ id: 'e1', senderPhone: '15550002', text: 'what is on my calendar' });
+      expect(received[0].metadata?.channelAccess).toBe('extended');
+      expect(String(received[0].metadata?.channelGuidance)).toMatch(/Access: Extended/);
       expect(registered).toHaveLength(1); // same channel instance: no restart happened
     });
 
-    it('/access general goes back; /access shows the level', async () => {
+    it('a fresh link (not a reconnect) is confirmed to the owner', async () => {
       await installChannel();
-      await mgr.setSetting('whatsapp', 'access', 'extended');
-      await inject({ id: 'a1', senderPhone: '15550002', text: '/access' });
-      await inject({ id: 'a2', senderPhone: '15550002', text: '/access general' });
-      await waitFor(() => sentTexts().some((t) => /✅ \*General\*/.test(t)));
-      await inject({ id: 'a3', senderPhone: '15550002', text: 'hello' });
-      expect(sentTexts().some((t) => /Access here is \*Extended\*/.test(t))).toBe(true);
-      expect(received.map((m) => [m.content, m.metadata?.channelAccess])).toEqual([['hello', 'general']]);
+      await mgr.pair('whatsapp', { method: 'qr' });
+      await waitFor(() => notices.some((n) => /WhatsApp linked as \+15550001/.test(n)));
+      expect(notices.find((n) => /linked/.test(n))).toMatch(/\/plugins whatsapp/);
     });
 
     it('members never exceed the owner, and default to General', async () => {
