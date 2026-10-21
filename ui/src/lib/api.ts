@@ -276,7 +276,7 @@ export interface PluginSetting {
   options?: string[];
   value: unknown;
   label?: string;
-  when?: Record<string, string | boolean | string[]>;
+  when?: Record<string, string | boolean | string[]> | Array<Record<string, string | boolean | string[]>>;
   isSet?: boolean;
   setup?: boolean;
   required?: boolean;

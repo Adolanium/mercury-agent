@@ -12,7 +12,7 @@
  * button tap all work.
  */
 import type { PluginService } from './service.js';
-import type { PluginListItem } from './types.js';
+import { whenMatches, type PluginListItem } from './types.js';
 
 export interface DialogOption {
   label: string;
@@ -355,11 +355,7 @@ export class PluginDialog {
 
 /** Does a setting apply, given the current values of the settings it depends on (`when`)? */
 export function settingApplies(s: Setting, all: Setting[]): boolean {
-  if (!s.when) return true;
-  return Object.entries(s.when).every(([key, want]) => {
-    const v = all.find((x) => x.key === key)?.value;
-    return Array.isArray(want) ? want.includes(String(v)) : String(v) === String(want);
-  });
+  return whenMatches(s.when, Object.fromEntries(all.map((x) => [x.key, x.value])));
 }
 
 /** Plain-text rendering (WhatsApp, terminal, any chat without buttons). */

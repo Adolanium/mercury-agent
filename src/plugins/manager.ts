@@ -35,7 +35,7 @@ import { OutOfProcessRuntime } from './runtime/out-of-process.js';
 import { PluginChannel, type ChannelStatus } from './channel-bridge.js';
 import { transcribeAudio } from './transcribe.js';
 import type { PluginRuntime } from './runtime/types.js';
-import { providerSecretNames, type CatalogEntry, type DisabledCode, type PluginListItem, type PluginManifest, type PluginProviderId, type PluginsState } from './types.js';
+import { providerSecretNames, whenMatches, type WhenCondition, type CatalogEntry, type DisabledCode, type PluginListItem, type PluginManifest, type PluginProviderId, type PluginsState } from './types.js';
 import { loadConfig } from '../utils/config.js';
 
 export const CIRCUIT_BREAKER_FAILURES = 5;
@@ -774,7 +774,10 @@ export function providerCredentials(manifest: PluginManifest): Record<string, st
 export function missingRequirements(manifest: PluginManifest): Array<{ key: string; unlocks: string; needs: string; fix: string }> {
   const creds = providerCredentials(manifest);
   const out: Array<{ key: string; unlocks: string; needs: string; fix: string }> = [];
-  for (const [id, unlocks] of Object.entries(manifest.permissions.providers ?? {}) as Array<[PluginProviderId, string]>) {
+  const values = resolvedSettings(manifest);
+  for (const [id, spec] of Object.entries(manifest.permissions.providers ?? {}) as Array<[PluginProviderId, string | { unlocks: string; when?: WhenCondition | WhenCondition[] }]>) {
+    const unlocks = typeof spec === 'string' ? spec : spec.unlocks;
+    if (typeof spec !== 'string' && !whenMatches(spec.when, values)) continue;
     if (creds[providerSecretNames(id).apiKey]) continue;
     out.push({
       key: `provider:${id}`,

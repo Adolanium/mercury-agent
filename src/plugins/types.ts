@@ -86,6 +86,8 @@ const commandDecl = z.object({
 
 const settingKey = z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,40}$/);
 
+const whenCondition = z.record(settingKey, z.union([z.string(), z.boolean(), z.array(z.string())]));
+
 const settingField = z.object({
   /**
    * 'secret': an API key the owner pastes once. Stored in Mercury's key store
@@ -108,8 +110,11 @@ const settingField = z.object({
   format: z.enum(['text', 'phone']).default('text'),
   /** For type 'secret': the env var name the plugin receives it as (must be in permissions.secrets). */
   secret: z.string().regex(SECRET_NAME_RE).optional(),
-  /** Only relevant when other settings have these values, e.g. { "voiceEngine": ["elevenlabs"] }. */
-  when: z.record(settingKey, z.union([z.string(), z.boolean(), z.array(z.string())])).optional(),
+  /**
+   * Only relevant when other settings have these values, e.g.
+   * { "voiceEngine": ["elevenlabs"] }. A list of conditions means any of them.
+   */
+  when: z.union([whenCondition, z.array(whenCondition).min(1).max(8)]).optional(),
 }).strict();
 
 
@@ -182,7 +187,11 @@ export const manifestSchema = z.object({
      * MERCURY_PROVIDER_<ID>_API_KEY and MERCURY_PROVIDER_<ID>_BASE_URL.
      * All optional: the plugin runs without them, minus that feature.
      */
-    providers: z.record(z.enum(PLUGIN_PROVIDER_IDS), z.string().min(1).max(200)).optional(),
+    providers: z.record(z.enum(PLUGIN_PROVIDER_IDS), z.union([
+      z.string().min(1).max(200),
+      /** Needed only when settings match, e.g. { unlocks: "Voice calls", when: { voiceEngine: "openai" } }. */
+      z.object({ unlocks: z.string().min(1).max(200), when: z.union([whenCondition, z.array(whenCondition).min(1).max(8)]).optional() }).strict(),
+    ])).optional(),
   }).strict().default({ network: [], secrets: [] }),
   settings: z.object({
     /** Bump when a field is renamed, removed or changes meaning, and add a migration. */
@@ -207,8 +216,10 @@ export const manifestSchema = z.object({
   for (const [key, f] of Object.entries(m.settings?.fields ?? {})) {
     if (f.type === 'secret' && !f.secret) ctx.addIssue({ code: 'custom', path: ['settings', 'fields', key], message: 'secret settings need "secret": the env var name' });
     if (f.secret && !m.permissions.secrets.includes(f.secret)) ctx.addIssue({ code: 'custom', path: ['settings', 'fields', key], message: `${f.secret} must also be listed in permissions.secrets` });
-    for (const dep of Object.keys(f.when ?? {})) {
-      if (!m.settings?.fields[dep]) ctx.addIssue({ code: 'custom', path: ['settings', 'fields', key, 'when'], message: `"when" refers to unknown setting ${dep}` });
+    for (const cond of [f.when ?? []].flat()) {
+      for (const dep of Object.keys(cond)) {
+        if (!m.settings?.fields[dep]) ctx.addIssue({ code: 'custom', path: ['settings', 'fields', key, 'when'], message: `"when" refers to unknown setting ${dep}` });
+      }
     }
   }
   for (const name of Object.keys(m.permissions.optionalSecrets ?? {})) {
@@ -241,6 +252,14 @@ export const manifestSchema = z.object({
 });
 
 export type PluginManifest = z.infer<typeof manifestSchema>;
+export type WhenCondition = Record<string, string | boolean | string[]>;
+
+/** Does a `when` condition (or any of a list) match these setting values? */
+export function whenMatches(when: WhenCondition | WhenCondition[] | undefined, values: Record<string, unknown>): boolean {
+  if (!when) return true;
+  return [when].flat().some((cond) => Object.entries(cond).every(([key, want]) =>
+    Array.isArray(want) ? want.includes(String(values[key])) : String(values[key]) === String(want)));
+}
 export type PluginToolDecl = PluginManifest['contributes']['tools'][number];
 
 // ── state ────────────────────────────────────────────────────────────────
@@ -319,7 +338,7 @@ export interface PluginListItem {
     optionLabels?: Record<string, string>;
     format?: 'text' | 'phone';
     /** Only relevant when these other settings match (the menu and setup hide it otherwise). */
-    when?: Record<string, string | boolean | string[]>;
+    when?: WhenCondition | WhenCondition[];
     /** Secret settings: whether a value is stored (the value itself is never shown). */
     isSet?: boolean;
   }>;

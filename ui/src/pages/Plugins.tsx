@@ -691,8 +691,8 @@ function ChannelPanel({ id, enabled }: { id: string; enabled: boolean }) {
 /** Hide settings that only apply to other choices (manifest `when`). */
 function settingApplies(s: PluginSetting, all: PluginSetting[]): boolean {
   if (!s.when) return true;
-  return Object.entries(s.when).every(([key, want]) => {
-    const v = all.find((x) => x.key === key)?.value;
-    return Array.isArray(want) ? want.includes(String(v)) : String(v) === String(want);
-  });
+  const values = Object.fromEntries(all.map((x) => [x.key, x.value]));
+  const conds = Array.isArray(s.when) ? s.when : [s.when];
+  return conds.some((cond) => Object.entries(cond).every(([key, want]) =>
+    Array.isArray(want) ? want.includes(String(values[key])) : String(values[key]) === String(want)));
 }
