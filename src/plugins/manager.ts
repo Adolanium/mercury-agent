@@ -33,6 +33,7 @@ import { setToolOutcomeSink, unpublishPlugin, listLiveTools, listPluginCommands 
 import { InProcessRuntime, inProcessLogger } from './runtime/in-process.js';
 import { OutOfProcessRuntime } from './runtime/out-of-process.js';
 import { PluginChannel, type ChannelStatus } from './channel-bridge.js';
+import { transcribeAudio } from './transcribe.js';
 import type { PluginRuntime } from './runtime/types.js';
 import { providerSecretNames, type CatalogEntry, type DisabledCode, type PluginListItem, type PluginManifest, type PluginProviderId, type PluginsState } from './types.js';
 import { loadConfig } from '../utils/config.js';
@@ -275,6 +276,11 @@ export class PluginManager {
           () => resolvedSettings(manifest),
           (m) => { void this.notifyFn(m); },
           (key, value) => this.setSetting(id, key, value),
+          // Voice notes: transcribed with the owner's OpenAI provider, when there is one.
+          (() => {
+            const openai = providerLookup('openai');
+            return openai?.apiKey ? (path: string) => transcribeAudio(path, { apiKey: openai.apiKey!, baseUrl: openai.baseUrl }) : null;
+          })(),
         );
       }
       const deps = {

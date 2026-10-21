@@ -5,8 +5,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PermissionManager } from '../capabilities/permissions.js';
 import type { Channel } from '../channels/base.js';
 import type { ChannelMessage } from '../types/channel.js';
-import { PluginManager } from './manager.js';
-import { getPluginChannel, setChannelHost, splitMessage, toWhatsAppText, type PluginChannel } from './channel-bridge.js';
+import { PluginManager, setProviderLookup } from './manager.js';
+import { PluginChannel } from './channel-bridge.js';
+import { getPluginChannel, setChannelHost, splitMessage, toWhatsAppText } from './channel-bridge.js';
 import { getPluginTools, resetToolBridge } from './tool-bridge.js';
 import { pluginDataDir } from './store.js';
 import { manifestSchema } from './types.js';
@@ -105,6 +106,7 @@ beforeEach(() => {
     register: (type, channel) => { registered.push({ type, channel }); channel.onMessage((m) => received.push(m)); },
     unregister: (type, channel) => { registered = registered.filter((r) => r.channel !== channel); },
   });
+  setProviderLookup(() => undefined); // never the real ~/.mercury providers
   mgr = new PluginManager({ safeMode: false, notify: (m) => { notices.push(m); } });
 });
 
@@ -331,6 +333,50 @@ describe('plugin channels (plugin API 1.1)', () => {
       await mgr.setSetting('whatsapp', 'access', 'general');
       await inject({ id: 'm3', senderPhone: '15550003', text: 'and now' });
       expect(received[2].metadata?.channelAccess).toBe('general');
+    });
+  });
+
+  describe('voice notes', () => {
+    function channelWith(transcribe: ((p: string) => Promise<string>) | null) {
+      const sent: string[] = [];
+      const got: ChannelMessage[] = [];
+      const manifest = manifestSchema.parse(JSON.parse(readFileSync(join(channelPlugin(src, 'voice-notes'), 'mercury-plugin.json'), 'utf8')));
+      const ch = new PluginChannel(
+        manifest,
+        { request: async (method, params) => { if (method === 'mercury/channel/send') sent.push((params as { text: string }).text); return {}; } },
+        () => ({ owner: '+15550002', access: 'extended' }),
+        () => {},
+        async () => {},
+        transcribe,
+      );
+      ch.onMessage((m) => got.push(m));
+      return { ch, sent, got };
+    }
+    const note = (id: string, text?: string) => ({ id, chatId: '15550002@s.whatsapp.net', senderId: 'x@lid', senderPhone: '15550002', text, attachments: [{ kind: 'voice', path: `/tmp/${id}.ogg` }] });
+
+    it('are transcribed and reach the agent as text, in order', async () => {
+      const { ch, got } = channelWith(async (p) => { if (p.includes('v1')) await sleep(60); return p.includes('v1') ? 'What is the news today?' : 'And the weather?'; });
+      ch.handleNotification('mercury/channel/message', note('v1'));
+      ch.handleNotification('mercury/channel/message', note('v2'));
+      await waitFor(() => got.length === 2);
+      expect(got.map((m) => m.content)).toEqual(['What is the news today?', 'And the weather?']);
+      expect(got[0].metadata?.voiceNote).toBe(true);
+      expect(String(got[0].metadata?.channelGuidance)).toMatch(/voice note/);
+    });
+
+    it('without a transcriber: the owner is told how to enable it; nothing reaches the agent', async () => {
+      const { ch, sent, got } = channelWith(null);
+      ch.handleNotification('mercury/channel/message', note('v3'));
+      await waitFor(() => sent.length === 1);
+      expect(sent[0]).toMatch(/OpenAI provider[\s\S]*Providers/);
+      expect(got).toEqual([]);
+    });
+
+    it('a failed transcription asks the owner to type it', async () => {
+      const { ch, sent } = channelWith(async () => { throw new Error('insufficient_quota'); });
+      ch.handleNotification('mercury/channel/message', note('v4'));
+      await waitFor(() => sent.length === 1);
+      expect(sent[0]).toMatch(/couldn't understand that voice note \(insufficient_quota\)/);
     });
   });
 });

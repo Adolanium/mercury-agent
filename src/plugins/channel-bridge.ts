@@ -170,6 +170,8 @@ export class PluginChannel extends BaseChannel {
     private readonly notifyOwner: (message: string) => void,
     /** Persist a plugin setting without restarting it (access level, members). */
     private readonly saveSetting: (key: string, value: unknown) => Promise<void> = async () => {},
+    /** Speech to text for voice notes; null when no provider can do it. */
+    private readonly transcribe: ((path: string) => Promise<string>) | null = null,
   ) {
     super();
     this.type = manifest.contributes.channel!.type as ChannelType;
@@ -389,16 +391,55 @@ export class PluginChannel extends BaseChannel {
         .slice(0, 10)
         .map((a) => ({ path: a.path as string, kind: String(a.kind ?? 'document'), name: typeof a.name === 'string' ? a.name : basename(a.path as string), mime: typeof a.mime === 'string' ? a.mime : undefined }))
       : [];
-    let content = text;
-    if (files.length) {
-      const list = files.map((f) => `${f.kind}: ${f.path}`).join('\n');
-      content = `${content}${content ? '\n' : ''}[Attachments]\n${list}`;
-    }
-    if (!content) return;
+    // Voice notes become text first (in arrival order per chat), then go to the agent.
+    const voice = files.filter((f) => f.kind === 'voice' || f.kind === 'audio');
+    const others = files.filter((f) => !voice.includes(f));
+    const chatId = p.chatId;
+    const prev = this.chatQueue.get(chatId) ?? Promise.resolve();
+    const next = prev.then(async () => {
+      let content = text;
+      let voiceNote = false;
+      for (const v of voice) {
+        if (!this.transcribe) {
+          await this.send('🎤 I can\'t listen to voice notes yet: that needs an OpenAI provider. Add your OpenAI key once in the dashboard (Providers) or with `mercury doctor`. Meanwhile, please type it.', `${this.type}:${chatId}`).catch(() => {});
+          continue;
+        }
+        try {
+          const said = await this.transcribe(v.path);
+          if (said) {
+            content = `${content}${content ? '\n' : ''}${said}`;
+            voiceNote = true;
+          }
+        } catch (err) {
+          await this.send(`🎤 I couldn't understand that voice note (${(err as Error).message.slice(0, 160)}). Could you type it?`, `${this.type}:${chatId}`).catch(() => {});
+        }
+      }
+      if (others.length) {
+        const list = others.map((f) => `${f.kind}: ${f.path}`).join('\n');
+        content = `${content}${content ? '\n' : ''}[Attachments: the files are attached to this message; these are their paths on this computer]\n${list}`;
+      }
+      if (!content) return;
+      this.emitMessage(id, p, sender, role, content, others, voiceNote);
+    }).catch(() => {});
+    this.chatQueue.set(chatId, next);
+    void next.finally(() => { if (this.chatQueue.get(chatId) === next) this.chatQueue.delete(chatId); });
+  }
+
+  private chatQueue = new Map<string, Promise<void>>();
+
+  private emitMessage(
+    id: string,
+    p: IncomingParams,
+    sender: string,
+    role: 'admin' | 'member',
+    content: string,
+    files: Array<{ path: string; kind: string; name: string; mime?: string }>,
+    voiceNote: boolean,
+  ): void {
 
     const msg: ChannelMessage = {
       id,
-      channelId: `${this.type}:${p.chatId}`,
+      channelId: `${this.type}:${p.chatId as string}`,
       channelType: this.type,
       senderId: sender,
       senderName: typeof p.senderName === 'string' ? p.senderName.slice(0, 100) : undefined,
@@ -410,8 +451,9 @@ export class PluginChannel extends BaseChannel {
         chatId: p.chatId,
         isGroup: p.isGroup === true,
         attachments: files,
+        voiceNote,
         channelAccess: this.accessFor(role),
-        channelGuidance: this.guidance(role, p.isGroup === true),
+        channelGuidance: this.guidance(role, p.isGroup === true) + (voiceNote ? '\nThey sent this as a voice note (transcribed above); reply in text as usual.' : ''),
       },
     };
     this.emit(msg);

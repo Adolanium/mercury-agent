@@ -96,6 +96,7 @@ import { createTaskSurface } from './task-surface.js';
 import { buildFileChangePreview } from '../utils/file-preview.js';
 import { whatsNewText } from '../utils/whats-new.js';
 import { handleBotsCommand as handleBotsCommandImpl } from './commands/bots-command.js';
+import { withAttachments } from './attachments.js';
 import { handlePluginsCommand, tryPluginCommand, pluginCommandHelp, hasPluginDialog, answerPluginDialog } from '../plugins/commands.js';
 import { handleChatCommand as handleChatCommandImpl } from './commands/chat-command.js';
 import { handleBgCommand as handleBgCommandImpl } from './commands/bg-command.js';
@@ -3148,7 +3149,8 @@ export class Agent {
           // DeepSeek thinking models require prior reasoning_content to be
           // passed back with assistant turns (issue #24); other providers
           // get plain text.
-          const providerMessages = deepseekProviderOptions ? withReasoningParts(messages) : messages;
+          // Photos and PDFs from the chat go to models that can take them.
+          const providerMessages = withAttachments(deepseekProviderOptions ? withReasoningParts(messages) : messages, msg, provider.name, provider.getModel());
           // Per-provider output ceiling: a 32K request is rejected outright by
           // providers with smaller limits and burned a halve-and-retry round.
           const providerMaxOutputTokens = Math.min(effectiveMaxOutputTokens, provider.getMaxOutputTokens() ?? Infinity);
