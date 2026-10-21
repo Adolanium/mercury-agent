@@ -1549,6 +1549,14 @@ export class Agent {
     status: 'running' | 'done' | 'error',
     durationMs?: number,
   ): void {
+    // Channels that narrate progress themselves (plugin channels: a voice call
+    // speaks "still searching the web…") hear about every tool start.
+    if (status === 'running' && this.currentMessage) {
+      const current = this.channels.getChannelForMessage(this.currentMessage) as { toolStarted?: (channelId: string, toolName: string) => void } | undefined;
+      if (typeof current?.toolStarted === 'function') {
+        try { current.toolStarted(this.currentMessage.channelId, toolName); } catch { /* best effort */ }
+      }
+    }
     const ch = this.channels.get('cli');
     if (!(ch instanceof CLIChannel)) return;
     if (status === 'running') {
@@ -1623,8 +1631,13 @@ export class Agent {
       } else if (channel instanceof WebChannel) {
         (channel as WebChannel).sendHeartbeat(heartbeatText, msg.channelId);
       } else if (channel && (channel as { quietProgress?: boolean }).quietProgress) {
-        // Phone chats (plugin channels like WhatsApp): keep "typing…" alive instead of messages.
+        // Phone chats (plugin channels like WhatsApp): keep "typing…" alive, and
+        // say once, early, that this one is taking a while and what it's doing.
         void channel.typing(msg.channelId).catch(() => {});
+        if (heartbeatCount === 1) {
+          const doing = this.currentActivity ? this.currentActivity.replace(/[.…]+$/, '') : 'working on it';
+          void channel.send(`⏳ This one takes a moment. Still on it: ${doing.charAt(0).toLowerCase()}${doing.slice(1)}…`, msg.channelId).catch(() => {});
+        }
       } else if (channel) {
         void channel.send(heartbeatText, msg.channelId).catch((e) => logger.warn({ e }, 'channel send failed'));
       }

@@ -268,7 +268,10 @@ export class PluginManager {
         }
         channel = new PluginChannel(
           manifest,
-          { request: (method, params, timeoutMs) => runtimeRef ? runtimeRef.channelRequest(method, params, timeoutMs) : Promise.reject(new Error('not running')) },
+          {
+            request: (method, params, timeoutMs) => runtimeRef ? runtimeRef.channelRequest(method, params, timeoutMs) : Promise.reject(new Error('not running')),
+            notify: (method, params) => runtimeRef?.channelNotify(method, params),
+          },
           () => resolvedSettings(manifest),
           (m) => { void this.notifyFn(m); },
           (key, value) => this.setSetting(id, key, value),

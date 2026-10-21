@@ -201,7 +201,9 @@ fn session_config(instructions: &str) -> Value {
         Speak naturally and briefly: one or two sentences at a time, no lists, no markdown, no URLs read aloud. \
         You don't know today's news or anything current yourself: for news, facts that may have changed, the user's own things \
         (memory, files, calendar) or doing something, call ask_mercury with a clear, complete question; Mercury searches the web and uses its tools. \
-        Say a short filler like 'one moment, let me check' first, then speak its answer in your own words. \
+        Before calling it for anything that searches the web or reads pages, tell the user it can take a few seconds and they can stay on the line \
+        (for example: 'Let me look that up, it'll take a few seconds, stay with me'). Then speak its answer in your own words. \
+        If you get a status update while Mercury is still working, give the user one short, natural sentence about it so they know you're still there. \
         Only actions that change something need the user's approval, which can't be given on a call; if ask_mercury says so, offer to do it by message. When the user says goodbye or is done, say goodbye and call end_call.";
     json!({
         "type": "session.update",
@@ -331,6 +333,15 @@ async fn bridge(
         }
     });
 
+    // Questions Mercury is still working on: (asked at, last spoken update, updates so far).
+    let pending: Arc<std::sync::Mutex<HashMap<String, (Instant, Instant, u32)>>> = Arc::new(std::sync::Mutex::new(HashMap::new()));
+    let mut responding = false;
+    // Answers from Mercury, spoken as soon as the voice is free (only one response may be active).
+    let (answer_tx, mut answer_rx) = mpsc::unbounded_channel::<(String, String)>();
+    let mut ready_answers: VecDeque<(String, String)> = VecDeque::new();
+    let mut status_tick = tokio::time::interval(Duration::from_secs(1));
+    status_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
     let max_minutes = settings().get("maxCallMinutes").and_then(Value::as_f64).unwrap_or(15.0).clamp(1.0, 120.0);
     let deadline = tokio::time::sleep(Duration::from_secs_f64(max_minutes * 60.0));
     tokio::pin!(deadline);
@@ -342,6 +353,42 @@ async fn bridge(
         tokio::select! {
             _ = &mut ended => break Ok(()),
             _ = &mut deadline => { hang_up = true; break Ok(()) }
+            Some(a) = answer_rx.recv() => {
+                ready_answers.push_back(a);
+                if !responding { deliver(&send_q, &mut ready_answers, &mut responding); }
+            }
+            _ = status_tick.tick() => {
+                if !responding && !ready_answers.is_empty() {
+                    deliver(&send_q, &mut ready_answers, &mut responding);
+                    continue;
+                }
+                // Keep the caller company while a lookup runs: a short spoken update
+                // after ~8s, then every ~14s, never over the model or the caller.
+                if responding || !playout.lock().unwrap().is_empty() { continue; }
+                let due = {
+                    let mut p = pending.lock().unwrap();
+                    let now = Instant::now();
+                    p.iter_mut().find_map(|(_, (asked, last, n))| {
+                        let wait = if *n == 0 { Duration::from_secs(8) } else { Duration::from_secs(14) };
+                        if *n < 8 && now.duration_since(if *n == 0 { *asked } else { *last }) >= wait {
+                            *last = now;
+                            *n += 1;
+                            Some((*n, now.duration_since(*asked).as_secs()))
+                        } else { None }
+                    })
+                };
+                if let Some((n, secs)) = due {
+                    let doing = st.call_activity.lock().unwrap().get(call_id).cloned().unwrap_or_else(|| "working on it".into());
+                    let text = if n == 1 {
+                        format!("[Status update, not said by the user] Mercury is still {doing}. Tell the user in one short sentence that it's taking a few seconds and they can stay on the line.")
+                    } else {
+                        format!("[Status update, not said by the user] After {secs} seconds Mercury is still {doing}. Give the user one short, natural update (don't repeat yourself) so they know you're still there.")
+                    };
+                    let _ = send_q.send(json!({ "type": "conversation.item.create", "item": { "type": "message", "role": "user", "content": [{ "type": "input_text", "text": text }] } }));
+                    let _ = send_q.send(json!({ "type": "response.create" }));
+                    responding = true;
+                }
+            }
             msg = ws_rx.next() => {
                 let Some(Ok(msg)) = msg else { break Err("the voice model disconnected".to_string()) };
                 if msg.is_close() {
@@ -352,6 +399,11 @@ async fn bridge(
                 let Ok(ev) = serde_json::from_str::<Value>(text) else { continue };
                 let kind = ev.get("type").and_then(Value::as_str).unwrap_or("");
                 match kind {
+                    "response.created" => responding = true,
+                    "response.done" | "response.cancelled" => {
+                        responding = false;
+                        if !ready_answers.is_empty() { deliver(&send_q, &mut ready_answers, &mut responding); }
+                    }
                     "response.output_audio.delta" | "response.audio.delta" => {
                         if let Some(d) = ev.get("delta").and_then(Value::as_str) {
                             let down = resample(&b64_to_pcm(d), AI_RATE, WA_RATE);
@@ -387,16 +439,20 @@ async fn bridge(
                             let q = args.get("question").and_then(Value::as_str).unwrap_or("").to_string();
                             transcript.lock().await.push(json!({ "role": "ask_mercury", "text": q }));
                             let st2 = st.clone();
-                            let tx2 = send_q.clone();
+                            let tx2 = answer_tx.clone();
                             let call_id2 = call_id.to_string();
+                            let now = Instant::now();
+                            pending.lock().unwrap().insert(fc_id.clone(), (now, now, 0));
+                            st.call_activity.lock().unwrap().remove(call_id);
+                            let pending2 = pending.clone();
                             tokio::spawn(async move {
                                 let answer = st2.out.request("mercury/call/ask", json!({ "callId": call_id2, "question": q }), ASK_TIMEOUT)
                                     .await
                                     .ok()
                                     .and_then(|v| v.get("answer").and_then(Value::as_str).map(str::to_string))
                                     .unwrap_or_else(|| "Mercury didn't answer in time. It will send the answer by message.".into());
-                                let _ = tx2.send(json!({ "type": "conversation.item.create", "item": { "type": "function_call_output", "call_id": fc_id, "output": answer } }));
-                                let _ = tx2.send(json!({ "type": "response.create" }));
+                                pending2.lock().unwrap().remove(&fc_id);
+                                let _ = tx2.send((fc_id, answer));
                             });
                         }
                     }
@@ -415,6 +471,15 @@ async fn bridge(
         let _ = handle.terminate().await;
     }
     result
+}
+
+/// Hand Mercury's answer to the voice model and have it speak.
+fn deliver(send_q: &mpsc::UnboundedSender<Value>, ready: &mut VecDeque<(String, String)>, responding: &mut bool) {
+    if let Some((fc_id, answer)) = ready.pop_front() {
+        let _ = send_q.send(json!({ "type": "conversation.item.create", "item": { "type": "function_call_output", "call_id": fc_id, "output": answer } }));
+        let _ = send_q.send(json!({ "type": "response.create" }));
+        *responding = true;
+    }
 }
 
 /// Turn the voice provider's close reason into something the owner can act on.

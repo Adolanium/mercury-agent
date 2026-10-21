@@ -235,6 +235,11 @@ export class OutOfProcessRuntime implements PluginRuntime {
     });
   }
 
+  /** Plugin API 1.1 channel notifications to the plugin (`mercury/call/*`). */
+  channelNotify(method: string, params: unknown): void {
+    if (method.startsWith('mercury/') && this.ready) this.notify(method, params);
+  }
+
   private notify(method: string, params: unknown): void {
     const child = this.child;
     if (!child?.stdin?.writable) return;

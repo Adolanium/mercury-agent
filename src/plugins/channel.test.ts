@@ -56,6 +56,8 @@ rl.on('line', (line) => {
     case 'mercury/channel/typing':
       log('out.jsonl', { method: msg.method, ...msg.params });
       return ok({});
+    case 'mercury/call/progress':
+      return log('progress.jsonl', msg.params);
     case 'mercury/channel/unlink':
       ok({});
       return notify('mercury/channel/status', { state: 'logged-out', detail: 'unlinked by owner' });
@@ -257,6 +259,19 @@ describe('plugin channels (plugin API 1.1)', () => {
       await waitFor(() => replies().length === 1);
       expect(replies()[0].result.answer).toBe('It is sunny and 24 degrees.');
       expect(sent().filter((m) => m.method === 'mercury/channel/send')).toEqual([]);
+    });
+
+    it('tells the plugin what Mercury is doing during a call, in words a voice can say', async () => {
+      const ch = await installChannel();
+      ch.toolStarted('whatsapp:call:c7', 'web_search');
+      ch.toolStarted('whatsapp:call:c7', 'fetch_url');
+      ch.toolStarted('whatsapp:15550002@s.whatsapp.net', 'web_search'); // a normal chat: nothing sent
+      const f = join(pluginDataDir('whatsapp'), 'progress.jsonl');
+      await waitFor(() => existsSync(f) && readFileSync(f, 'utf8').trim().split('\n').length === 2);
+      expect(readFileSync(f, 'utf8').trim().split('\n').map((l) => JSON.parse(l))).toEqual([
+        { callId: 'c7', activity: 'searching the web' },
+        { callId: 'c7', activity: 'reading a web page' },
+      ]);
     });
 
     it('sends the owner a summary when a call ends, or a note when it was missed', async () => {

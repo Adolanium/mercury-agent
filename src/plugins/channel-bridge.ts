@@ -24,6 +24,8 @@
  *     mercury/call/briefing    request  { callId } → { instructions }
  *     mercury/call/ask         request  { callId, question } → { answer }   (runs a Mercury turn)
  *     mercury/call/ended       notification { callId, direction, outcome, durationSec, transcript, reason? }
+ *   Mercury → plugin during a call
+ *     mercury/call/progress    notification { callId, activity }   (what an ask_mercury turn is doing now)
  *
  * During a call nobody can approve anything: approvals asked on a call are
  * refused (fail-closed), and the model is told to offer doing it by message.
@@ -52,6 +54,24 @@ export interface ChannelStatus {
 
 export interface ChannelTransport {
   request(method: string, params: unknown, timeoutMs: number): Promise<unknown>;
+  /** One-way message to the plugin (e.g. call progress). */
+  notify?(method: string, params: unknown): void;
+}
+
+/** What a tool is doing, in words a voice can say. */
+export function describeTool(name: string): string {
+  if (name === 'web_search') return 'searching the web';
+  if (name === 'fetch_url') return 'reading a web page';
+  if (name === 'search_memory') return 'checking what I know about you';
+  if (name === 'save_memory') return 'making a note';
+  if (name === 'use_skill' || name === 'list_skills') return 'using a skill';
+  if (name === 'read_file' || name === 'list_dir') return 'looking through your files';
+  if (name === 'run_command') return 'running a command';
+  if (/^git_|github|_pr$|issue/.test(name)) return 'checking GitHub';
+  if (name.startsWith('spotify_')) return 'talking to Spotify';
+  if (name === 'dispatch_bot' || name === 'delegate_task') return 'asking one of my helpers';
+  if (name.includes('__')) return 'using a plugin';
+  return 'working on it';
 }
 
 /** Where plugin channels are registered (the runtime's ChannelRegistry). */
@@ -468,6 +488,17 @@ export class PluginChannel extends BaseChannel {
     for (const chunk of splitMessage(toWhatsAppText(content))) {
       await this.transport.request('mercury/channel/send', { chatId, text: chunk }, SEND_TIMEOUT_MS);
     }
+  }
+
+  /**
+   * A tool started in a turn for this channel. On a call, the plugin is told
+   * what Mercury is doing so the voice can say "still searching the web…"
+   * instead of leaving the caller in silence.
+   */
+  toolStarted(channelId: string, toolName: string): void {
+    const call = this.callTarget(channelId);
+    if (!call) return;
+    this.transport.notify?.('mercury/call/progress', { callId: call.slice('call:'.length), activity: describeTool(toolName) });
   }
 
   /** `whatsapp:call:<id>` → `call:<id>`; undefined for normal chats. */

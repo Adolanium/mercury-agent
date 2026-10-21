@@ -90,6 +90,8 @@ pub struct State {
     pub recent_calls: Mutex<Vec<std::time::Instant>>,
     /// Outcomes of outgoing calls being placed.
     pub call_watchers: voice::CallWatchers,
+    /// What Mercury is doing right now for each call's pending question (from mercury/call/progress).
+    pub call_activity: std::sync::Mutex<HashMap<String, String>>,
 }
 
 pub fn log(msg: impl AsRef<str>) {
@@ -135,6 +137,7 @@ async fn main() -> anyhow::Result<()> {
         client: Mutex::new(None),
         recent_calls: Mutex::new(Vec::new()),
         call_watchers: Arc::new(Mutex::new(HashMap::new())),
+        call_activity: std::sync::Mutex::new(HashMap::new()),
     });
 
     let mut lines = BufReader::new(tokio::io::stdin()).lines();
@@ -166,6 +169,12 @@ async fn handle(st: Arc<State>, msg: Value) {
     let params = msg.get("params").cloned().unwrap_or(Value::Null);
     let Some(id) = msg.get("id").cloned() else {
         // Notifications from Mercury.
+        if method == "mercury/call/progress" {
+            if let (Some(call), Some(activity)) = (params.get("callId").and_then(Value::as_str), params.get("activity").and_then(Value::as_str)) {
+                st.call_activity.lock().unwrap().insert(call.to_string(), activity.chars().take(80).collect());
+            }
+            return;
+        }
         if method == "notifications/initialized" {
             if db_path(&st.data_dir).exists() {
                 // Linked before: reconnect with the saved session.
