@@ -172,6 +172,30 @@ messages.
 | Mercury → plugin (request) | `mercury/channel/pair` | `method` (`qr` or `code`), `phone?` |
 | Mercury → plugin (request) | `mercury/channel/unlink` | none |
 
+A channel plugin can also carry **voice calls**. Here the plugin sends
+requests to Mercury, and Mercury replies:
+
+| Direction | Message | Params → result |
+|---|---|---|
+| plugin → Mercury (request) | `mercury/call/incoming` | `callId`, `from`, `fromPhone?`, `voiceReady` → `accept`, `instructions?` |
+| plugin → Mercury (request) | `mercury/call/briefing` | `callId` → `instructions` |
+| plugin → Mercury (request) | `mercury/call/ask` | `callId`, `question` → `answer` |
+| plugin → Mercury (notification) | `mercury/call/ended` | `callId`, `direction`, `outcome`, `durationSec`, `transcript`, `reason?` |
+
+How these work:
+
+- **`incoming`:** Mercury answers only the owner, and only if a voice
+  provider is set up.
+- **`ask`:** runs a normal Mercury turn. Anything that would need approval is
+  refused during a call.
+- **`ended`:** sends the owner a summary of the call.
+
+A plugin that needs one of Mercury's AI providers declares it with
+`"permissions": { "providers": { "openai": "Voice calls" } }`. Mercury then
+passes the key the owner already set up as
+`MERCURY_PROVIDER_OPENAI_API_KEY` and `MERCURY_PROVIDER_OPENAI_BASE_URL`.
+If the provider isn't set up, the owner is told once.
+
 Mercury, not the plugin, decides who can talk to the agent:
 
 - **Access:** only the `owner` number and listed `members` get through.
