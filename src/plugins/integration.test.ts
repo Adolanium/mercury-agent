@@ -91,3 +91,12 @@ describe('general access disables every tool for the turn', () => {
     expect(Object.keys(reg.getTools()).length).toBeGreaterThan(0);
   });
 });
+
+describe('web_search is a built-in tool', () => {
+  it('is registered alongside fetch_url', async () => {
+    const { CapabilityRegistry } = await import('../capabilities/registry.js');
+    const reg = new CapabilityRegistry();
+    reg.registerAll();
+    expect(Object.keys(reg.getTools())).toEqual(expect.arrayContaining(['web_search', 'fetch_url']));
+  });
+});

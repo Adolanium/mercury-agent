@@ -34,6 +34,7 @@ import { createListIssuesTool } from './github/list-issues.js';
 import { createCreateIssueTool } from './github/create-issue.js';
 import { createGithubApiTool } from './github/github-api.js';
 import { createFetchUrlTool } from './web/fetch-url.js';
+import { createWebSearchTool } from './web/web-search.js';
 import {
   createSpotifySearchTool,
   createSpotifyPlayTool,
@@ -281,6 +282,7 @@ export class CapabilityRegistry {
     }
 
     this.tools.fetch_url = createFetchUrlTool({ isResearchMode: () => this.isResearchMode() });
+    this.tools.web_search = createWebSearchTool();
     logger.info('Web fetch tool registered');
 
     if (this.supervisor) {

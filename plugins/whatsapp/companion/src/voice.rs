@@ -199,9 +199,10 @@ pub async fn call_owner(st: Arc<State>, args: &Value) -> Result<String, String> 
 fn session_config(instructions: &str) -> Value {
     let base = "You are Mercury, the user's AI assistant, talking on a WhatsApp voice call. \
         Speak naturally and briefly: one or two sentences at a time, no lists, no markdown, no URLs read aloud. \
-        For anything that needs Mercury's memory, files, tools, the web, or doing something, call ask_mercury with a clear question, \
-        and say a short filler like 'one moment' first. Nothing that needs the user's approval can be done during a call; \
-        if ask_mercury says so, offer to do it by message instead. When the user says goodbye or is done, say goodbye and call end_call.";
+        You don't know today's news or anything current yourself: for news, facts that may have changed, the user's own things \
+        (memory, files, calendar) or doing something, call ask_mercury with a clear, complete question; Mercury searches the web and uses its tools. \
+        Say a short filler like 'one moment, let me check' first, then speak its answer in your own words. \
+        Only actions that change something need the user's approval, which can't be given on a call; if ask_mercury says so, offer to do it by message. When the user says goodbye or is done, say goodbye and call end_call.";
     json!({
         "type": "session.update",
         "session": {

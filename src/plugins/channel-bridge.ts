@@ -249,7 +249,7 @@ export class PluginChannel extends BaseChannel {
         channelType: this.type,
         senderId: digits(owner),
         senderRole: 'admin',
-        content: `[Voice call — the owner asked this out loud. Answer in one to three short spoken sentences: no markdown, lists, links or code. Anything that needs approval can't be done during a call; say so and offer to do it by message.]\n${question}`,
+        content: `[Voice call: the owner asked this out loud. Use your tools to get the real answer: web_search for news and anything current, fetch_url, memory, skills. Then answer in one to three short spoken sentences, with no markdown, lists, links or code. Only actions that change something (files, commands, sending messages, purchases) need approval, and that can't be given on a call; for those, say you'll do it once they confirm by message.]\n${question}`,
         timestamp: Date.now(),
         metadata: { pluginId: this.manifest.id, voiceCall: true, callId, channelAccess: this.accessFor('admin'), channelGuidance: this.guidance('admin', false, true) },
       });
@@ -420,12 +420,12 @@ export class PluginChannel extends BaseChannel {
       `## Channel: ${name}`,
       `You're talking with ${who} on ${where}.`,
       voiceCall
-        ? 'Your answer is spoken aloud: one to three short sentences, no markdown, lists, links or code.'
+        ? 'Your answer is spoken aloud: one to three short sentences, no markdown, lists, links or code. Looking things up (web_search, fetch_url, memory, skills) is fine during a call.'
         : `Write like a text message: short and conversational. ${name} formatting only (*bold*, _italic_, ~strike~). No code blocks, tables, headings or long lists. If they need code, a document or long output, write it to a file and send it with send_file, then summarise it in a sentence. Never paste raw file contents, logs or stack traces.`,
     ];
     if (this.accessFor(role) === 'extended') {
       lines.push(role === 'admin'
-        ? 'Access: Extended. Use your tools, files and memory as you normally would. Actions that need approval are confirmed by the owner replying 1 (yes), 2 (no) or 3 (always) in this chat: ask once, clearly, saying what will happen.'
+        ? 'Access: Extended. Use your tools, skills, files and memory exactly as you would anywhere else; don\'t hold back because this is a chat app. For news, current events, prices or facts that may have changed, call web_search (kind "news" for headlines) and answer from the results. Actions that need approval are confirmed by the owner replying 1 (yes), 2 (no) or 3 (always) in this chat: ask once, clearly, saying what will happen.'
         : 'Access: Extended for members. You may use tools, but never share the owner\'s private details (memory, files, contacts, accounts) with this member unless the owner told you to.');
     } else {
       lines.push(role === 'admin'

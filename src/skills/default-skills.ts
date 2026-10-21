@@ -19,11 +19,12 @@ export function getCategoryLabel(category: string): string {
   return CATEGORY_LABELS[category] || category.charAt(0).toUpperCase() + category.slice(1);
 }
 
-export const DEFAULT_SKILL_SEEDS: DefaultSkillSeed[] = [
-  {
-    dirName: 'web-search',
-    fileName: 'SKILL.md',
-    content: `---
+/**
+ * Earlier contents of built-in skills. A user's copy that still matches one
+ * exactly was never edited, so it is upgraded to the current seed.
+ */
+export const PREVIOUS_SEED_CONTENTS: Record<string, string[]> = {
+  'web-search': [`---
 name: web-search
 description: Perform web searches using DuckDuckGo HTML and summarize sources.
 version: 1.0.0
@@ -68,6 +69,61 @@ Use this skill when the user asks for current events, external facts, or web res
 - Prefer reliable sources (official docs, primary sources, reputable publications).
 - If information is uncertain or conflicting, say so explicitly.
 - Include source URLs in the response.
+- Avoid fabricated citations.
+`],
+};
+
+export const DEFAULT_SKILL_SEEDS: DefaultSkillSeed[] = [
+  {
+    dirName: 'web-search',
+    fileName: 'SKILL.md',
+    content: `---
+name: web-search
+description: Search the web and the news with the web_search tool, read the best sources, and answer with links.
+version: 1.1.0
+category: web
+categories:
+  - web
+  - research
+intents:
+  - search the web
+  - look up
+  - find online
+  - what is
+  - current news
+  - search for
+  - find information about
+  - research
+  - web search
+  - latest news
+  - what's happening
+tags:
+  - search
+  - web
+  - research
+  - news
+allowed-tools:
+  - web_search
+  - fetch_url
+---
+
+# Web Search
+
+Use this skill when the user asks for current events, external facts, or web research.
+
+## Workflow
+
+1. Call web_search with a focused query. For news and recent events use kind "news"
+   (an empty query gives today's top stories).
+2. Open the most relevant one to three results with fetch_url when the snippets aren't enough.
+3. Cross-check key facts across at least 2 sources when possible.
+4. Return a concise answer with source links and clear caveats.
+
+## Rules
+
+- Prefer reliable sources (official docs, primary sources, reputable publications).
+- If information is uncertain or conflicting, say so explicitly.
+- Include source URLs in the response (on phone chats, keep it to the one or two that matter).
 - Avoid fabricated citations.
 `,
   },
