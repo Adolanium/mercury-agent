@@ -99,9 +99,9 @@ pub fn engine(settings: &Value) -> String {
 
 /// Human-readable reason calls can't start with the current settings, if any.
 pub fn not_ready(settings: &Value) -> Option<String> {
-    let need = |name: &str, what: &str| if env_key(name).is_none() { Some(format!("voice calls with {what} need its API key: add it in /plugins whatsapp")) } else { None };
+    let need = |name: &str, what: &str| if env_key(name).is_none() { Some(format!("voice calls with {what} need its API key: add it in /plugins whatsapp → 🎙 Voice calls")) } else { None };
     match engine(settings).as_str() {
-        "openai" => if env_key("MERCURY_PROVIDER_OPENAI_API_KEY").is_none() { Some("voice calls need an OpenAI provider: add your OpenAI key once in the dashboard (Providers) or with `mercury doctor`".into()) } else { None },
+        "openai" => if env_key("MERCURY_PROVIDER_OPENAI_API_KEY").is_none() { Some("voice calls need an OpenAI key (recommended): add it once in the dashboard (Providers) or with `mercury doctor`, or pick another voice in /plugins whatsapp → 🎙 Voice calls".into()) } else { None },
         "grok" => if env_key("MERCURY_PROVIDER_GROK_API_KEY").is_none() { Some("voice calls with Grok need a Grok provider: add your xAI key in the dashboard (Providers)".into()) } else { None },
         "azure" => need("AZURE_OPENAI_API_KEY", "Azure OpenAI").or_else(|| if setting(settings, "azureEndpoint", "").is_empty() { Some("set the Azure endpoint in /plugins whatsapp".into()) } else { None }),
         "elevenlabs" => need("ELEVENLABS_API_KEY", "ElevenLabs"),

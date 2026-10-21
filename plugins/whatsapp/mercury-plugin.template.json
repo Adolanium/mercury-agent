@@ -68,13 +68,15 @@
         "unlocks": "Voice calls",
         "when": {
           "voiceEngine": "openai"
-        }
+        },
+        "alternative": "Or pick another voice in /plugins whatsapp \u2192 \ud83c\udf99 Voice calls."
       },
       "grok": {
         "unlocks": "Voice calls with Grok",
         "when": {
           "voiceEngine": "grok"
-        }
+        },
+        "alternative": "Or pick another voice in /plugins whatsapp \u2192 \ud83c\udf99 Voice calls."
       }
     }
   },
@@ -137,11 +139,12 @@
         "description": "Answer voice calls from the owner.",
         "default": true,
         "label": "Answer your voice calls",
-        "setup": true
+        "setup": false,
+        "group": "voice"
       },
       "voiceEngine": {
         "type": "enum",
-        "label": "Voice for calls",
+        "label": "Who handles your calls?",
         "setup": true,
         "default": "openai",
         "description": "Who listens and speaks on calls. Change anytime in /plugins whatsapp.",
@@ -155,14 +158,16 @@
           "mercury"
         ],
         "optionLabels": {
-          "openai": "OpenAI Realtime (default): natural, uses your OpenAI provider",
+          "openai": "\u2b50 OpenAI Realtime: recommended for the best calls (uses your OpenAI key)",
           "gemini": "Google Gemini Live: cheapest, free tier, Hindi and Urdu",
           "grok": "xAI Grok Voice: uses your Grok provider",
           "elevenlabs": "ElevenLabs Realtime (experimental)",
           "azure": "Azure OpenAI Realtime",
           "qwen": "Alibaba Qwen-Omni Realtime",
           "mercury": "My own model: your Mercury model thinks; pick who listens and speaks"
-        }
+        },
+        "group": "voice",
+        "setupWhenMissing": "provider:openai"
       },
       "voiceModel": {
         "type": "string",
@@ -173,7 +178,8 @@
           "voiceEngine": [
             "openai"
           ]
-        }
+        },
+        "group": "voice"
       },
       "voice": {
         "type": "enum",
@@ -197,7 +203,8 @@
             "openai",
             "azure"
           ]
-        }
+        },
+        "group": "voice"
       },
       "geminiKey": {
         "type": "secret",
@@ -210,7 +217,8 @@
           "voiceEngine": [
             "gemini"
           ]
-        }
+        },
+        "group": "voice"
       },
       "geminiModel": {
         "type": "string",
@@ -220,7 +228,8 @@
           "voiceEngine": [
             "gemini"
           ]
-        }
+        },
+        "group": "voice"
       },
       "geminiVoice": {
         "type": "string",
@@ -231,7 +240,8 @@
           "voiceEngine": [
             "gemini"
           ]
-        }
+        },
+        "group": "voice"
       },
       "grokModel": {
         "type": "string",
@@ -241,7 +251,8 @@
           "voiceEngine": [
             "grok"
           ]
-        }
+        },
+        "group": "voice"
       },
       "grokVoice": {
         "type": "enum",
@@ -264,7 +275,8 @@
           "voiceEngine": [
             "grok"
           ]
-        }
+        },
+        "group": "voice"
       },
       "elevenlabsKey": {
         "type": "secret",
@@ -286,7 +298,8 @@
             "voiceEngine": "mercury",
             "ttsProvider": "elevenlabs"
           }
-        ]
+        ],
+        "group": "voice"
       },
       "elevenlabsModel": {
         "type": "enum",
@@ -300,7 +313,8 @@
           "voiceEngine": [
             "elevenlabs"
           ]
-        }
+        },
+        "group": "voice"
       },
       "elevenlabsVoice": {
         "type": "string",
@@ -310,7 +324,8 @@
           "voiceEngine": [
             "elevenlabs"
           ]
-        }
+        },
+        "group": "voice"
       },
       "azureKey": {
         "type": "secret",
@@ -322,7 +337,8 @@
           "voiceEngine": [
             "azure"
           ]
-        }
+        },
+        "group": "voice"
       },
       "azureEndpoint": {
         "type": "string",
@@ -334,7 +350,8 @@
           "voiceEngine": [
             "azure"
           ]
-        }
+        },
+        "group": "voice"
       },
       "azureDeployment": {
         "type": "string",
@@ -345,7 +362,8 @@
           "voiceEngine": [
             "azure"
           ]
-        }
+        },
+        "group": "voice"
       },
       "qwenKey": {
         "type": "secret",
@@ -357,7 +375,8 @@
           "voiceEngine": [
             "qwen"
           ]
-        }
+        },
+        "group": "voice"
       },
       "qwenEndpoint": {
         "type": "string",
@@ -368,7 +387,8 @@
           "voiceEngine": [
             "qwen"
           ]
-        }
+        },
+        "group": "voice"
       },
       "qwenModel": {
         "type": "string",
@@ -378,7 +398,8 @@
           "voiceEngine": [
             "qwen"
           ]
-        }
+        },
+        "group": "voice"
       },
       "qwenVoice": {
         "type": "string",
@@ -388,7 +409,8 @@
           "voiceEngine": [
             "qwen"
           ]
-        }
+        },
+        "group": "voice"
       },
       "sttProvider": {
         "type": "enum",
@@ -411,7 +433,8 @@
           "voiceEngine": [
             "mercury"
           ]
-        }
+        },
+        "group": "voice"
       },
       "sttLanguage": {
         "type": "enum",
@@ -433,7 +456,8 @@
           "voiceEngine": [
             "mercury"
           ]
-        }
+        },
+        "group": "voice"
       },
       "deepgramKey": {
         "type": "secret",
@@ -450,7 +474,8 @@
             "voiceEngine": "mercury",
             "ttsProvider": "deepgram"
           }
-        ]
+        ],
+        "group": "voice"
       },
       "assemblyaiKey": {
         "type": "secret",
@@ -461,7 +486,8 @@
         "when": {
           "voiceEngine": "mercury",
           "sttProvider": "assemblyai"
-        }
+        },
+        "group": "voice"
       },
       "sarvamKey": {
         "type": "secret",
@@ -478,7 +504,8 @@
             "voiceEngine": "mercury",
             "ttsProvider": "sarvam"
           }
-        ]
+        ],
+        "group": "voice"
       },
       "ttsProvider": {
         "type": "enum",
@@ -503,7 +530,8 @@
           "voiceEngine": [
             "mercury"
           ]
-        }
+        },
+        "group": "voice"
       },
       "cartesiaKey": {
         "type": "secret",
@@ -514,7 +542,8 @@
         "when": {
           "voiceEngine": "mercury",
           "ttsProvider": "cartesia"
-        }
+        },
+        "group": "voice"
       },
       "minimaxKey": {
         "type": "secret",
@@ -525,7 +554,8 @@
         "when": {
           "voiceEngine": "mercury",
           "ttsProvider": "minimax"
-        }
+        },
+        "group": "voice"
       },
       "ttsVoice": {
         "type": "string",
@@ -536,19 +566,32 @@
           "voiceEngine": [
             "mercury"
           ]
-        }
+        },
+        "group": "voice"
       },
       "maxCallsPerHour": {
         "type": "number",
         "description": "Most times Mercury may call you in an hour.",
         "default": 4,
-        "label": "Most calls from Mercury per hour"
+        "label": "Most calls from Mercury per hour",
+        "group": "voice"
       },
       "maxCallMinutes": {
         "type": "number",
         "description": "Longest a call can last, in minutes.",
         "default": 15,
-        "label": "Longest call, in minutes"
+        "label": "Longest call, in minutes",
+        "group": "voice"
+      }
+    },
+    "groups": {
+      "voice": {
+        "label": "\ud83c\udf99 Voice calls",
+        "description": "Who listens and speaks when you call Mercury (or it calls you). OpenAI is recommended for the best results; every other option works too.",
+        "readyUnless": [
+          "provider:openai",
+          "provider:grok"
+        ]
       }
     }
   }

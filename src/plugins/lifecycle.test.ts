@@ -280,3 +280,80 @@ describe('secret settings (API keys a plugin asks for)', () => {
     expect(renderPrompt((await d2.current())!, false)).toMatch(/Other key[\s\S]*Paste the key here/);
   });
 });
+
+describe('menu sections and "ask only while missing"', () => {
+  const manifest = {
+    permissions: { network: [], secrets: ['FIXTURE_GEM_KEY'], providers: { openai: { unlocks: 'Voice calls', when: { engine: 'openai' }, alternative: 'Or pick another voice in Voice calls.' } } },
+    settings: {
+      version: 1,
+      groups: { voice: { label: '🎙 Voice calls', readyUnless: ['provider:openai'] } },
+      fields: {
+        owner: { type: 'string', label: 'Your number', setup: true },
+        engine: { type: 'enum', options: ['openai', 'gemini'], default: 'openai', label: 'Who handles calls?', setup: true, setupWhenMissing: 'provider:openai', group: 'voice', optionLabels: { openai: '⭐ OpenAI: recommended', gemini: 'Gemini' } },
+        gemKey: { type: 'secret', secret: 'FIXTURE_GEM_KEY', label: 'Gemini key', setup: true, required: true, group: 'voice', when: { engine: 'gemini' } },
+      },
+    },
+  };
+
+  async function open(kind: 'setup' | 'menu') {
+    const { PluginDialog, renderPrompt } = await import('./dialog.js');
+    const { localService } = await import('./service.js');
+    const d = kind === 'setup' ? await PluginDialog.setup(localService(mgr), 'voicey') : await PluginDialog.menu(localService(mgr), 'voicey', true);
+    return { d: d!, text: async () => renderPrompt((await d!.current())!, false) };
+  }
+
+  it('with an OpenAI key, setup never asks which voice to use', async () => {
+    const { setProviderLookup } = await import('./manager.js');
+    setProviderLookup((id) => (id === 'openai' ? { apiKey: 'sk-x' } : undefined));
+    try {
+      await mgr.install(inProcessPlugin(src, { id: 'voicey', manifest }));
+      const { d, text } = await open('setup');
+      expect(await text()).toMatch(/Your number/);
+      await d.answer('+15550001111');
+      expect(await text()).toMatch(/is set up/);
+      const menu = await open('menu');
+      expect(await menu.text()).toMatch(/🎙 Voice calls: ready ✓ \(⭐ OpenAI/);
+    } finally {
+      setProviderLookup(() => undefined);
+    }
+  });
+
+  it('without one, setup asks, recommends OpenAI first, and the menu shows the section as not set up', async () => {
+    const { setProviderLookup } = await import('./manager.js');
+    setProviderLookup(() => undefined);
+    const prev = process.env.FIXTURE_GEM_KEY;
+    delete process.env.FIXTURE_GEM_KEY;
+    try {
+      await mgr.install(inProcessPlugin(src, { id: 'voicey', manifest }));
+      const { d, text } = await open('setup');
+      await text();
+      await d.answer('+15550001111');
+      expect(await text()).toMatch(/Who handles calls\?[\s\S]*1\* · ⭐ OpenAI: recommended[\s\S]*2\* · Gemini/);
+      expect((await mgr.info('voicey'))?.missing?.[0].fix).toMatch(/Or pick another voice in Voice calls\./);
+
+      const menu = await open('menu');
+      expect(await menu.text()).toMatch(/🎙 Voice calls: not set up ⚠[\s\S]*🎙 Voice calls ⚠ set up/);
+      // Choosing Gemini in the section asks for its key; until then it isn't ready.
+      await mgr.setSetting('voicey', 'engine', 'gemini');
+      expect((await mgr.info('voicey'))?.settingGroups?.[0].ready).toBe(false);
+      await mgr.setSetting('voicey', 'gemKey', 'gem-key-123456');
+      expect((await mgr.info('voicey'))?.settingGroups?.[0].ready).toBe(true);
+    } finally {
+      if (prev !== undefined) process.env.FIXTURE_GEM_KEY = prev;
+    }
+  });
+
+  it('the section walks through only what applies', async () => {
+    const { setProviderLookup } = await import('./manager.js');
+    setProviderLookup(() => undefined);
+    await mgr.install(inProcessPlugin(src, { id: 'voicey', manifest }));
+    const { d, text } = await open('menu');
+    expect(await text()).toMatch(/1\* · 🎙 Voice calls/);
+    await d.answer('1');
+    expect(await text()).toMatch(/🎙 Voice calls[\s\S]*Change it/);
+    await d.answer('1');
+    expect(await text()).toMatch(/Who handles calls\?/);
+    await d.answer('2'); // Gemini → now its key
+    expect(await text()).toMatch(/Gemini key[\s\S]*Paste the key/);
+  });
+});

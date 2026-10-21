@@ -616,6 +616,19 @@ export class PluginManager {
         value: f.type === 'secret' ? undefined : values[key],
         isSet: f.type === 'secret' ? !!secretValue(f.secret!) : undefined,
         label: f.label, setup: f.setup, required: f.required, optionLabels: f.optionLabels, format: f.format, when: f.when,
+        group: f.group, setupWhenMissing: f.setupWhenMissing,
+      }));
+      const missingKeys = new Set((item.missing ?? []).map((m) => m.key));
+      // A section is ready when none of its requirements are missing and every
+      // required setting that applies (e.g. the key for the chosen engine) is filled in.
+      const filled = (k: string) => {
+        const f = fields[k];
+        return f.type === 'secret' ? !!secretValue(f.secret!) : values[k] !== undefined && values[k] !== '';
+      };
+      item.settingGroups = Object.entries(manifest.settings?.groups ?? {}).map(([gid, g]) => ({
+        id: gid, label: g.label, description: g.description,
+        ready: !(g.readyUnless ?? []).some((k) => missingKeys.has(k))
+          && Object.entries(fields).every(([k, f]) => f.group !== gid || !f.required || !whenMatches(f.when, values) || filled(k)),
       }));
     }
     return item;
@@ -775,15 +788,16 @@ export function missingRequirements(manifest: PluginManifest): Array<{ key: stri
   const creds = providerCredentials(manifest);
   const out: Array<{ key: string; unlocks: string; needs: string; fix: string }> = [];
   const values = resolvedSettings(manifest);
-  for (const [id, spec] of Object.entries(manifest.permissions.providers ?? {}) as Array<[PluginProviderId, string | { unlocks: string; when?: WhenCondition | WhenCondition[] }]>) {
+  for (const [id, spec] of Object.entries(manifest.permissions.providers ?? {}) as Array<[PluginProviderId, string | { unlocks: string; when?: WhenCondition | WhenCondition[]; alternative?: string }]>) {
     const unlocks = typeof spec === 'string' ? spec : spec.unlocks;
     if (typeof spec !== 'string' && !whenMatches(spec.when, values)) continue;
     if (creds[providerSecretNames(id).apiKey]) continue;
+    const alt = typeof spec !== 'string' && spec.alternative ? ` ${spec.alternative}` : '';
     out.push({
       key: `provider:${id}`,
       unlocks,
       needs: `an ${PROVIDER_LABEL[id]} provider`,
-      fix: `Add your ${PROVIDER_LABEL[id]} key once in the dashboard (Providers) or with \`mercury doctor\`; Mercury uses it for everything.`,
+      fix: `Add your ${PROVIDER_LABEL[id]} key once in the dashboard (Providers) or with \`mercury doctor\`; Mercury uses it for everything.${alt}`,
     });
   }
   for (const [name, unlocks] of Object.entries(manifest.permissions.optionalSecrets ?? {})) {

@@ -506,10 +506,27 @@ function PluginDetails({ p, busy, safeMode, onAct, onInstall, onClose }: {
           </p>
         ))}
         {p.channel && p.installedVersion && <ChannelPanel id={p.id} enabled={p.enabled} />}
-        {p.settings && p.settings.length > 0 && (
+        {(p.settingGroups ?? []).map((g) => (
+          <div key={g.id} className="space-y-3 rounded-lg border border-border p-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-medium text-foreground">{g.label}</p>
+              <Badge variant={g.ready ? "success" : "warning"}>{g.ready ? "Ready" : "Set up"}</Badge>
+            </div>
+            {g.description && <p className="text-xs text-muted-foreground">{g.description}</p>}
+            {(p.settings ?? []).filter((x) => x.group === g.id && settingApplies(x, p.settings ?? [])).map((setting) => (
+              <SettingField
+                key={setting.key}
+                s={setting}
+                disabled={busy}
+                onSave={(v) => onAct(p.id, `Saved ${setting.label ?? setting.key}`, () => api.plugins.setSetting(p.id, setting.key, v))}
+              />
+            ))}
+          </div>
+        ))}
+        {p.settings && p.settings.some((x) => !x.group) && (
           <div className="space-y-3 rounded-lg border border-border p-3">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Settings</p>
-            {[...p.settings].filter((x) => settingApplies(x, p.settings ?? [])).sort((a, b) => Number(!!b.setup) - Number(!!a.setup)).map((setting) => (
+            {[...p.settings].filter((x) => !x.group && settingApplies(x, p.settings ?? [])).sort((a, b) => Number(!!b.setup) - Number(!!a.setup)).map((setting) => (
               <SettingField
                 key={setting.key}
                 s={setting}

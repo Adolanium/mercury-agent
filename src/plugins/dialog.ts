@@ -56,7 +56,10 @@ export class PluginDialog {
     const info = await svc.info(id);
     if (!info?.installedVersion) return null;
     const d = new PluginDialog(id, `${info.name} setup`, svc, true);
-    const fields = (info.settings ?? []).filter((s) => s.setup);
+    const missing = new Set((info.missing ?? []).map((m) => m.key));
+    // A setting with setupWhenMissing is only asked while that requirement is
+    // missing (with an OpenAI key, the default voice just works).
+    const fields = (info.settings ?? []).filter((s) => s.setup && (!s.setupWhenMissing || missing.has(s.setupWhenMissing)));
     fields.forEach((f, i) => d.steps.push(d.settingStep(f, { index: i + 1, total: fields.length + (info.channel ? 1 : 0), setup: true })));
     if (info.channel) d.steps.push(d.linkStep(info, true));
     d.steps.push(d.finishStep(info));
@@ -237,7 +240,12 @@ export class PluginDialog {
         const status = i.installedVersion ? (i.enabled ? (i.status === 'enabled' ? 'on' : i.status) : 'off') : 'not installed';
         lines.push('', `Status: ${status}`);
         if (i.channel) lines.push(`Account: ${i.channel.state === 'connected' ? `linked${i.channel.account ? ` as +${i.channel.account}` : ''}` : (i.channel.state ?? 'not linked')}`);
-        for (const s of (i.settings ?? []).filter((x) => (x.setup || x.label) && settingApplies(x, i.settings ?? []))) {
+        for (const g of i.settingGroups ?? []) {
+          const first = (i.settings ?? []).find((x) => x.group === g.id && x.type === 'enum');
+          const choice = first ? String(first.optionLabels?.[String(first.value)] ?? first.value ?? '').split(':')[0] : '';
+          lines.push(`${g.label}: ${g.ready ? 'ready ✓' : 'not set up ⚠'}${choice ? ` (${choice})` : ''}`);
+        }
+        for (const s of (i.settings ?? []).filter((x) => !x.group && (x.setup || x.label) && settingApplies(x, i.settings ?? []))) {
           const v = s.type === 'secret' ? (s.isSet ? 'set ✓' : 'not set') : s.value === undefined || s.value === '' ? 'not set' : s.type === 'boolean' ? (s.value ? 'yes' : 'no') : String(s.optionLabels?.[String(s.value)]?.split(':')[0] ?? s.value);
           lines.push(`${s.label ?? s.key}: ${v}`);
         }
@@ -247,7 +255,8 @@ export class PluginDialog {
         if (!i.installedVersion) {
           options.push({ label: 'Install', value: 'install' });
         } else {
-          if (i.settings?.length) options.push({ label: 'Change a setting', value: 'settings' });
+          for (const g of i.settingGroups ?? []) options.push({ label: `${g.label}${g.ready ? '' : ' ⚠ set up'}`, value: `group:${g.id}` });
+          if (i.settings?.some((x) => !x.group)) options.push({ label: 'Change a setting', value: 'settings' });
           if (i.channel && i.enabled) {
             if (i.channel.state === 'connected') {
               options.push({ label: 'Send me a test message', value: 'test' });
@@ -268,6 +277,10 @@ export class PluginDialog {
         if (!this.admin) return { kind: 'done' };
         if (!option) return { kind: 'retry', message: 'Reply with one of the numbers, or "cancel".' };
         const i = (await this.svc.info(this.pluginId))!;
+        if (option.value.startsWith('group:')) {
+          const gid = option.value.slice('group:'.length);
+          return { kind: 'push', steps: [...this.groupSteps(i, gid), this.menuStep()] };
+        }
         switch (option.value) {
           case 'close':
             return { kind: 'done', message: 'Closed.' };
@@ -307,8 +320,42 @@ export class PluginDialog {
     };
   }
 
+  /** A menu section: its intro, then each of its settings that applies (keys asked only when needed). */
+  private groupSteps(i: PluginListItem, gid: string): Step[] {
+    const g = (i.settingGroups ?? []).find((x) => x.id === gid);
+    const fields = (i.settings ?? []).filter((x) => x.group === gid);
+    const intro: Step = {
+      prompt: async () => ({
+        text: `*${g?.label ?? gid}*${g?.description ? `\n${g.description}` : ''}\nNow: ${g?.ready ? 'ready ✓' : 'not set up yet ⚠'}`,
+        options: [{ label: 'Change it', value: 'go' }, { label: 'Back', value: 'back' }],
+      }),
+      answer: async (_input, option) => {
+        if (!option) return { kind: 'retry', message: 'Reply 1 or 2.' };
+        return option.value === 'back' ? { kind: 'done' } : { kind: 'next' };
+      },
+    };
+    // Re-read each setting fresh, so a key question follows the engine just chosen.
+    const steps = fields.map((f, n) => this.liveSettingStep(f.key, { index: n + 1, total: fields.length }));
+    return [intro, ...steps];
+  }
+
+  /** A setting step that looks the setting up when it's reached (values may have changed since). */
+  private liveSettingStep(key: string, ctx: { index: number; total: number }): Step {
+    let inner: Step | null = null;
+    const load = async () => {
+      const s = (await this.svc.info(this.pluginId))?.settings?.find((x) => x.key === key);
+      inner = s ? this.settingStep(s, { setup: true }) : null;
+      return inner;
+    };
+    return {
+      applies: async () => { const st = await load(); return st ? (st.applies ? st.applies() : true) : false; },
+      prompt: async () => (inner ?? (await load()))!.prompt(),
+      answer: async (input, option) => (inner ?? (await load()))!.answer(input, option),
+    };
+  }
+
   private pickSettingStep(i: PluginListItem): Step {
-    const settings = (i.settings ?? []).filter((x) => settingApplies(x, i.settings ?? []));
+    const settings = (i.settings ?? []).filter((x) => !x.group && settingApplies(x, i.settings ?? []));
     return {
       prompt: async () => ({
         text: '*Which setting?*',

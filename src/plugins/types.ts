@@ -110,6 +110,14 @@ const settingField = z.object({
   format: z.enum(['text', 'phone']).default('text'),
   /** For type 'secret': the env var name the plugin receives it as (must be in permissions.secrets). */
   secret: z.string().regex(SECRET_NAME_RE).optional(),
+  /** A section of the plugin's menu this setting belongs to (see settings.groups). */
+  group: z.string().regex(/^[a-z][a-z0-9-]{0,30}$/).optional(),
+  /**
+   * Ask during setup only while this requirement is missing, e.g.
+   * "provider:openai": with an OpenAI key the default just works, so setup
+   * doesn't ask which voice to use.
+   */
+  setupWhenMissing: z.string().max(80).optional(),
   /**
    * Only relevant when other settings have these values, e.g.
    * { "voiceEngine": ["elevenlabs"] }. A list of conditions means any of them.
@@ -190,7 +198,12 @@ export const manifestSchema = z.object({
     providers: z.record(z.enum(PLUGIN_PROVIDER_IDS), z.union([
       z.string().min(1).max(200),
       /** Needed only when settings match, e.g. { unlocks: "Voice calls", when: { voiceEngine: "openai" } }. */
-      z.object({ unlocks: z.string().min(1).max(200), when: z.union([whenCondition, z.array(whenCondition).min(1).max(8)]).optional() }).strict(),
+      z.object({
+        unlocks: z.string().min(1).max(200),
+        when: z.union([whenCondition, z.array(whenCondition).min(1).max(8)]).optional(),
+        /** Extra words after the standard fix, e.g. "…or pick another voice in /plugins whatsapp → Voice calls." */
+        alternative: z.string().max(200).optional(),
+      }).strict(),
     ])).optional(),
   }).strict().default({ network: [], secrets: [] }),
   settings: z.object({
@@ -203,6 +216,13 @@ export const manifestSchema = z.object({
      * too, and a bad migration can't touch anything but its own settings.
      */
     migrations: z.array(settingsMigration).max(100).default([]),
+    /** Menu sections: each gets its own entry in /plugins <id> (e.g. "Voice calls"). */
+    groups: z.record(z.string().regex(/^[a-z][a-z0-9-]{0,30}$/), z.object({
+      label: z.string().min(1).max(40),
+      description: z.string().max(300).optional(),
+      /** Requirements (keys from `missing`) that mean this section isn't ready, e.g. "provider:openai". */
+      readyUnless: z.array(z.string().max(80)).max(10).optional(),
+    }).strict()).optional(),
   }).strict().optional(),
   /** Native files inside the package whose SHA-256 is checked at install and before every start. */
   checksums: z.record(relPath, z.string().regex(/^[a-f0-9]{64}$/)).optional(),
@@ -317,6 +337,8 @@ export interface PluginListItem {
   verified: boolean;
   tools: string[];
   commands: string[];
+  /** Menu sections (from settings.groups), with whether each is ready. */
+  settingGroups?: Array<{ id: string; label: string; description?: string; ready: boolean }>;
   /** Optional providers or secrets that aren't set up: what's off, what it needs, how to fix it. */
   missing?: Array<{ key: string; unlocks: string; needs: string; fix: string }>;
   /** Plugin API 1.1: the chat channel this plugin provides, and its live state. */
@@ -341,6 +363,8 @@ export interface PluginListItem {
     when?: WhenCondition | WhenCondition[];
     /** Secret settings: whether a value is stored (the value itself is never shown). */
     isSet?: boolean;
+    group?: string;
+    setupWhenMissing?: string;
   }>;
 }
 

@@ -278,6 +278,7 @@ export interface PluginSetting {
   label?: string;
   when?: Record<string, string | boolean | string[]> | Array<Record<string, string | boolean | string[]>>;
   isSet?: boolean;
+  group?: string;
   setup?: boolean;
   required?: boolean;
   optionLabels?: Record<string, string>;
@@ -306,6 +307,7 @@ export interface PluginItem {
   settings?: PluginSetting[];
   channel?: { type: string; state?: string; detail?: string; account?: string };
   missing?: Array<{ key: string; unlocks: string; needs: string; fix: string }>;
+  settingGroups?: Array<{ id: string; label: string; description?: string; ready: boolean }>;
 }
 
 export interface PluginChannelStatus {
