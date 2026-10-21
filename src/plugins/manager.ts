@@ -273,6 +273,7 @@ export class PluginManager {
       }
       const deps = {
         onNotification: channel ? (method: string, params: unknown) => channel!.handleNotification(method, params) : undefined,
+        onRequest: channel ? (method: string, params: unknown) => channel!.handleRequest(method, params) : undefined,
         onReady: channel ? () => channel!.attach() : undefined,
         onDown: channel ? () => channel!.down() : undefined,
         mercuryVersion: mercuryVersion(),

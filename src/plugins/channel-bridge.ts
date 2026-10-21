@@ -19,9 +19,19 @@
  *     mercury/channel/typing   { chatId, on }
  *     mercury/channel/pair     { method: 'qr' | 'code', phone? }
  *     mercury/channel/unlink   {}
+ *   Voice calls (plugin → Mercury)
+ *     mercury/call/incoming    request  { callId, from, fromPhone?, voiceReady } → { accept, instructions? }
+ *     mercury/call/briefing    request  { callId } → { instructions }
+ *     mercury/call/ask         request  { callId, question } → { answer }   (runs a Mercury turn)
+ *     mercury/call/ended       notification { callId, direction, outcome, durationSec, transcript, reason? }
+ *
+ * During a call nobody can approve anything: approvals asked on a call are
+ * refused (fail-closed), and the model is told to offer doing it by message.
  */
 import { basename } from 'node:path';
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { getMercuryHome } from '../utils/config.js';
 import { BaseChannel, type Channel } from '../channels/base.js';
 import type { ChannelMessage, ChannelType } from '../types/channel.js';
 import { logger } from '../utils/logger.js';
@@ -127,6 +137,10 @@ export class PluginChannel extends BaseChannel {
   private pending = new Map<string, { resolve: (v: string) => void; timer: ReturnType<typeof setTimeout> }>();
   private seen = new Set<string>();
   private statusListeners = new Set<(s: ChannelStatus) => void>();
+  /** In-flight `ask_mercury` turns, by call target (`call:<callId>`). */
+  private callAsks = new Map<string, { chunks: string[]; resolve: (answer: string) => void; timer: ReturnType<typeof setTimeout> }>();
+  /** Call targets whose turn outlived the call question: later output goes to the owner's chat. */
+  private overflow = new Set<string>();
 
   constructor(
     private readonly manifest: PluginManifest,
@@ -178,6 +192,98 @@ export class PluginChannel extends BaseChannel {
   handleNotification(method: string, params: unknown): void {
     if (method === 'mercury/channel/status') this.onStatusNotification(params);
     else if (method === 'mercury/channel/message') this.onMessageNotification(params as IncomingParams);
+    else if (method === 'mercury/call/ended') this.onCallEnded(params);
+  }
+
+  async handleRequest(method: string, params: unknown): Promise<unknown> {
+    const p = (params ?? {}) as Record<string, unknown>;
+    switch (method) {
+      case 'mercury/call/incoming': {
+        const from = typeof p.fromPhone === 'string' && p.fromPhone ? p.fromPhone : String(p.from ?? '');
+        if (this.roleOf(from) !== 'admin') return { accept: false, reason: 'only the owner can call Mercury' };
+        if (p.voiceReady !== true) {
+          void this.send('📞 I couldn\'t answer your call: voice calls need an OpenAI provider. Add your OpenAI key once in the dashboard (Providers) or with `mercury doctor`, and calls will work.').catch(() => {});
+          return { accept: false, reason: 'no voice provider' };
+        }
+        return { accept: true, instructions: voiceBriefing() };
+      }
+      case 'mercury/call/briefing':
+        return { instructions: voiceBriefing() };
+      case 'mercury/call/ask': {
+        const callId = typeof p.callId === 'string' ? p.callId.replace(/[^\w.-]/g, '').slice(0, 80) : '';
+        const question = typeof p.question === 'string' ? p.question.trim().slice(0, 4000) : '';
+        if (!callId || !question) throw new Error('callId and question are required');
+        return { answer: await this.askDuringCall(callId, question) };
+      }
+      default:
+        throw new Error(`Mercury does not support ${method}`);
+    }
+  }
+
+  /** Run a Mercury turn for a question asked on a call; resolves with its answer. */
+  private askDuringCall(callId: string, question: string): Promise<string> {
+    const target = `call:${callId}`;
+    const owner = this.defaultTarget();
+    if (!owner) return Promise.resolve('No owner number is set, so Mercury can\'t act on this call.');
+    return new Promise((resolve) => {
+      const previous = this.callAsks.get(target);
+      if (previous) {
+        clearTimeout(previous.timer);
+        previous.resolve('(superseded by a newer question)');
+      }
+      const timer = setTimeout(() => {
+        this.callAsks.delete(target);
+        this.overflow.add(target);
+        resolve('Mercury is still working on that. It will send the answer to WhatsApp when it\'s done.');
+      }, 90_000);
+      this.callAsks.set(target, { chunks: [], resolve, timer });
+      this.emit({
+        id: `call-${callId}-${Date.now()}`,
+        channelId: `${this.type}:${target}`,
+        channelType: this.type,
+        senderId: digits(owner),
+        senderRole: 'admin',
+        content: `[Voice call — the owner asked this out loud. Answer in one to three short spoken sentences: no markdown, lists, links or code. Anything that needs approval can't be done during a call; say so and offer to do it by message.]\n${question}`,
+        timestamp: Date.now(),
+        metadata: { pluginId: this.manifest.id, voiceCall: true, callId },
+      });
+    });
+  }
+
+  /** The agent finished a turn (called by the agent for every channel that has endTask). */
+  endTask(channelId: string): void {
+    const target = channelId.startsWith(`${this.type}:`) ? channelId.slice(this.type.length + 1) : channelId;
+    const ask = this.callAsks.get(target);
+    if (ask) {
+      clearTimeout(ask.timer);
+      this.callAsks.delete(target);
+      const answer = ask.chunks.filter((c) => !/^(☿|⚙|⏳|\s*\[)/.test(c.trim())).pop() ?? ask.chunks.pop() ?? '';
+      ask.resolve(answer.trim() || 'Done.');
+    }
+    this.overflow.delete(target);
+  }
+
+  private onCallEnded(params: unknown): void {
+    const p = (params ?? {}) as Record<string, unknown>;
+    const secs = typeof p.durationSec === 'number' ? Math.round(p.durationSec) : 0;
+    const dur = secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`;
+    const outcome = String(p.outcome ?? '');
+    const reason = typeof p.reason === 'string' ? p.reason.slice(0, 300) : '';
+    let text: string;
+    if (outcome === 'no_answer' || outcome === 'declined' || outcome === 'busy') {
+      text = `📞 I tried to call you${reason ? ` about: ${reason}` : ''}. ${outcome === 'declined' ? 'You declined' : 'No answer'}, so here it is in writing.`;
+    } else if (outcome.startsWith('failed') && secs === 0) {
+      text = `📞 A call couldn't start: ${outcome.replace(/^failed:?\s*/, '') || 'unknown error'}.`;
+    } else {
+      const lines = (Array.isArray(p.transcript) ? p.transcript : [])
+        .map((t) => t as { role?: unknown; text?: unknown })
+        .filter((t) => typeof t.text === 'string' && t.text)
+        .map((t) => `${t.role === 'owner' ? '🗣 You' : t.role === 'ask_mercury' ? '🔎 Asked Mercury' : '☿ Mercury'}: ${String(t.text).slice(0, 300)}`);
+      let body = lines.join('\n');
+      if (body.length > 2500) body = `…\n${body.slice(-2500)}`;
+      text = `📞 Call ${p.direction === 'outgoing' ? 'to you' : 'with you'} ended · ${dur}${outcome.startsWith('failed') ? ` (${outcome})` : ''}${body ? `\n\n${body}` : ''}`;
+    }
+    void this.send(text).catch(() => {});
   }
 
   private onStatusNotification(params: unknown): void {
@@ -293,13 +399,31 @@ export class PluginChannel extends BaseChannel {
 
   async send(content: string, targetId?: string): Promise<void> {
     if (!content.trim()) return;
+    const call = this.callTarget(targetId);
+    if (call) {
+      const ask = this.callAsks.get(call);
+      if (ask) {
+        ask.chunks.push(content);
+        return;
+      }
+      // The call question timed out but the turn kept going: deliver in chat.
+      return this.send(`📞 From your call:\n${content}`);
+    }
     const chatId = this.chatOf(targetId);
     for (const chunk of splitMessage(toWhatsAppText(content))) {
       await this.transport.request('mercury/channel/send', { chatId, text: chunk }, SEND_TIMEOUT_MS);
     }
   }
 
+  /** `whatsapp:call:<id>` → `call:<id>`; undefined for normal chats. */
+  private callTarget(targetId?: string): string | undefined {
+    if (!targetId) return undefined;
+    const t = targetId.startsWith(`${this.type}:`) ? targetId.slice(this.type.length + 1) : targetId;
+    return t.startsWith('call:') ? t : undefined;
+  }
+
   async sendFile(filePath: string, targetId?: string): Promise<void> {
+    if (this.callTarget(targetId)) targetId = undefined; // files from a call go to the owner's chat
     if (!existsSync(filePath) || !statSync(filePath).isFile()) throw new Error(`Not a file: ${filePath}`);
     if (statSync(filePath).size > FILE_LIMIT_BYTES) throw new Error('File is larger than 100 MB');
     await this.transport.request('mercury/channel/sendFile', { chatId: this.chatOf(targetId), path: filePath }, FILE_TIMEOUT_MS);
@@ -314,6 +438,7 @@ export class PluginChannel extends BaseChannel {
   }
 
   async typing(targetId?: string): Promise<void> {
+    if (this.callTarget(targetId)) return;
     try {
       await this.transport.request('mercury/channel/typing', { chatId: this.chatOf(targetId), on: true }, 10_000);
     } catch { /* cosmetic */ }
@@ -342,10 +467,13 @@ export class PluginChannel extends BaseChannel {
 
   /** Approval prompt answered by text: 1/yes, 2/no, 3/always. No reply in 2 minutes is no. */
   async askPermission(prompt: string, targetId?: string): Promise<string> {
+    // Nobody can approve mid-call: refuse (fail-closed). The model offers to do it by message.
+    if (this.callTarget(targetId)) return 'no';
     return this.ask(`🔐 ${prompt}\n\nReply *1* (yes), *2* (no) or *3* (always for this chat).`, targetId);
   }
 
   async askToContinue(question: string, targetId?: string): Promise<boolean> {
+    if (this.callTarget(targetId)) return false;
     return (await this.ask(`${question}\n\nReply *yes* to continue or *no* to stop.`, targetId)) !== 'no';
   }
 
@@ -358,4 +486,19 @@ export class PluginChannel extends BaseChannel {
   async unlink(): Promise<void> {
     await this.transport.request('mercury/channel/unlink', {}, 30_000);
   }
+}
+
+/**
+ * Who Mercury is on a call: its soul and persona, trimmed. Read fresh for
+ * each call so edits to the soul files apply to the next call.
+ */
+export function voiceBriefing(): string {
+  const parts: string[] = [];
+  for (const name of ['soul.md', 'persona.md']) {
+    try {
+      const text = readFileSync(join(getMercuryHome(), 'soul', name), 'utf8').trim();
+      if (text) parts.push(text.slice(0, 1500));
+    } catch { /* optional */ }
+  }
+  return parts.length ? `Who you are (from Mercury's soul files; keep this voice on the call):\n${parts.join('\n\n')}` : '';
 }

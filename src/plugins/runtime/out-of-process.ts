@@ -260,7 +260,12 @@ export class OutOfProcessRuntime implements PluginRuntime {
     if (msg.method && msg.id !== undefined) {
       // Server → client requests: we support ping; refuse everything else (sampling, roots…).
       if (msg.method === 'ping') this.reply(msg.id, {});
-      else this.replyError(msg.id, -32601, `Mercury does not support ${msg.method}`);
+      else if (msg.method.startsWith('mercury/') && this.manifest.contributes.channel && this.deps.onRequest) {
+        const id = msg.id;
+        this.deps.onRequest(msg.method, msg.params)
+          .then((result) => this.reply(id, result ?? {}))
+          .catch((err) => this.replyError(id, -32000, (err as Error).message));
+      } else this.replyError(msg.id, -32601, `Mercury does not support ${msg.method}`);
       return;
     }
     if (msg.method) {

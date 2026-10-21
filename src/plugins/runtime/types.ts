@@ -19,6 +19,8 @@ export interface RuntimeDeps {
   onFatal?(code: 'crashed' | 'activation', message: string): void;
   /** Plugin API 1.1 channels: a `mercury/…` notification from the plugin. */
   onNotification?(method: string, params: unknown): void;
+  /** Plugin API 1.1 channels: a `mercury/…` request from the plugin (e.g. a call decision). */
+  onRequest?(method: string, params: unknown): Promise<unknown>;
   /** The plugin finished its handshake (first start and every restart). */
   onReady?(): void;
   /** The plugin process went away (crash, recycle or stop). */

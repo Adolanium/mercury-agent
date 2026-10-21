@@ -3,31 +3,105 @@
   "id": "whatsapp",
   "name": "WhatsApp",
   "version": "0.1.0",
-  "description": "Chat with Mercury on WhatsApp from your phone. Mercury runs on a spare number as a linked device (unofficial protocol).",
+  "description": "Chat with Mercury on WhatsApp and talk to it by voice call. Mercury runs on a spare number as a linked device (unofficial protocol).",
   "kind": "out-of-process",
   "author": "Cosmic Stack",
   "homepage": "https://github.com/cosmicstack-labs/mercury-agent/tree/main/plugins/whatsapp",
   "license": "MIT",
-  "engines": { "mercury": ">=1.3.9 <2.0.0", "pluginApi": "^1.1.0" },
+  "engines": {
+    "mercury": ">=1.3.9 <2.0.0",
+    "pluginApi": "^1.1.0"
+  },
   "server": {
     "command": "bin/mercury-wa",
     "args": [],
-    "platforms": { "win32-x64": { "command": "bin/mercury-wa.exe", "args": [] } }
+    "platforms": {
+      "win32-x64": {
+        "command": "bin/mercury-wa.exe",
+        "args": []
+      }
+    }
   },
   "contributes": {
-    "tools": [],
-    "channel": { "type": "whatsapp" }
+    "tools": [
+      {
+        "name": "call_owner",
+        "description": "Ring the owner on WhatsApp and talk to them by voice (only the owner can be called; rate-limited). Use for things that matter right now; send a message for everything else.",
+        "readOnly": false,
+        "timeoutMs": 120000
+      }
+    ],
+    "channel": {
+      "type": "whatsapp"
+    }
   },
   "permissions": {
-    "network": ["web.whatsapp.com", "*.whatsapp.net", "*.whatsapp.com"],
-    "secrets": []
+    "network": [
+      "web.whatsapp.com",
+      "*.whatsapp.net",
+      "*.whatsapp.com",
+      "api.openai.com"
+    ],
+    "secrets": [],
+    "providers": {
+      "openai": "Voice calls"
+    }
   },
   "settings": {
     "version": 1,
     "fields": {
-      "owner": { "type": "string", "description": "Your own WhatsApp number (with country code). Only this number can talk to Mercury.", "default": "" },
-      "members": { "type": "string", "description": "Other numbers allowed to chat with Mercury, comma separated (they can't run admin commands).", "default": "" },
-      "allowGroups": { "type": "boolean", "description": "Answer in WhatsApp groups (owner and members only).", "default": false }
+      "owner": {
+        "type": "string",
+        "description": "Your own WhatsApp number (with country code). Only this number can talk to Mercury.",
+        "default": ""
+      },
+      "members": {
+        "type": "string",
+        "description": "Other numbers allowed to chat with Mercury, comma separated (they can't run admin commands).",
+        "default": ""
+      },
+      "allowGroups": {
+        "type": "boolean",
+        "description": "Answer in WhatsApp groups (owner and members only).",
+        "default": false
+      },
+      "answerCalls": {
+        "type": "boolean",
+        "description": "Answer voice calls from the owner.",
+        "default": true
+      },
+      "maxCallsPerHour": {
+        "type": "number",
+        "description": "Most times Mercury may call you in an hour.",
+        "default": 4
+      },
+      "maxCallMinutes": {
+        "type": "number",
+        "description": "Longest a call can last, in minutes.",
+        "default": 15
+      },
+      "voice": {
+        "type": "enum",
+        "description": "Mercury's voice on calls.",
+        "options": [
+          "marin",
+          "cedar",
+          "alloy",
+          "ash",
+          "ballad",
+          "coral",
+          "echo",
+          "sage",
+          "shimmer",
+          "verse"
+        ],
+        "default": "marin"
+      },
+      "voiceModel": {
+        "type": "string",
+        "description": "OpenAI realtime model for calls.",
+        "default": "gpt-realtime"
+      }
     }
   }
 }

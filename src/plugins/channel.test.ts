@@ -21,8 +21,10 @@ const rl = require('node:readline').createInterface({ input: process.stdin });
 const send = (m) => process.stdout.write(JSON.stringify(m) + '\\n');
 const notify = (method, params) => send({ jsonrpc: '2.0', method, params });
 const log = (name, v) => fs.appendFileSync(path.join(data, name), JSON.stringify(v) + '\\n');
+let reqN = 0;
 rl.on('line', (line) => {
   const msg = JSON.parse(line);
+  if (!msg.method) { log('replies.jsonl', msg); return; }
   const ok = (result) => send({ jsonrpc: '2.0', id: msg.id, result });
   switch (msg.method) {
     case 'initialize':
@@ -31,9 +33,17 @@ rl.on('line', (line) => {
     case 'notifications/initialized':
       return notify('mercury/channel/status', { state: 'needs-pairing' });
     case 'tools/list':
-      return ok({ tools: [{ name: 'inject', description: 'test', inputSchema: { type: 'object' } }] });
+      return ok({ tools: ['inject', 'callsim', 'callend'].map((name) => ({ name, description: 'test', inputSchema: { type: 'object' } })) });
     case 'tools/call': {
       const a = msg.params.arguments;
+      if (msg.params.name === 'callsim') {
+        send({ jsonrpc: '2.0', id: 'wa-' + (++reqN), method: a.method, params: a.params });
+        return ok({ content: [{ type: 'text', text: 'sent' }] });
+      }
+      if (msg.params.name === 'callend') {
+        notify('mercury/call/ended', a);
+        return ok({ content: [{ type: 'text', text: 'sent' }] });
+      }
       notify('mercury/channel/message', { id: a.id, chatId: a.chatId || '15550002@s.whatsapp.net', senderId: a.senderId || 'x@lid', senderPhone: a.senderPhone, isGroup: !!a.isGroup, fromMe: !!a.fromMe, text: a.text });
       return ok({ content: [{ type: 'text', text: 'injected' }] });
     }
@@ -60,7 +70,7 @@ function channelPlugin(root: string, id = 'whatsapp', extra: Record<string, unkn
     manifestVersion: 1, id, name: 'WhatsApp', version: '1.0.0', description: 'test channel', kind: 'out-of-process',
     engines: { mercury: '>=1.0.0', pluginApi: '^1.1.0' },
     server: { command: 'node', args: ['server.cjs'] },
-    contributes: { tools: [{ name: 'inject', description: 'Inject a message for tests.', readOnly: true }], channel: { type: 'whatsapp' } },
+    contributes: { tools: ['inject', 'callsim', 'callend'].map((name) => ({ name, description: 'Test hook.', readOnly: true })), channel: { type: 'whatsapp' } },
     settings: { version: 1, fields: { owner: { type: 'string', default: '' }, members: { type: 'string', default: '' }, allowGroups: { type: 'boolean', default: false } } },
     ...extra,
   }));
@@ -97,8 +107,8 @@ afterEach(async () => {
   env.restore();
 });
 
-async function inject(args: Record<string, unknown>): Promise<void> {
-  const t = getPluginTools(new PermissionManager())['whatsapp__inject'] as Tool & { execute: (a: unknown, o: unknown) => Promise<unknown> };
+async function inject(args: Record<string, unknown>, tool = 'inject'): Promise<void> {
+  const t = getPluginTools(new PermissionManager())[`whatsapp__${tool}`] as Tool & { execute: (a: unknown, o: unknown) => Promise<unknown> };
   await t.execute(args, { toolCallId: 't', messages: [] });
   await sleep(40);
 }
@@ -198,5 +208,60 @@ describe('plugin channels (plugin API 1.1)', () => {
   it('formatting helpers', () => {
     expect(toWhatsAppText('## Hi\n__x__')).toBe('*Hi*\n_x_');
     expect(splitMessage('a\nb', 2)).toEqual(['a', 'b']);
+  });
+
+  describe('voice calls', () => {
+    const replies = () => {
+      const f = join(pluginDataDir('whatsapp'), 'replies.jsonl');
+      return existsSync(f) ? readFileSync(f, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
+    };
+    const sent = () => {
+      const f = join(pluginDataDir('whatsapp'), 'out.jsonl');
+      return existsSync(f) ? readFileSync(f, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
+    };
+    const callsim = (method: string, params: Record<string, unknown>) => inject({ method, params }, 'callsim');
+
+    it('answers only the owner, and only with a voice provider', async () => {
+      await installChannel();
+      await callsim('mercury/call/incoming', { callId: 'c1', from: 'x@lid', fromPhone: '15550002', voiceReady: true });
+      await callsim('mercury/call/incoming', { callId: 'c2', from: '19998887777@s.whatsapp.net', voiceReady: true });
+      await callsim('mercury/call/incoming', { callId: 'c3', from: 'x@lid', fromPhone: '15550002', voiceReady: false });
+      await waitFor(() => replies().length === 3);
+      const r = replies();
+      expect(r[0].result.accept).toBe(true);
+      expect(r[1].result.accept).toBe(false);
+      expect(r[2].result.accept).toBe(false);
+      await waitFor(() => sent().some((m) => /OpenAI provider/.test(m.text ?? '')));
+      expect(sent().find((m) => /OpenAI provider/.test(m.text))?.text).toMatch(/Providers/);
+    });
+
+    it('ask_mercury runs a turn and returns its answer, without messaging WhatsApp', async () => {
+      const ch = await installChannel();
+      await callsim('mercury/call/ask', { callId: 'c9', question: 'What is the weather?' });
+      await waitFor(() => received.length === 1);
+      const msg = received[0];
+      expect(msg.channelId).toBe('whatsapp:call:c9');
+      expect(msg.senderRole).toBe('admin');
+      expect(msg.content).toMatch(/Voice call[\s\S]*What is the weather\?/);
+      // The agent replies on the call target, then finishes the turn.
+      expect(await ch.askPermission('Run git push?', msg.channelId)).toBe('no');
+      await ch.send('☿ Working on it…', msg.channelId);
+      await ch.send('It is sunny and 24 degrees.', msg.channelId);
+      ch.endTask(msg.channelId);
+      await waitFor(() => replies().length === 1);
+      expect(replies()[0].result.answer).toBe('It is sunny and 24 degrees.');
+      expect(sent().filter((m) => m.method === 'mercury/channel/send')).toEqual([]);
+    });
+
+    it('sends the owner a summary when a call ends, or a note when it was missed', async () => {
+      await installChannel();
+      await inject({ callId: 'c5', direction: 'incoming', outcome: 'completed', durationSec: 75, transcript: [{ role: 'owner', text: 'Any news?' }, { role: 'mercury', text: 'Two new emails.' }] }, 'callend');
+      await inject({ callId: 'c6', direction: 'outgoing', outcome: 'no_answer', reason: 'The deploy failed', durationSec: 0, transcript: [] }, 'callend');
+      await waitFor(() => sent().length >= 2);
+      const texts = sent().map((m) => m.text as string);
+      expect(texts[0]).toMatch(/Call with you ended · 1m 15s[\s\S]*You: Any news\?[\s\S]*Mercury: Two new emails\./);
+      expect(texts[1]).toMatch(/tried to call you about: The deploy failed\. No answer/);
+      expect(sent().every((m) => m.chatId === '15550002@s.whatsapp.net')).toBe(true);
+    });
   });
 });

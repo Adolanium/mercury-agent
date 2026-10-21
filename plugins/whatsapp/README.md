@@ -49,7 +49,27 @@ account is needed.
 - Groups are ignored unless you turn on `allowGroups`.
 - If WhatsApp logs the device out, Mercury tells you on another channel.
 
-Voice calls are coming next (#202, phase 2).
+## Voice calls
+
+Call the spare number from your own number and talk to Mercury. Mercury can
+also call you when something matters (the `call_owner` tool).
+
+- **Key:** calls use the OpenAI provider you already set up in Mercury
+  (dashboard → Providers, or `mercury doctor`). Nothing extra to configure.
+  Without one, text still works, and Mercury tells you once that calls need
+  an OpenAI provider.
+- **Who can call:** only the owner. Other callers are declined.
+- **Mid-call actions:** Mercury can look things up and act during a call,
+  using its memory, tools and files.
+- **Approvals:** nothing that needs your approval runs during a call
+  (nobody can tap Allow), and Mercury offers to do it by message instead.
+- **After the call:** you get a summary with the transcript on WhatsApp.
+- **Limits:** Mercury calls you at most `maxCallsPerHour` times an hour
+  (default 4), and calls are capped at `maxCallMinutes` (default 15).
+- **Settings:** `voice` (default `marin`), `voiceModel` (default
+  `gpt-realtime`), and `answerCalls` (on by default).
+- **Privacy:** call audio goes only to OpenAI, under OpenAI's API data
+  policy.
 
 ## Unlink
 

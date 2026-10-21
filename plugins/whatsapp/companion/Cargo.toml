@@ -9,7 +9,12 @@ publish = false
 
 [dependencies]
 # Pinned: main @ 2026-10-20. Bump deliberately; the protocol is unofficial.
-whatsapp-rust = { git = "https://github.com/oxidezap/whatsapp-rust", rev = "c373266fd2c66ae39752171cff5e0dd798a90205" }
+# "voip": 1:1 calls (MLOW + Opus via libopus, which needs cmake to build).
+whatsapp-rust = { git = "https://github.com/oxidezap/whatsapp-rust", rev = "c373266fd2c66ae39752171cff5e0dd798a90205", features = ["voip"] }
+# Voice: OpenAI Realtime over the same WebSocket/TLS stack whatsapp-rust uses (rustls + ring).
+tokio-websockets = { version = "0.13.3", features = ["client", "rustls-webpki-roots", "rand", "ring"] }
+http = "1"
+base64 = "0.22"
 tokio = { version = "1.47", features = ["full"] }
 serde_json = "1"
 anyhow = "1"

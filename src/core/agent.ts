@@ -2128,6 +2128,10 @@ export class Agent {
     if (channel instanceof TelegramChannel || channel instanceof SignalChannel || channel instanceof DiscordChannel || channel instanceof SlackChannel) {
       channel.endTask(msg.channelId);
       channel.resetStepCounter(msg.channelId);
+    } else if (channel && typeof (channel as { endTask?: unknown }).endTask === 'function') {
+      // Any other channel that wants to know a turn finished (plugin channels: a
+      // voice call waits for the turn's answer).
+      try { (channel as unknown as { endTask: (id: string) => void }).endTask(msg.channelId); } catch { /* best effort */ }
     }
   }
 

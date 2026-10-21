@@ -10,13 +10,17 @@
 //!
 //! stdout is the protocol channel: logs go to stderr only.
 
+mod voice;
+
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{Mutex, mpsc, oneshot};
 use whatsapp_rust::download::{DownloadLimits, MediaType};
 use whatsapp_rust::media::{self, DocumentOptions, ImageOptions};
 use whatsapp_rust::pair_code::PairCodeOptions;
@@ -25,19 +29,46 @@ use whatsapp_rust::upload::UploadOptions;
 
 const MAX_DOWNLOAD_BYTES: usize = 50 * 1024 * 1024;
 
-/// Writes protocol lines to stdout, in order, from any task.
+type Pending = Arc<std::sync::Mutex<HashMap<u64, oneshot::Sender<Result<Value, String>>>>>;
+
+/// Writes protocol lines to stdout, in order, from any task, and keeps
+/// track of our own requests to Mercury (call decisions, ask_mercury).
 #[derive(Clone)]
-struct Out(mpsc::UnboundedSender<Value>);
+pub struct Out {
+    tx: mpsc::UnboundedSender<Value>,
+    pending: Pending,
+    next_id: Arc<AtomicU64>,
+}
 
 impl Out {
-    fn notify(&self, method: &str, params: Value) {
-        let _ = self.0.send(json!({ "jsonrpc": "2.0", "method": method, "params": params }));
+    pub fn notify(&self, method: &str, params: Value) {
+        let _ = self.tx.send(json!({ "jsonrpc": "2.0", "method": method, "params": params }));
     }
     fn reply(&self, id: &Value, result: Value) {
-        let _ = self.0.send(json!({ "jsonrpc": "2.0", "id": id, "result": result }));
+        let _ = self.tx.send(json!({ "jsonrpc": "2.0", "id": id, "result": result }));
     }
     fn error(&self, id: &Value, code: i64, message: impl Into<String>) {
-        let _ = self.0.send(json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message.into() } }));
+        let _ = self.tx.send(json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message.into() } }));
+    }
+    /// A request to Mercury. Ids are strings ("wa-N") so they never collide with Mercury's numeric ids.
+    pub async fn request(&self, method: &str, params: Value, timeout: Duration) -> Result<Value, String> {
+        let n = self.next_id.fetch_add(1, Ordering::Relaxed);
+        let (tx, rx) = oneshot::channel();
+        self.pending.lock().unwrap().insert(n, tx);
+        let _ = self.tx.send(json!({ "jsonrpc": "2.0", "id": format!("wa-{n}"), "method": method, "params": params }));
+        let r = tokio::time::timeout(timeout, rx).await;
+        self.pending.lock().unwrap().remove(&n);
+        match r {
+            Ok(Ok(v)) => v,
+            Ok(Err(_)) => Err("Mercury went away".into()),
+            Err(_) => Err(format!("{method} timed out")),
+        }
+    }
+    fn resolve(&self, id: &str, result: Result<Value, String>) {
+        let Some(n) = id.strip_prefix("wa-").and_then(|n| n.parse::<u64>().ok()) else { return };
+        if let Some(tx) = self.pending.lock().unwrap().remove(&n) {
+            let _ = tx.send(result);
+        }
     }
     fn status(&self, state: &str, extra: Value) {
         let mut params = json!({ "state": state });
@@ -50,14 +81,18 @@ impl Out {
     }
 }
 
-struct State {
+pub struct State {
     data_dir: PathBuf,
-    out: Out,
+    pub out: Out,
     bot: Mutex<Option<BotHandle>>,
-    client: Mutex<Option<Arc<Client>>>,
+    pub client: Mutex<Option<Arc<Client>>>,
+    /// When call_owner last rang the owner (rate limit).
+    pub recent_calls: Mutex<Vec<std::time::Instant>>,
+    /// Outcomes of outgoing calls being placed.
+    pub call_watchers: voice::CallWatchers,
 }
 
-fn log(msg: impl AsRef<str>) {
+pub fn log(msg: impl AsRef<str>) {
     eprintln!("[mercury-wa] {}", msg.as_ref());
 }
 
@@ -66,7 +101,7 @@ fn db_path(dir: &Path) -> PathBuf {
 }
 
 /// The user part of a phone-number JID ("15551234567@s.whatsapp.net" → "15551234567").
-fn phone_of(jid: &Jid) -> Option<String> {
+pub fn phone_of(jid: &Jid) -> Option<String> {
     let s = jid.to_string();
     let (user, server) = s.split_once('@')?;
     if server != "s.whatsapp.net" {
@@ -92,8 +127,15 @@ async fn main() -> anyhow::Result<()> {
             let _ = stdout.flush().await;
         }
     });
-    let out = Out(tx);
-    let state = Arc::new(State { data_dir, out: out.clone(), bot: Mutex::new(None), client: Mutex::new(None) });
+    let out = Out { tx, pending: Arc::new(std::sync::Mutex::new(HashMap::new())), next_id: Arc::new(AtomicU64::new(1)) };
+    let state = Arc::new(State {
+        data_dir,
+        out: out.clone(),
+        bot: Mutex::new(None),
+        client: Mutex::new(None),
+        recent_calls: Mutex::new(Vec::new()),
+        call_watchers: Arc::new(Mutex::new(HashMap::new())),
+    });
 
     let mut lines = BufReader::new(tokio::io::stdin()).lines();
     while let Some(line) = lines.next_line().await? {
@@ -109,6 +151,17 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn handle(st: Arc<State>, msg: Value) {
+    // A reply to one of our own requests.
+    if msg.get("method").is_none() {
+        if let Some(id) = msg.get("id").and_then(Value::as_str) {
+            let result = match msg.get("error") {
+                Some(e) => Err(e.get("message").and_then(Value::as_str).unwrap_or("error").to_string()),
+                None => Ok(msg.get("result").cloned().unwrap_or(Value::Null)),
+            };
+            st.out.resolve(id, result);
+        }
+        return;
+    }
     let method = msg.get("method").and_then(Value::as_str).unwrap_or("");
     let params = msg.get("params").cloned().unwrap_or(Value::Null);
     let Some(id) = msg.get("id").cloned() else {
@@ -133,7 +186,23 @@ async fn handle(st: Arc<State>, msg: Value) {
             "serverInfo": { "name": "mercury-wa", "version": env!("CARGO_PKG_VERSION") },
         })),
         "ping" => Ok(json!({})),
-        "tools/list" => Ok(json!({ "tools": [] })),
+        "tools/list" => Ok(json!({ "tools": [{
+            "name": "call_owner",
+            "description": "Ring the owner on WhatsApp and talk to them by voice. Only the owner can be called.",
+            "inputSchema": { "type": "object", "properties": { "reason": { "type": "string", "description": "Why you're calling, in one sentence" } }, "required": ["reason"] },
+        }] })),
+        "tools/call" => {
+            let name = params.get("name").and_then(Value::as_str).unwrap_or("");
+            let args = params.get("arguments").cloned().unwrap_or(json!({}));
+            if name != "call_owner" {
+                Err(format!("unknown tool {name}"))
+            } else {
+                Ok(match voice::call_owner(st.clone(), &args).await {
+                    Ok(text) => json!({ "content": [{ "type": "text", "text": text }] }),
+                    Err(e) => json!({ "content": [{ "type": "text", "text": e }], "isError": true }),
+                })
+            }
+        }
         "mercury/channel/pair" => pair(st.clone(), &params).await,
         "mercury/channel/unlink" => unlink(st.clone()).await,
         "mercury/channel/send" => send_text(st.clone(), &params).await,
@@ -279,6 +348,7 @@ async fn start_bot(st: Arc<State>, phone: Option<String>) -> anyhow::Result<()> 
     let (o1, o2, o3, o4, o5) = (st.out.clone(), st.out.clone(), st.out.clone(), st.out.clone(), st.out.clone());
     let st_conn = st.clone();
     let st_msg = st.clone();
+    let st_call = st.clone();
     let mut builder = Bot::builder()
         .with_backend(store)
         .on_qr_code(move |code, _ttl| {
@@ -309,6 +379,18 @@ async fn start_bot(st: Arc<State>, phone: Option<String>) -> anyhow::Result<()> 
                     Event::StreamReplaced(_) => o.status("disconnected", json!({ "detail": "another WhatsApp Web session took over this link" })),
                     Event::ClientOutdated(_) => o.status("error", json!({ "detail": "WhatsApp says this client is outdated: update the plugin" })),
                     _ => o.status("disconnected", json!({ "detail": "connection lost, reconnecting" })),
+                }
+            }
+        })
+        .on_event_for(&[EventKind::IncomingCall], move |ev, client| {
+            let st = st_call.clone();
+            async move {
+                if let Event::IncomingCall(call) = &*ev {
+                    voice::route_call_event(&st.call_watchers, call).await;
+                    if matches!(call.action, whatsapp_rust::types::call::CallAction::Offer { .. }) {
+                        let call = call.clone();
+                        tokio::spawn(async move { voice::on_offer(st, client, call).await });
+                    }
                 }
             }
         })
