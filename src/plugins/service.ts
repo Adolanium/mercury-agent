@@ -48,6 +48,7 @@ export interface PluginService {
   pair(id: string, opts: { method: 'qr' | 'code'; phone?: string }): Promise<ChannelStatus>;
   channelStatus(id: string): Promise<ChannelStatus | null>;
   unlink(id: string): Promise<void>;
+  testChannel(id: string): Promise<string>;
 }
 
 export function localService(mgr: PluginManager, mode: 'local' | 'offline' = 'local'): PluginService {
@@ -68,6 +69,7 @@ export function localService(mgr: PluginManager, mode: 'local' | 'offline' = 'lo
     pair: (id, opts) => mgr.pair(id, opts),
     channelStatus: async (id) => mgr.channelStatus(id),
     unlink: (id) => mgr.unlinkChannel(id),
+    testChannel: (id) => mgr.testChannel(id),
   };
 }
 
@@ -106,6 +108,7 @@ export function daemonService(): PluginService {
     pair: async (id, opts) => (await call<{ status: ChannelStatus }>('POST', `/api/plugins/${enc(id)}/pair`, opts, 60_000)).status,
     channelStatus: async (id) => (await call<{ status: ChannelStatus | null }>('GET', `/api/plugins/${enc(id)}/channel`)).status,
     unlink: async (id) => { await call('POST', `/api/plugins/${enc(id)}/unlink`, {}); },
+    testChannel: async (id) => (await call<{ message: string }>('POST', `/api/plugins/${enc(id)}/test`, {})).message,
   };
 }
 

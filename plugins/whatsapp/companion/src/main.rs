@@ -346,6 +346,9 @@ async fn start_bot(st: Arc<State>, phone: Option<String>) -> anyhow::Result<()> 
     st.out.status("starting", json!({}));
 
     let (o1, o2, o3, o4, o5) = (st.out.clone(), st.out.clone(), st.out.clone(), st.out.clone(), st.out.clone());
+    // When linking by code, the library still issues QR codes alongside it; showing those
+    // would replace the code the owner is typing, so only the code is reported.
+    let code_mode = phone.is_some();
     let st_conn = st.clone();
     let st_msg = st.clone();
     let st_call = st.clone();
@@ -353,7 +356,11 @@ async fn start_bot(st: Arc<State>, phone: Option<String>) -> anyhow::Result<()> 
         .with_backend(store)
         .on_qr_code(move |code, _ttl| {
             let o = o1.clone();
-            async move { o.status("pairing", json!({ "qr": code })) }
+            async move {
+                if !code_mode {
+                    o.status("pairing", json!({ "qr": code }))
+                }
+            }
         })
         .on_pair_code(move |code, _ttl| {
             let o = o2.clone();

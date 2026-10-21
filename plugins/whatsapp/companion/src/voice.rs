@@ -343,7 +343,10 @@ async fn bridge(
             _ = &mut deadline => { hang_up = true; break Ok(()) }
             msg = ws_rx.next() => {
                 let Some(Ok(msg)) = msg else { break Err("the voice model disconnected".to_string()) };
-                if msg.is_close() { break Err("the voice model closed the session".to_string()); }
+                if msg.is_close() {
+                    let reason = msg.as_close().map(|(_, r)| r.to_string()).unwrap_or_default();
+                    break Err(explain_close(&reason));
+                }
                 let Some(text) = msg.as_text() else { continue };
                 let Ok(ev) = serde_json::from_str::<Value>(text) else { continue };
                 let kind = ev.get("type").and_then(Value::as_str).unwrap_or("");
@@ -413,6 +416,24 @@ async fn bridge(
     result
 }
 
+/// Turn the voice provider's close reason into something the owner can act on.
+fn explain_close(reason: &str) -> String {
+    let r = reason.to_ascii_lowercase();
+    if r.contains("insufficient_quota") || r.contains("credit_balance") || r.contains("billing") {
+        "your OpenAI account is out of credit. Add credit at platform.openai.com → Settings → Billing, then call again".into()
+    } else if r.contains("invalid_api_key") || r.contains("unauthorized") || r.contains("401") {
+        "OpenAI rejected the API key. Check the OpenAI provider in Mercury's dashboard (Providers)".into()
+    } else if r.contains("model_not_found") || r.contains("does not exist") || r.contains("access") {
+        format!("this OpenAI account can't use the realtime voice model ({reason}). Try another voiceModel setting")
+    } else if r.contains("rate_limit") {
+        "OpenAI is rate-limiting this account right now. Try again in a minute".into()
+    } else if reason.is_empty() {
+        "the voice model closed the session".into()
+    } else {
+        format!("the voice model closed the session ({reason})")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -421,6 +442,12 @@ mod tests {
     fn resample_lengths() {
         assert_eq!(resample(&[0i16; 960], WA_RATE, AI_RATE).len(), 1440);
         assert_eq!(resample(&[0i16; 1440], AI_RATE, WA_RATE).len(), 960);
+    }
+
+    #[test]
+    fn close_reasons_are_explained() {
+        assert!(explain_close("insufficient_quota.credit_balance_exhausted").contains("out of credit"));
+        assert!(explain_close("").contains("closed"));
     }
 
     #[test]

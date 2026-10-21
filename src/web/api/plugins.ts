@@ -134,6 +134,16 @@ plugins.post('/api/plugins/:id/pair', async (c) => {
   }
 });
 
+plugins.post('/api/plugins/:id/test', async (c) => {
+  const denied = localOnly(c);
+  if (denied) return denied;
+  try {
+    return c.json({ message: await svc().testChannel(c.req.param('id')) });
+  } catch (err) {
+    return fail(c, err);
+  }
+});
+
 plugins.post('/api/plugins/:id/unlink', async (c) => {
   const denied = localOnly(c);
   if (denied) return denied;

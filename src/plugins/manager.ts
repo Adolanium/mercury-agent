@@ -548,6 +548,15 @@ export class PluginManager {
     return ready;
   }
 
+  /** Send the owner a test message through a channel plugin. */
+  async testChannel(id: string): Promise<string> {
+    const channel = this.liveChannel(id);
+    const st = channel.getStatus();
+    if (st.state !== 'connected') throw new Error(`"${id}" isn't linked yet (${st.state}). Pair it first: mercury plugins pair ${id}`);
+    await channel.send(`☿ Hi, it's Mercury. This is a test message from ${channel.type === 'whatsapp' ? 'WhatsApp' : channel.type}: reply to chat with me${channel.type === 'whatsapp' ? ', or call this number to talk' : ''}.`);
+    return `Sent a test message to the owner${st.account ? ` from +${st.account}` : ''}.`;
+  }
+
   async unlinkChannel(id: string): Promise<void> {
     await this.liveChannel(id).unlink();
   }
