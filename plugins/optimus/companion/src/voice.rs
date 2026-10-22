@@ -213,7 +213,8 @@ async fn bridge(
     // Live narration: the newest line waits while the voice is speaking; older ones are dropped.
     let mut narration: Option<String> = None;
     let thinking_sound = settings().get("thinkingSound").and_then(Value::as_bool).unwrap_or(true);
-    let mut tick = tokio::time::interval(Duration::from_millis(1100));
+    let mut tick = tokio::time::interval(Duration::from_millis(600));
+    let mut tock = false;
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut last_narrated = Instant::now() - Duration::from_secs(60);
 
@@ -263,8 +264,11 @@ async fn bridge(
             _ = &mut deadline => break Ok(()),
             _ = tick.tick() => {
                 // Soft "still working" tick while Mercury searches or acts and nobody is talking.
-                if thinking_sound && !pending.lock().unwrap().is_empty() && !responding && !out.busy() && last_narrated.elapsed() > Duration::from_secs(2) {
-                    out.tick();
+                if thinking_sound && !pending.lock().unwrap().is_empty() && !responding && !out.busy() && last_narrated.elapsed() > Duration::from_millis(1200) {
+                    out.tick(tock);
+                    tock = !tock;
+                } else {
+                    tock = false;
                 }
             }
             c = ctl.recv() => match c {

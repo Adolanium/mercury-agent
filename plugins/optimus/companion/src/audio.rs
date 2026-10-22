@@ -66,19 +66,25 @@ impl Output {
         }
     }
 
-    /// The "still working" tick: two very soft, short clicks, well below speech level.
-    pub fn tick(&self) {
+    /// The "still working" sound: a soft wooden knock, alternating two notes
+    /// ("tick… tock") so it reads as a clock, not an alarm. Peaks below the
+    /// level that mutes the mic, so the owner can still say "stop" over it.
+    pub fn tick(&self, tock: bool) {
+        let rate = self.rate as f32;
+        let f = if tock { 690.0f32 } else { 920.0 };
+        let n = (rate * 0.07) as usize;
+        let mut noise = 0x1234_5678u32 ^ (n as u32);
         let mut q = self.queue.lock().unwrap();
-        for (f, gap) in [(1500.0f32, 0.07f32), (1150.0, 0.0)] {
-            let n = (self.rate as f32 * 0.016) as usize;
-            for i in 0..n {
-                let t = i as f32 / self.rate as f32;
-                let env = (1.0 - i as f32 / n as f32).powi(3);
-                q.push_back((2.0 * std::f32::consts::PI * f * t).sin() * 0.03 * env);
-            }
-            for _ in 0..(self.rate as f32 * gap) as usize {
-                q.push_back(0.0);
-            }
+        for i in 0..n {
+            let t = i as f32 / rate;
+            // A struck wooden bar: the note plus an inharmonic overtone, fading fast.
+            let tone = ((2.0 * std::f32::consts::PI * f * t).sin() * 0.72 + (2.0 * std::f32::consts::PI * f * 2.76 * t).sin() * 0.28) * (-t * 60.0).exp();
+            // A tiny click of "contact" at the start.
+            noise ^= noise << 13;
+            noise ^= noise >> 17;
+            noise ^= noise << 5;
+            let n_v = (noise as f32 / u32::MAX as f32 * 2.0 - 1.0) * (-t * 900.0).exp() * 0.25;
+            q.push_back((tone + n_v) * 0.045);
         }
     }
 
