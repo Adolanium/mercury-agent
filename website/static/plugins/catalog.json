@@ -1,6 +1,6 @@
 {
   "catalogVersion": 1,
-  "updatedAt": "2026-10-22T12:00:00Z",
+  "updatedAt": "2026-10-23T12:00:00Z",
   "plugins": [
     {
       "id": "whatsapp",
@@ -61,6 +61,81 @@
           "generativelanguage.googleapis.com",
           "streaming.assemblyai.com",
           "web.whatsapp.com"
+        ],
+        "secrets": [
+          "GEMINI_API_KEY",
+          "ELEVENLABS_API_KEY",
+          "AZURE_OPENAI_API_KEY",
+          "DASHSCOPE_API_KEY",
+          "DEEPGRAM_API_KEY",
+          "ASSEMBLYAI_API_KEY",
+          "SARVAM_API_KEY",
+          "CARTESIA_API_KEY",
+          "MINIMAX_API_KEY"
+        ]
+      }
+    },
+    {
+      "id": "optimus",
+      "name": "Optimus",
+      "description": "Mercury uses your computer like a person: sees the screen, moves the mouse, types and opens apps, by chat or out loud with a talk key. macOS, Windows and Linux. Asks before anything that submits, sends, pays or deletes.",
+      "version": "0.4.2",
+      "kind": "out-of-process",
+      "tier": "official",
+      "homepage": "https://github.com/cosmicstack-labs/mercury-agent/tree/main/plugins/optimus",
+      "engines": {
+        "mercury": ">=1.3.9 <2.0.0",
+        "pluginApi": "^1.2.0"
+      },
+      "artifacts": {
+        "darwin-arm64": {
+          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/mercury-dev-latest/mercury-plugin-optimus-darwin-arm64.tgz",
+          "sha256": "c07d6c3214f9e0240ed2211872671c185cfc7de692415083ab9d5e6813f0da48",
+          "size": 1409323
+        },
+        "darwin-x64": {
+          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/mercury-dev-latest/mercury-plugin-optimus-darwin-x64.tgz",
+          "sha256": "3708bc85a62b929c7b192fc7c98b45ee10ef9b8942ca7651cecc0b791252b645",
+          "size": 1551522
+        },
+        "linux-x64": {
+          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/mercury-dev-latest/mercury-plugin-optimus-linux-x64.tgz",
+          "sha256": "19257425bc12a75ce4cd429f0f77f35df4346d8dc962323d664064c36ffdea99",
+          "size": 2648806
+        },
+        "linux-arm64": {
+          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/mercury-dev-latest/mercury-plugin-optimus-linux-arm64.tgz",
+          "sha256": "a2eea3bf672b97dba7be90eade62f7e5838f6337a6de3b199e05e8fad8b41114",
+          "size": 2499735
+        },
+        "win32-x64": {
+          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/mercury-dev-latest/mercury-plugin-optimus-win32-x64.tgz",
+          "sha256": "d254448d02c9c1f3692b6424d8ae0a6ac2d7ff25436620f630bc42c58df775c0",
+          "size": 1443783
+        }
+      },
+      "tools": [
+        "look",
+        "act",
+        "act_consequential",
+        "open",
+        "windows",
+        "permissions",
+        "listen"
+      ],
+      "permissions": {
+        "network": [
+          "*.aliyuncs.com",
+          "*.openai.azure.com",
+          "api.cartesia.ai",
+          "api.deepgram.com",
+          "api.elevenlabs.io",
+          "api.minimax.io",
+          "api.openai.com",
+          "api.sarvam.ai",
+          "api.x.ai",
+          "generativelanguage.googleapis.com",
+          "streaming.assemblyai.com"
         ],
         "secrets": [
           "GEMINI_API_KEY",
