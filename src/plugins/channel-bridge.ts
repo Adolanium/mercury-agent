@@ -31,6 +31,7 @@
  *     mercury/call/approval-resolved notification { callId, approvalId, decision, via }
  *   plugin → Mercury
  *     mercury/call/approve     request { callId, approvalId, approved } (after checking the owner said yes)
+ *     mercury/call/schedule    request { when, topic } → { ok, text }   ("call me back at 9")
  *
  * Approvals during a call are asked by voice and in the chat at once; the
  * first answer wins. The plugin accepts a spoken yes only when the owner's own
@@ -40,6 +41,7 @@ import { basename } from 'node:path';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { getMercuryHome } from '../utils/config.js';
+import { activeCallScheduler } from './call-schedule.js';
 import { BaseChannel, type Channel } from '../channels/base.js';
 import type { ChannelMessage, ChannelType } from '../types/channel.js';
 import { logger } from '../utils/logger.js';
@@ -269,6 +271,17 @@ export class PluginChannel extends BaseChannel {
       case 'mercury/call/briefing':
         this.callStarted(String(p.callId ?? ''));
         return { instructions: voiceBriefing() };
+      case 'mercury/call/schedule': {
+        // "Call me back at 9" said on a call: the time is worked out here, not by a model.
+        const sched = activeCallScheduler();
+        if (!sched) return { ok: false, text: 'Scheduled calls aren\'t available right now.' };
+        try {
+          const r = sched.schedule(String(p.when ?? ''), typeof p.topic === 'string' ? p.topic : '');
+          return { ok: true, text: r.confirmation.replace(/^✅\s*/, '') };
+        } catch (err) {
+          return { ok: false, text: (err as Error).message };
+        }
+      }
       case 'mercury/call/approve': {
         // The plugin only sends this after checking the owner's own words on the call.
         const approvalId = String(p.approvalId ?? '');

@@ -26,7 +26,7 @@
     "tools": [
       {
         "name": "call_owner",
-        "description": "Ring the owner on WhatsApp and talk to them by voice (only the owner can be called; rate-limited). Use for things that matter right now; send a message for everything else. To call later (\"call me in 10 minutes\", \"every day at 6pm\") or when something finishes or happens, use schedule_task with a prompt that ends by calling this tool, and put \"whatsapp__call_owner\" in allow_tools so it can call without asking again.",
+        "description": "Ring the owner on WhatsApp right now and talk to them by voice (only the owner can be called; rate-limited). Use for things that matter now; send a message for everything else. To call LATER (\"call me at 9pm\", \"in 20 minutes\"), use schedule_call instead. For \"call me when X is done\", do X, then call this.",
         "readOnly": false,
         "timeoutMs": 120000
       },

@@ -176,6 +176,7 @@ fn instructions_for(instructions: &str) -> String {
         then call answer_approval. Never answer an approval yourself: only the user's own words count. \
         Mercury can send things to the user's WhatsApp chat during the call (links, lists, details): when they ask for something to be sent, \
         or say yes to an offer to send it, call ask_mercury with a request like 'send the phone links to my chat'. Never say you can't send things. \
+        If the user asks you to call them back later ('call me at 9', 'call me back in an hour'), use schedule_callback right away and read back its confirmation. \
         When the user says goodbye or is done, say goodbye and call end_call.";
     if instructions.is_empty() { base.to_string() } else { format!("{base}\n\n{instructions}") }
 }
@@ -189,6 +190,15 @@ fn tools() -> Value {
             "parameters": { "type": "object", "properties": { "question": { "type": "string" } }, "required": ["question"] },
         },
         { "type": "function", "name": "end_call", "description": "Hang up after saying goodbye.", "parameters": { "type": "object", "properties": {} } },
+        {
+            "type": "function",
+            "name": "schedule_callback",
+            "description": "Schedule Mercury to call the user back later. Pass the time exactly as they said it ('9pm', 'in 20 minutes', 'tomorrow 8am'); it's worked out for you. Read back the confirmation it returns.",
+            "parameters": { "type": "object", "properties": {
+                "when": { "type": "string", "description": "The time as the user said it" },
+                "topic": { "type": "string", "description": "What to call about, in a few words" }
+            }, "required": ["when"] },
+        },
         {
             "type": "function",
             "name": "answer_approval",
@@ -477,6 +487,20 @@ async fn bridge(
                                     (true, None) => verifying = Some((id, aid, asked_at, Instant::now() + Duration::from_secs(3))),
                                 },
                             }
+                            if !responding { deliver(&link, brain, &mut ready_answers, &mut responding); }
+                            continue;
+                        }
+                        if name == "schedule_callback" {
+                            let r = st.out.request("mercury/call/schedule", json!({
+                                "when": args.get("when").and_then(Value::as_str).unwrap_or(""),
+                                "topic": args.get("topic").and_then(Value::as_str).unwrap_or(""),
+                            }), Duration::from_secs(10)).await;
+                            let text = match r {
+                                Ok(v) => v.get("text").and_then(Value::as_str).unwrap_or("Done.").to_string(),
+                                Err(e) => format!("Couldn't schedule it: {e}"),
+                            };
+                            transcript.lock().await.push(json!({ "role": "ask_mercury", "text": format!("schedule a call back: {}", args.get("when").and_then(Value::as_str).unwrap_or("")) }));
+                            ready_answers.push_back((id, text));
                             if !responding { deliver(&link, brain, &mut ready_answers, &mut responding); }
                             continue;
                         }

@@ -34,6 +34,7 @@ import { InProcessRuntime, inProcessLogger } from './runtime/in-process.js';
 import { OutOfProcessRuntime } from './runtime/out-of-process.js';
 import { PluginChannel, type ChannelStatus } from './channel-bridge.js';
 import { transcribeAudio } from './transcribe.js';
+import { CallScheduler, registerCallScheduler } from './call-schedule.js';
 import type { PluginRuntime } from './runtime/types.js';
 import { providerSecretNames, whenMatches, type WhenCondition, type CatalogEntry, type DisabledCode, type PluginListItem, type PluginManifest, type PluginProviderId, type PluginsState } from './types.js';
 import { loadConfig } from '../utils/config.js';
@@ -310,6 +311,12 @@ export class PluginManager {
         return;
       }
       this.running.set(id, { runtime, manifest, version, startedAt: Date.now(), consecutiveFailures: 0, channel });
+      // A channel plugin that can call the owner gets scheduled calls ("call me at 9pm").
+      if (channel && manifest.contributes.tools.some((t) => t.name === 'call_owner')) {
+        const sched = new CallScheduler(id, (text) => channel!.send(text));
+        registerCallScheduler(id, sched);
+        sched.start();
+      }
       this.lastErrors.delete(id);
       logger.info({ plugin: id, version, kind: manifest.kind }, 'Plugin started');
       this.noticeMissingSecrets(id, manifest);
@@ -332,6 +339,7 @@ export class PluginManager {
     } finally {
       unpublishPlugin(id);
       run.channel?.detach();
+      registerCallScheduler(id, null);
     }
   }
 

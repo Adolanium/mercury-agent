@@ -34,7 +34,7 @@ export const PLUGIN_TOOL_NAME_RE = /^[a-z][a-z0-9_]{0,29}$/;
  * TUI's SLASH_COMMANDS by src/plugins/commands.test.ts.
  */
 export const RESERVED_COMMANDS: ReadonlySet<string> = new Set([
-  'agents', 'bg', 'bot', 'bots', 'budget', 'chat', 'cloud', 'code', 'halt', 'help', 'log', 'memory', 'menu', 'models', 'model',
+  'agents', 'bg', 'bot', 'bots', 'budget', 'call', 'calls', 'chat', 'cloud', 'code', 'halt', 'help', 'log', 'memory', 'menu', 'models', 'model',
   'permissions', 'plugin', 'plugins', 'progress', 'research', 'reset', 'saver', 'session', 'sessions', 'skills', 'spotify',
   'status', 'stop', 'stream', 'tools', 'update', 'view', 'whatsnew', 'ws', 'start', 'skip', 'new', 'compact', 'clear',
   'approve', 'deny', 'yes', 'no', 'cancel', 'pair', 'unpair', 'telegram', 'discord', 'slack', 'signal', 'web', 'exit', 'quit',

@@ -151,6 +151,8 @@ export function getManual(): string {
     ['/skills view <id>', 'Show details + registry URL for a skill'],
     ['/skills install <id|url>', 'Install from the registry or a raw SKILL.md URL'],
     ['/skills remove <id>', 'Uninstall a skill'],
+    ['/call <when> [about …]', 'Schedule Mercury to call you on WhatsApp (9pm, in 20m, tomorrow 8:30am)'],
+    ['/calls', 'List or cancel scheduled calls'],
     ['/plugins', 'Installed and available plugins, with status'],
     ['/plugins install <id|path|url>', 'Install a plugin (shows what it needs first)'],
     ['/plugins enable|disable <id>', 'Turn a plugin on or off'],

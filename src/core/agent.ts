@@ -97,6 +97,7 @@ import { buildFileChangePreview } from '../utils/file-preview.js';
 import { whatsNewText } from '../utils/whats-new.js';
 import { handleBotsCommand as handleBotsCommandImpl } from './commands/bots-command.js';
 import { withAttachments } from './attachments.js';
+import { handleCallCommand } from '../plugins/call-schedule.js';
 import { handlePluginsCommand, tryPluginCommand, pluginCommandHelp, hasPluginDialog, answerPluginDialog } from '../plugins/commands.js';
 import { handleChatCommand as handleChatCommandImpl } from './commands/chat-command.js';
 import { handleBgCommand as handleBgCommandImpl } from './commands/bg-command.js';
@@ -760,6 +761,15 @@ export class Agent {
         });
         return;
       }
+    }
+
+    // /call and /calls: scheduled calls, worked out in code (no model turn).
+    if (/^\/calls?(\s|$)/.test(trimmed)) {
+      const channel = this.channels.getChannelForMessage(msg);
+      if (channel) {
+        void channel.send(handleCallCommand(trimmed, msg.senderRole === 'member'), msg.channelId).catch(() => {});
+      }
+      return;
     }
 
     // /plugins is fast-path like /bots: installing or toggling a plugin must
