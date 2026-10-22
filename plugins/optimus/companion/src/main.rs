@@ -166,17 +166,18 @@ fn action_schema() -> Value {
             "actions": {
                 "type": "array",
                 "minItems": 1,
-                "maxItems": 40,
+                "maxItems": 60,
                 "description": "Done in order. Coordinates are pixels in the latest screenshot.",
                 "items": {
                     "type": "object",
                     "properties": {
-                        "type": { "type": "string", "enum": ["click", "double_click", "triple_click", "right_click", "middle_click", "move", "drag", "mouse_down", "mouse_up", "type", "key", "scroll", "wait"] },
+                        "type": { "type": "string", "enum": ["click", "double_click", "triple_click", "right_click", "middle_click", "move", "drag", "draw", "mouse_down", "mouse_up", "type", "paste", "key", "scroll", "wait"] },
                         "x": { "type": "number" },
                         "y": { "type": "number" },
                         "to_x": { "type": "number", "description": "drag: end x" },
                         "to_y": { "type": "number", "description": "drag: end y" },
-                        "text": { "type": "string", "description": "type: the text (with x/y, clicks there first)" },
+                        "text": { "type": "string", "description": "type/paste: the text (with x/y, clicks there first). Use paste for posts, emails and long text in web editors (X, Gmail, LinkedIn, Docs)" },
+                        "points": { "type": "array", "items": { "type": "array", "items": { "type": "number" } }, "description": "draw: [[x, y], …] one freehand stroke with the button held (many points for curves)" },
                         "keys": { "type": "string", "description": "key: one key or a combo, e.g. \"enter\", \"cmd+t\", \"ctrl+shift+esc\"" },
                         "modifiers": { "type": "string", "description": "click: keys held while clicking, e.g. \"cmd\" or \"shift\"" },
                         "repeat": { "type": "integer", "minimum": 1, "maximum": 50 },
@@ -187,6 +188,7 @@ fn action_schema() -> Value {
                     "required": ["type"]
                 }
             },
+            "say": { "type": "string", "description": "A few words saying what this does, present tense ('Opening the compose box', 'Typing your post'). Spoken live when the owner is talking to you." },
             "screenshot": { "type": "boolean", "description": "Return a screenshot afterwards (default true)." },
             "settle_ms": { "type": "integer", "minimum": 0, "maximum": 5000, "description": "Wait before that screenshot (default 500)." }
         },
@@ -196,9 +198,9 @@ fn action_schema() -> Value {
 
 const TOOL_DESCRIPTIONS: [(&str, &str); 7] = [
     ("look", "See the screen: a screenshot of the display the mouse is on (or `display` N), with the active window. Use `zoom` [x0,y0,x1,y1] for a closer look at part of the last screenshot (coordinates stay in the full screenshot)."),
-    ("act", "Use the mouse and keyboard like a person: click, type, press keys, scroll, drag. Returns a fresh screenshot. Only for ordinary, reversible steps. Anything that submits, sends, posts, pays, buys, deletes, installs or changes settings must go through act_consequential instead. Never type passwords, card numbers or 2FA codes: ask the owner to do that part."),
+    ("act", "Use the mouse and keyboard like a person: click, type, paste, press keys, scroll, drag, draw freehand. Returns a fresh screenshot. Pass `actions` as a list. For posts, emails and long text in web pages, use paste (click the box first) rather than type. Only for ordinary, reversible steps. Anything that submits, sends, posts, pays, buys, deletes, installs or changes settings must go through act_consequential instead. Never type passwords, card numbers or 2FA codes: ask the owner to do that part."),
     ("act_consequential", "Same as act, for the step that commits something: submit a form, send a message or email, post, pay or buy, delete, install, change a setting. The owner approves it first, so say what it will do."),
-    ("open", "Open an app by name (\"Safari\", \"Blender\", \"Notepad\"), a URL, or a file/folder path. Faster and more reliable than clicking through menus."),
+    ("open", "Open an app by name (\"Chrome\", \"Notes\", \"Freeform\"), a URL, or a file/folder path. Faster and more reliable than clicking through menus. If the app isn't installed, the reply lists what is. For drawing use Freeform (Mac), Paint (Windows) or a web canvas like https://excalidraw.com."),
     ("windows", "List open windows (app and title), front first."),
     ("permissions", "Check what the OS lets Optimus do (macOS: Accessibility and Screen Recording). With request=true, shows the system prompts and opens the right Settings page."),
     ("listen", "Start a voice conversation on this computer right now (as if the owner pressed the talk key): Mercury listens through the microphone and answers out loud. Use when the owner asks to talk instead of type."),
@@ -214,7 +216,10 @@ fn tools() -> Value {
             }
         }),
         "act" | "act_consequential" => action_schema(),
-        "open" => json!({ "type": "object", "properties": { "target": { "type": "string" } }, "required": ["target"] }),
+        "open" => json!({ "type": "object", "properties": {
+            "target": { "type": "string" },
+            "say": { "type": "string", "description": "A few words, spoken live in a voice session, e.g. 'Opening Gmail'" }
+        }, "required": ["target"] }),
         "permissions" => json!({ "type": "object", "properties": { "request": { "type": "boolean" } } }),
         _ => json!({ "type": "object", "properties": {} }),
     };

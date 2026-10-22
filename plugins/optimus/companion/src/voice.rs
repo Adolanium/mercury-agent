@@ -28,6 +28,8 @@ pub enum Ctl {
     /// The talk key: interrupt Mercury if it's speaking, otherwise stop listening.
     Press,
     Stop,
+    /// What Mercury is doing on the screen right now, to say as it happens.
+    Narrate(String),
 }
 
 pub struct SessionCtl {
@@ -37,6 +39,9 @@ pub struct SessionCtl {
 impl SessionCtl {
     pub fn stop(&self) {
         let _ = self.tx.send(Ctl::Stop);
+    }
+    pub fn narrate(&self, line: String) {
+        let _ = self.tx.send(Ctl::Narrate(line));
     }
 }
 
@@ -111,8 +116,10 @@ fn instructions_for(instructions: &str) -> String {
         ('what's this?', 'what am I looking at?'), for doing things on the computer (open apps, click, type, fill a form, search), \
         for news, facts that may have changed, or the user's own things (memory, files, calendar), call ask_mercury with a clear, complete request. \
         Mercury can see and use the screen, search the web and use its tools. \
-        Before a request that will take a while (web searches, several steps on the screen), say in a few words that you're on it. \
-        Then say its answer in your own words. If you get a status update while Mercury is still working, give one short, natural sentence about it. \
+        Before a request, say two or three words at most ('On it.') and call ask_mercury straight away. \
+        While Mercury works you'll get live updates of what it is doing on the screen right now: say each one in a few words, present tense \
+        ('Opening Gmail', 'Selecting the junk emails'), and nothing else. Never announce something as upcoming once an update or the answer shows it's done. \
+        When ask_mercury returns, say what was done or found, briefly and in the past tense. \
         Some actions need the user's approval. When you get an approval request, ask the user plainly whether to go ahead, wait for their answer, \
         then call answer_approval. Never answer an approval yourself: only the user's own words count. \
         Links, lists and details go to the user's Mercury chat automatically; just say you've sent them. \
@@ -200,6 +207,9 @@ async fn bridge(
     status_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut ask_seq = 0u32;
     let silence = vec![0i16; FRAME];
+    // Live narration: the newest line waits while the voice is speaking; older ones are dropped.
+    let mut narration: Option<String> = None;
+    let mut last_narrated = Instant::now() - Duration::from_secs(60);
 
     let max_minutes = settings().get("maxSessionMinutes").and_then(Value::as_f64).unwrap_or(30.0).clamp(1.0, 240.0);
     let deadline = tokio::time::sleep(Duration::from_secs_f64(max_minutes * 60.0));
@@ -231,6 +241,13 @@ async fn bridge(
             _ = &mut deadline => break Ok(()),
             c = ctl.recv() => match c {
                 None | Some(Ctl::Stop) => break Ok(()),
+                Some(Ctl::Narrate(line)) => {
+                    last_narrated = Instant::now();
+                    narration = Some(line);
+                    if !responding && ready_answers.is_empty() {
+                        speak_narration(&link, brain, &mut narration, &mut responding);
+                    }
+                }
                 Some(Ctl::Press) => {
                     if responding || out.recently_audible(300) {
                         // Mercury is talking: the key interrupts.
@@ -250,6 +267,7 @@ async fn bridge(
             }
             Some(a) = answer_rx.recv() => {
                 if a.1.starts_with("(superseded") { continue; }
+                narration = None; // the result supersedes anything still unsaid
                 ready_answers.push_back(a);
                 if !responding { deliver(&link, brain, &mut ready_answers, &mut responding); }
             }
@@ -305,7 +323,7 @@ async fn bridge(
                         } else { None }
                     })
                 };
-                if let Some((n, secs)) = due {
+                if let Some((n, secs)) = due.filter(|_| last_narrated.elapsed() > Duration::from_secs(12)) {
                     let doing = sh.call_activity.lock().unwrap().get(call_id).cloned().unwrap_or_else(|| "working on it".into());
                     match brain {
                         Brain::Voice => link.send(LinkCmd::Instruct(if n == 1 {
@@ -326,6 +344,7 @@ async fn bridge(
                     LinkEvent::ResponseDone => {
                         responding = false;
                         if !ready_answers.is_empty() { deliver(&link, brain, &mut ready_answers, &mut responding); }
+                        else if narration.is_some() { speak_narration(&link, brain, &mut narration, &mut responding); }
                     }
                     LinkEvent::Audio(pcm) => out.play(&pcm),
                     LinkEvent::SpeechStarted => {
@@ -445,6 +464,18 @@ pub fn spoken_verdict(said: &[(Instant, String)], since: Instant) -> Option<bool
         if YES.iter().any(|w| t.contains(w)) { return Some(true); }
     }
     None
+}
+
+fn speak_narration(link: &Link, brain: Brain, pending: &mut Option<String>, responding: &mut bool) {
+    if let Some(line) = pending.take() {
+        match brain {
+            Brain::Voice => link.send(LinkCmd::Instruct(format!(
+                "[Live update, not said by the user] Mercury is doing this on the screen right now: {line}. Say it in a few words, present tense, and nothing else."
+            ))),
+            Brain::Mercury => link.send(LinkCmd::Say(line)),
+        }
+        *responding = true;
+    }
 }
 
 fn deliver(link: &Link, brain: Brain, ready: &mut VecDeque<(String, String)>, responding: &mut bool) {

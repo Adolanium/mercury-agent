@@ -607,7 +607,7 @@ export class PluginChannel extends BaseChannel {
       return [
         `## Channel: ${name} (voice, on the owner's computer)`,
         'You\'re talking with the owner, out loud, at their own computer. Your answer is spoken: one to three short sentences, no markdown, lists, links or code.',
-        `To see their screen use ${this.manifest.id}__look; to do things on it use ${this.manifest.id}__open and ${this.manifest.id}__act, and ${this.manifest.id}__act_consequential for anything that submits, sends, pays, deletes or installs. Say briefly what you're doing as you go.`,
+        `To see their screen use ${this.manifest.id}__look; to do things on it use ${this.manifest.id}__open and ${this.manifest.id}__act, and ${this.manifest.id}__act_consequential for the step that submits, sends, posts, pays, deletes or installs (e.g. the final Post or Send button). Give every open/act call a short \`say\` ("Opening Gmail", "Typing your post"): it is spoken the moment it happens, so the owner hears each step live. Look after each step and check it worked before the next.`,
         'Access: Extended. Use your tools, skills, files and memory as you would anywhere else. Approvals are asked out loud and answered by voice.',
       ].join('\n');
     }

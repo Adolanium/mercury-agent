@@ -131,6 +131,12 @@ pub fn run(inbox: std::sync::mpsc::Receiver<Value>, send: impl Fn(Value) + Send 
                 });
                 continue;
             }
+            // In a voice session, say what's happening as it happens.
+            if let Some(line) = narration(&name, &args) {
+                if let Some(s) = shared.session.lock().unwrap().as_ref() {
+                    s.narrate(line);
+                }
+            }
             rt.spawn_blocking(move || {
                 let r = sh.ops.lock().unwrap_or_else(|e| e.into_inner()).run(&name, &args);
                 sh.out.op_result(id, r);
@@ -146,6 +152,32 @@ pub fn run(inbox: std::sync::mpsc::Receiver<Value>, send: impl Fn(Value) + Send 
         s.stop();
     }
     rt.shutdown_timeout(Duration::from_secs(2));
+}
+
+/// A few words for the voice about an action: the model's own `say`, else one from the action.
+fn narration(op: &str, args: &Value) -> Option<String> {
+    if let Some(s) = args.get("say").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()) {
+        return Some(s.chars().take(120).collect());
+    }
+    match op {
+        "open" => args.get("target").and_then(Value::as_str).map(|t| format!("Opening {t}")),
+        "act" => {
+            let first = match args.get("actions") {
+                Some(Value::Array(a)) => a.first().cloned(),
+                Some(Value::String(s)) => serde_json::from_str::<Value>(s).ok().and_then(|v| v.as_array().and_then(|a| a.first().cloned())),
+                _ => None,
+            }?;
+            Some(match first.get("type").and_then(Value::as_str)? {
+                "type" | "paste" => "Typing".into(),
+                "draw" => "Drawing".into(),
+                "scroll" => "Scrolling".into(),
+                "drag" => "Dragging".into(),
+                "key" => return first.get("keys").and_then(Value::as_str).map(|k| format!("Pressing {k}")),
+                _ => "Clicking".into(),
+            })
+        }
+        _ => None,
+    }
 }
 
 fn start_hotkey(shared: &Arc<Shared>) {
@@ -231,5 +263,19 @@ fn on_mercury(shared: &Arc<Shared>, msg: &Value) {
             }
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn narration_lines() {
+        assert_eq!(narration("open", &json!({ "target": "Gmail", "say": "Opening your inbox" })).as_deref(), Some("Opening your inbox"));
+        assert_eq!(narration("open", &json!({ "target": "Gmail" })).as_deref(), Some("Opening Gmail"));
+        assert_eq!(narration("act", &json!({ "actions": [{ "type": "paste", "text": "hi" }] })).as_deref(), Some("Typing"));
+        assert_eq!(narration("act", &json!({ "actions": "[{\"type\":\"key\",\"keys\":\"cmd+a\"}]" })).as_deref(), Some("Pressing cmd+a"));
+        assert_eq!(narration("look", &json!({})), None);
     }
 }

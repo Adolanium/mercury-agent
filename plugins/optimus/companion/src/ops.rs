@@ -24,7 +24,9 @@ const MAX_H: u32 = 800;
 const JPEG_QUALITY: u8 = 80;
 /// The user moving the mouse this far during a batch stops Optimus.
 const TAKEOVER_PX: i32 = 12;
-const MAX_ACTIONS: usize = 40;
+const MAX_ACTIONS: usize = 60;
+/// Points in one freehand stroke.
+const MAX_DRAW_POINTS: usize = 2000;
 const MAX_TYPE_CHARS: usize = 4000;
 
 /// Where the last screenshot came from, to map its pixels back to the screen.
@@ -193,7 +195,8 @@ impl Ops {
     // ── Acting ─────────────────────────────────────────────────────────
 
     fn act(&mut self, args: &Value) -> OpResult {
-        let actions = args.get("actions").and_then(Value::as_array).ok_or("actions must be a list")?;
+        let actions = actions_of(args)?;
+        let actions = &actions;
         if actions.is_empty() {
             return Err("no actions given".into());
         }
@@ -344,9 +347,60 @@ impl Ops {
                 if let Some(p) = at {
                     move_to(e, p, last_set)?;
                     e.button(Button::Left, Direction::Click).map_err(err)?;
+                    std::thread::sleep(Duration::from_millis(200)); // let the field take focus
                 }
                 e.text(text).map_err(err)?;
                 Ok(format!("typed {} characters", text.chars().count()))
+            }
+            "paste" => {
+                // Rich web editors (X, Gmail, LinkedIn, Docs) take pasted text more reliably than typed keys.
+                let text = a.get("text").and_then(Value::as_str).ok_or("paste needs text")?;
+                if let Some(p) = at {
+                    move_to(e, p, last_set)?;
+                    e.button(Button::Left, Direction::Click).map_err(err)?;
+                    std::thread::sleep(Duration::from_millis(200));
+                }
+                let previous = clipboard_get();
+                clipboard_set(text)?;
+                std::thread::sleep(Duration::from_millis(80));
+                let modifier = if cfg!(target_os = "macos") { Key::Meta } else { Key::Control };
+                e.key(modifier, Direction::Press).map_err(err)?;
+                e.key(Key::Unicode('v'), Direction::Click).map_err(err)?;
+                e.key(modifier, Direction::Release).map_err(err)?;
+                std::thread::sleep(Duration::from_millis(250));
+                if let Some(prev) = previous {
+                    let _ = clipboard_set(&prev);
+                }
+                Ok(format!("pasted {} characters", text.chars().count()))
+            }
+            "draw" => {
+                // A freehand stroke: the button stays down through every point.
+                let pts = a.get("points").and_then(points_of).ok_or("draw needs points: [[x, y], …] in screenshot pixels")?;
+                if pts.len() < 2 {
+                    return Err("draw needs at least two points".into());
+                }
+                if pts.len() > MAX_DRAW_POINTS {
+                    return Err(format!("at most {MAX_DRAW_POINTS} points per stroke"));
+                }
+                let shot = self.shot.ok_or("take a screenshot (look) first, so coordinates have a frame")?;
+                let screen: Vec<(i32, i32)> = pts.iter().map(|(x, y)| shot.to_screen(*x, *y)).collect::<Result<_, _>>()?;
+                let e = self.enigo()?;
+                move_to(e, screen[0], last_set)?;
+                e.button(Button::Left, Direction::Press).map_err(err)?;
+                std::thread::sleep(Duration::from_millis(30));
+                for w in screen.windows(2) {
+                    let (a0, b0) = (w[0], w[1]);
+                    let steps = (((b0.0 - a0.0).abs().max((b0.1 - a0.1).abs())) / 6).clamp(1, 20);
+                    for s in 1..=steps {
+                        let t = s as f64 / steps as f64;
+                        let p = (a0.0 + ((b0.0 - a0.0) as f64 * t).round() as i32, a0.1 + ((b0.1 - a0.1) as f64 * t).round() as i32);
+                        e.move_mouse(p.0, p.1, Coordinate::Abs).map_err(err)?;
+                        std::thread::sleep(Duration::from_millis(4));
+                    }
+                }
+                *last_set = screen.last().copied();
+                e.button(Button::Left, Direction::Release).map_err(err)?;
+                Ok(format!("drew a stroke through {} points", pts.len()))
             }
             "key" => {
                 let combo = a.get("keys").and_then(Value::as_str).ok_or("key needs keys, e.g. \"cmd+t\" or \"enter\"")?;
@@ -493,9 +547,17 @@ fn open_target(args: &Value) -> OpResult {
     let status = if cfg!(target_os = "macos") {
         let mut c = std::process::Command::new("open");
         if !is_url && !is_path {
-            c.arg("-a");
+            // "Chrome" is "Google Chrome", "Word" is "Microsoft Word": match installed apps by name.
+            match find_mac_app(target) {
+                Ok(path) => {
+                    c.arg(path);
+                }
+                Err(e) => return Err(e),
+            }
+        } else {
+            c.arg(target);
         }
-        c.arg(target).status()
+        c.status()
     } else if cfg!(windows) {
         std::process::Command::new("cmd").args(["/C", "start", "", target]).status()
     } else if is_url || is_path {
@@ -514,6 +576,124 @@ fn open_target(args: &Value) -> OpResult {
         Ok(_) => Err(format!("couldn't open {target} (no app, URL or file by that name)")),
         Err(e) => Err(format!("couldn't open {target}: {e}")),
     }
+}
+
+/// Installed macOS apps whose name matches `name` best: exact, then
+/// containing it (shortest first), e.g. "chrome" → Google Chrome.app.
+fn find_mac_app(name: &str) -> Result<String, String> {
+    let norm = |s: &str| s.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect::<String>();
+    let want = norm(name.trim_end_matches(".app"));
+    let home = std::env::var("HOME").unwrap_or_default();
+    let dirs = [
+        "/Applications".to_string(),
+        "/Applications/Utilities".to_string(),
+        "/System/Applications".to_string(),
+        "/System/Applications/Utilities".to_string(),
+        format!("{home}/Applications"),
+        "/System/Library/CoreServices/Applications".to_string(),
+    ];
+    let mut apps: Vec<(String, String)> = Vec::new(); // (display name, path)
+    for d in &dirs {
+        let Ok(entries) = std::fs::read_dir(d) else { continue };
+        for e in entries.flatten() {
+            let file = e.file_name().to_string_lossy().to_string();
+            if let Some(stem) = file.strip_suffix(".app") {
+                apps.push((stem.to_string(), e.path().to_string_lossy().to_string()));
+            }
+        }
+    }
+    if let Some((_, p)) = apps.iter().find(|(n, _)| norm(n) == want) {
+        return Ok(p.clone());
+    }
+    let mut close: Vec<&(String, String)> = apps.iter().filter(|(n, _)| !want.is_empty() && norm(n).contains(&want)).collect();
+    close.sort_by_key(|(n, _)| n.len());
+    if let Some((_, p)) = close.first() {
+        return Ok(p.clone());
+    }
+    let mut names: Vec<&str> = apps.iter().map(|(n, _)| n.as_str()).collect();
+    names.sort_unstable();
+    names.dedup();
+    Err(format!(
+        "{name} isn't installed. Installed apps include: {}. For drawing, Freeform or a web canvas (e.g. open https://excalidraw.com) works.",
+        names.iter().take(60).copied().collect::<Vec<_>>().join(", ")
+    ))
+}
+
+/// The action list, however the model sent it: a list, a JSON string of
+/// one, a single action, or the action's fields at the top level.
+fn actions_of(args: &Value) -> Result<Vec<Value>, String> {
+    let raw = match args.get("actions") {
+        Some(Value::String(s)) => serde_json::from_str::<Value>(s).map_err(|_| "actions must be a list of {\"type\": …} steps".to_string())?,
+        Some(v) => v.clone(),
+        None if args.get("type").is_some() => args.clone(),
+        None => return Err("actions must be a list of {\"type\": …} steps".into()),
+    };
+    let list = match raw {
+        Value::Array(a) => a,
+        Value::Object(_) => vec![raw],
+        _ => return Err("actions must be a list of {\"type\": …} steps".into()),
+    };
+    // Numbers sent as strings ("x": "120") are fine too.
+    Ok(list
+        .into_iter()
+        .map(|mut a| {
+            if let Some(o) = a.as_object_mut() {
+                for k in ["x", "y", "to_x", "to_y", "amount", "seconds", "repeat"] {
+                    if let Some(n) = o.get(k).and_then(Value::as_str).and_then(|s| s.trim().parse::<f64>().ok()) {
+                        o.insert(k.into(), json!(n));
+                    }
+                }
+                if let Some(p) = o.get("points").and_then(Value::as_str).and_then(|s| serde_json::from_str::<Value>(s).ok()) {
+                    o.insert("points".into(), p);
+                }
+            }
+            a
+        })
+        .collect())
+}
+
+/// [[x, y], …] or [{"x": …, "y": …}, …]
+fn points_of(v: &Value) -> Option<Vec<(f64, f64)>> {
+    v.as_array()?
+        .iter()
+        .map(|p| match p {
+            Value::Array(xy) if xy.len() >= 2 => Some((xy[0].as_f64()?, xy[1].as_f64()?)),
+            Value::Object(o) => Some((o.get("x")?.as_f64()?, o.get("y")?.as_f64()?)),
+            _ => None,
+        })
+        .collect()
+}
+
+fn clipboard_get() -> Option<String> {
+    let out = if cfg!(target_os = "macos") {
+        std::process::Command::new("pbpaste").output().ok()?
+    } else if cfg!(windows) {
+        std::process::Command::new("powershell").args(["-NoProfile", "-Command", "Get-Clipboard -Raw"]).output().ok()?
+    } else {
+        std::process::Command::new("xclip").args(["-selection", "clipboard", "-o"]).output().ok()?
+    };
+    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+fn clipboard_set(text: &str) -> Result<(), String> {
+    use std::io::Write as _;
+    let mut cmd = if cfg!(target_os = "macos") {
+        std::process::Command::new("pbcopy")
+    } else if cfg!(windows) {
+        let mut c = std::process::Command::new("powershell");
+        c.args(["-NoProfile", "-Command", "$input | Set-Clipboard"]);
+        c
+    } else if std::env::var("WAYLAND_DISPLAY").is_ok() {
+        std::process::Command::new("wl-copy")
+    } else {
+        let mut c = std::process::Command::new("xclip");
+        c.args(["-selection", "clipboard"]);
+        c
+    };
+    let mut child = cmd.stdin(std::process::Stdio::piped()).spawn().map_err(|e| format!("can't reach the clipboard: {e}"))?;
+    child.stdin.take().ok_or("clipboard")?.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
+    let status = child.wait().map_err(|e| e.to_string())?;
+    if status.success() { Ok(()) } else { Err("couldn't set the clipboard".into()) }
 }
 
 // ── Keys ──────────────────────────────────────────────────────────────
@@ -622,5 +802,32 @@ mod tests {
         assert_eq!((w, h), (1280, 720));
         let (_, w, h) = fit(RgbaImage::new(800, 600));
         assert_eq!((w, h), (800, 600));
+    }
+}
+
+#[cfg(test)]
+mod action_input_tests {
+    use super::*;
+
+    #[test]
+    fn actions_in_any_shape() {
+        let list = json!({ "actions": [{ "type": "click", "x": 1, "y": 2 }] });
+        assert_eq!(actions_of(&list).unwrap().len(), 1);
+        // Some models send the list as a JSON string, numbers as strings.
+        let stringy = json!({ "actions": "[{\"type\":\"click\",\"x\":\"10\",\"y\":20}]" });
+        let a = actions_of(&stringy).unwrap();
+        assert_eq!(a[0]["x"], json!(10.0));
+        // One action, or its fields at the top level.
+        assert_eq!(actions_of(&json!({ "actions": { "type": "key", "keys": "enter" } })).unwrap().len(), 1);
+        assert_eq!(actions_of(&json!({ "type": "key", "keys": "enter" })).unwrap().len(), 1);
+        assert!(actions_of(&json!({})).is_err());
+        assert!(actions_of(&json!({ "actions": "not json" })).is_err());
+    }
+
+    #[test]
+    fn draw_points() {
+        assert_eq!(points_of(&json!([[1, 2], [3.5, 4]])), Some(vec![(1.0, 2.0), (3.5, 4.0)]));
+        assert_eq!(points_of(&json!([{ "x": 1, "y": 2 }])), Some(vec![(1.0, 2.0)]));
+        assert_eq!(points_of(&json!([[1]])), None);
     }
 }
