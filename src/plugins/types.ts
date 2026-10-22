@@ -52,7 +52,7 @@ export function providerSecretNames(id: PluginProviderId): { apiKey: string; bas
 }
 
 /** Channel types a plugin may provide (Plugin API 1.1). */
-export const PLUGIN_CHANNEL_TYPES = ['whatsapp'] as const;
+export const PLUGIN_CHANNEL_TYPES = ['whatsapp', 'desktop'] as const;
 export type PluginChannelType = (typeof PLUGIN_CHANNEL_TYPES)[number];
 
 export const SECRET_NAME_RE = /^[A-Z][A-Z0-9_]{1,63}$/;

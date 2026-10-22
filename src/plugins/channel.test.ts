@@ -490,4 +490,66 @@ describe('plugin channels (plugin API 1.1)', () => {
       expect(learned[0]).toMatch(/morning calls[\s\S]*\| Got it, mornings/);
     });
   });
+  describe('desktop channel (plugin API 1.2, Optimus)', () => {
+    const dataFile = (name: string) => join(pluginDataDir('optimus'), name);
+    const lines = (name: string) => {
+      const f = dataFile(name);
+      return existsSync(f) ? readFileSync(f, 'utf8').split('\n').filter((l) => l.trim().endsWith('}')).map((l) => JSON.parse(l)) : [];
+    };
+    const callsim = async (method: string, params: Record<string, unknown>) => {
+      const t = getPluginTools(new PermissionManager())['optimus__callsim'] as Tool & { execute: (a: unknown, o: unknown) => Promise<unknown> };
+      await t.execute({ method, params }, { toolCallId: 't', messages: [] });
+      await sleep(40);
+    };
+    async function installDesktop(): Promise<PluginChannel> {
+      const dir = channelPlugin(src, 'optimus', { name: 'Optimus' });
+      const manifestPath = join(dir, 'mercury-plugin.json');
+      const m = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      m.contributes.channel = { type: 'desktop' };
+      writeFileSync(manifestPath, JSON.stringify(m));
+      await mgr.install(dir);
+      await waitFor(() => !!getPluginChannel('optimus') && registered.length === 1);
+      expect(registered[0].type).toBe('desktop');
+      return getPluginChannel('optimus')!;
+    }
+
+    it('only the person at the computer is the owner', async () => {
+      const ch = await installDesktop();
+      expect(ch.roleOf('local')).toBe('admin');
+      expect(ch.roleOf('15550002')).toBeNull();
+      expect(ch.accessFor('admin')).toBe('extended');
+      await callsim('mercury/call/incoming', { callId: 'd0', from: 'local', voiceReady: true });
+      await callsim('mercury/call/incoming', { callId: 'd1', from: 'someone', voiceReady: true });
+      await waitFor(() => lines('replies.jsonl').length === 2);
+      expect(lines('replies.jsonl').map((r) => r.result.accept)).toEqual([true, false]);
+    });
+
+    it('a spoken question runs a desktop turn; details go to the usual Mercury chat', async () => {
+      const ch = await installDesktop();
+      await callsim('mercury/call/ask', { callId: 'd2', question: 'Find me flights to Dubai' });
+      await waitFor(() => received.length === 1);
+      const msg = received[0];
+      expect(msg.channelId).toBe('desktop:call:d2');
+      expect(msg.senderId).toBe('local');
+      expect(msg.content).toMatch(/own computer[\s\S]*Optimus tools[\s\S]*Find me flights to Dubai/);
+      expect(msg.metadata?.channelGuidance).toMatch(/optimus__look/);
+      await ch.send('The cheapest is Emirates at 420 dollars.\n\nFor the chat:\n- Emirates: https://a.example', msg.channelId);
+      ch.endTask(msg.channelId);
+      await waitFor(() => lines('replies.jsonl').length === 1);
+      expect(lines('replies.jsonl')[0].result.answer).toBe('The cheapest is Emirates at 420 dollars.');
+      expect(notices.some((n) => /From Optimus[\s\S]*https:\/\/a\.example/.test(n))).toBe(true);
+      expect(lines('out.jsonl').filter((m) => m.method === 'mercury/channel/send')).toEqual([]);
+    });
+
+    it('approvals are asked out loud only', async () => {
+      const ch = await installDesktop();
+      const answer = ch.askPermission('Submit the job application', 'desktop:call:d3');
+      await waitFor(() => lines('approvals.jsonl').length === 1);
+      const { approvalId } = lines('approvals.jsonl')[0];
+      await callsim('mercury/call/approve', { callId: 'd3', approvalId, approved: true });
+      expect(await answer).toBe('yes');
+      expect(notices.filter((n) => /From your call/.test(n))).toEqual([]);
+      expect(lines('out.jsonl').filter((m) => m.method === 'mercury/channel/send')).toEqual([]);
+    });
+  });
 });

@@ -159,6 +159,9 @@ interface IncomingParams {
   timestamp?: unknown;
 }
 
+/** Put in front of a question asked out loud in a desktop voice session. */
+const DESKTOP_VOICE_NOTE = '[Voice, on the owner\'s own computer: they asked this out loud. Use your tools to get the real answer: web_search for anything current, fetch_url, memory, skills, and the Optimus tools to see and use their screen. Then answer in one to three short spoken sentences, with no markdown, lists, links or code. Go ahead and do what they ask: if an action needs approval, Mercury asks them out loud and continues once they say yes. Links, lists and other details worth keeping: don\'t read them out; put them after a final line "For the chat:" (that part isn\'t spoken; it goes to their Mercury chat).]';
+
 export class PluginChannel extends BaseChannel {
   readonly type: ChannelType;
   private status: ChannelStatus = { state: 'starting', at: Date.now() };
@@ -210,6 +213,15 @@ export class PluginChannel extends BaseChannel {
 
   /** Phone chats: no per-step messages or "Working…" heartbeats; keep "typing…" alive instead. */
   readonly quietProgress = true;
+
+  /**
+   * A desktop channel (plugin API 1.2, e.g. Optimus): voice sessions on the
+   * owner's own computer. Whoever sits at it is the owner; there is no chat
+   * of its own, so anything for "the chat" goes to Mercury's usual channel.
+   */
+  private get desktop(): boolean {
+    return this.type === 'desktop';
+  }
 
 
   get pluginId(): string {
@@ -319,7 +331,9 @@ export class PluginChannel extends BaseChannel {
         }
         this.callAsks.delete(target);
         this.overflow.add(target);
-        resolve('Mercury is still working on that. It will send the answer to WhatsApp when it\'s done.');
+        resolve(this.desktop
+          ? 'Mercury is still working on that. It will send the answer to your Mercury chat when it\'s done.'
+          : 'Mercury is still working on that. It will send the answer to WhatsApp when it\'s done.');
       };
       const timer = setTimeout(giveUp, 90_000);
       this.callAsks.set(target, { chunks: [], resolve, timer });
@@ -331,9 +345,9 @@ export class PluginChannel extends BaseChannel {
         id: `call-${callId}-${Date.now()}`,
         channelId: `${this.type}:${target}`,
         channelType: this.type,
-        senderId: digits(owner),
+        senderId: this.desktop ? 'local' : digits(owner),
         senderRole: 'admin',
-        content: `[Voice call: the owner asked this out loud. Use your tools to get the real answer: web_search for news and anything current, fetch_url, memory, skills. Then answer in one to three short spoken sentences, with no markdown, lists, links or code. Go ahead and do what they ask, including saving files or running things: if an action needs approval, Mercury asks the owner on the call and in the chat, and continues once they say yes. Don't ask them to confirm by message yourself. Links, lists, prices, addresses and other details worth keeping: never read them out. If they asked for them, send them with whatsapp__send_to_chat and say you've sent them to the chat. If you found something useful they didn't ask to receive, end your answer by offering to send it ("Want me to send the links to your chat?") and only send once they say yes. Whenever your answer involves links or details, add them after a final line "For the chat:" (that part isn't spoken, and lets you send them later without searching again).]${sentNote}\n${question}`,
+        content: this.desktop ? `${DESKTOP_VOICE_NOTE}\n${question}` : `[Voice call: the owner asked this out loud. Use your tools to get the real answer: web_search for news and anything current, fetch_url, memory, skills. Then answer in one to three short spoken sentences, with no markdown, lists, links or code. Go ahead and do what they ask, including saving files or running things: if an action needs approval, Mercury asks the owner on the call and in the chat, and continues once they say yes. Don't ask them to confirm by message yourself. Links, lists, prices, addresses and other details worth keeping: never read them out. If they asked for them, send them with whatsapp__send_to_chat and say you've sent them to the chat. If you found something useful they didn't ask to receive, end your answer by offering to send it ("Want me to send the links to your chat?") and only send once they say yes. Whenever your answer involves links or details, add them after a final line "For the chat:" (that part isn't spoken, and lets you send them later without searching again).]${sentNote}\n${question}`,
         timestamp: Date.now(),
         metadata: { pluginId: this.manifest.id, voiceCall: true, callId, attachments: files.slice(-4), channelAccess: this.accessFor('admin'), channelGuidance: this.guidance('admin', false, true) },
       });
@@ -349,6 +363,9 @@ export class PluginChannel extends BaseChannel {
       this.callAsks.delete(target);
       const answer = ask.chunks.filter((c) => !/^(☿|⚙|⏳|\s*\[)/.test(c.trim())).pop() ?? ask.chunks.pop() ?? '';
       ask.resolve(spokenPart(answer) || 'Done.');
+      // On the desktop there's no chat to send details to later: deliver them now.
+      const extra = chatPart(answer);
+      if (this.desktop && extra) this.notifyOwner(`🎙 From Optimus:\n${extra}`);
     }
     this.overflow.delete(target);
   }
@@ -367,6 +384,12 @@ export class PluginChannel extends BaseChannel {
     this.activeCalls.delete(String(p.callId ?? ''));
     for (const [id, a] of this.callApprovals) if (a.callId === String(p.callId ?? '')) this.resolveCallApproval(id, 'no', 'timeout');
     const secs = typeof p.durationSec === 'number' ? Math.round(p.durationSec) : 0;
+    // A desktop session happened in front of the owner: only report failures.
+    if (this.desktop) {
+      const outcome = String(p.outcome ?? '');
+      if (outcome.startsWith('failed')) this.notifyOwner(`🎙 Optimus couldn't start listening: ${outcome.replace(/^failed:?\s*/, '') || 'unknown error'}.`);
+      return;
+    }
     const dur = secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`;
     const outcome = String(p.outcome ?? '');
     const reason = typeof p.reason === 'string' ? p.reason.slice(0, 300) : '';
@@ -419,6 +442,7 @@ export class PluginChannel extends BaseChannel {
 
   /** Who may talk to Mercury here: 'admin' for the owner, 'member' for listed members, null otherwise. */
   roleOf(sender: string): 'admin' | 'member' | null {
+    if (this.desktop) return sender === 'local' ? 'admin' : null;
     const s = this.settings();
     const d = digits(sender);
     if (!d) return null;
@@ -559,6 +583,7 @@ export class PluginChannel extends BaseChannel {
 
   /** The owner's level (chosen during setup; General until they pick Extended). */
   ownerAccess(): 'general' | 'extended' {
+    if (this.desktop) return 'extended';
     return String(this.settings().access ?? 'general') === 'extended' ? 'extended' : 'general';
   }
 
@@ -572,6 +597,14 @@ export class PluginChannel extends BaseChannel {
   /** Told to the model every turn: where it is, who it's talking to, what it may do, how to write. */
   guidance(role: 'admin' | 'member', isGroup: boolean, voiceCall = false): string {
     const name = this.manifest.name;
+    if (this.desktop) {
+      return [
+        `## Channel: ${name} (voice, on the owner's computer)`,
+        'You\'re talking with the owner, out loud, at their own computer. Your answer is spoken: one to three short sentences, no markdown, lists, links or code.',
+        `To see their screen use ${this.manifest.id}__look; to do things on it use ${this.manifest.id}__open and ${this.manifest.id}__act, and ${this.manifest.id}__act_consequential for anything that submits, sends, pays, deletes or installs. Say briefly what you're doing as you go.`,
+        'Access: Extended. Use your tools, skills, files and memory as you would anywhere else. Approvals are asked out loud and answered by voice.',
+      ].join('\n');
+    }
     const who = role === 'admin' ? 'the owner (the person you work for)' : 'an approved member, not the owner';
     const where = voiceCall ? `a ${name} voice call` : `${name}${isGroup ? ', in a group chat' : ''}, a phone chat app`;
     const lines = [
@@ -606,6 +639,7 @@ export class PluginChannel extends BaseChannel {
 
   /** Notifications with no chat go to the owner's own chat. */
   private defaultTarget(): string | undefined {
+    if (this.desktop) return 'local';
     const owner = digits(String(this.settings().owner ?? ''));
     return owner ? `${owner}@s.whatsapp.net` : undefined;
   }
@@ -621,6 +655,10 @@ export class PluginChannel extends BaseChannel {
       }
       // The call question timed out but the turn kept going: deliver in chat.
       return this.send(`📞 From your call:\n${content}`);
+    }
+    if (this.desktop) {
+      this.notifyOwner(content);
+      return;
     }
     const chatId = this.chatOf(targetId);
     for (const chunk of splitMessage(toWhatsAppText(content))) {
@@ -706,6 +744,7 @@ export class PluginChannel extends BaseChannel {
       const timer = setTimeout(() => this.resolveCallApproval(approvalId, 'no', 'timeout'), APPROVAL_TIMEOUT_MS);
       this.callApprovals.set(approvalId, { callId, prompt, resolve, timer });
       this.transport.notify?.('mercury/call/approval', { callId, approvalId, prompt: prompt.slice(0, 600) });
+      if (this.desktop) return;
       const chat = this.ownerChatId ? `${this.type}:${this.ownerChatId}` : undefined;
       void this.send(`🔐 From your call: ${prompt}\n\nSay *yes* on the call, or reply *1* (yes) or *2* (no) here.`, chat).catch(() => {});
     });
@@ -783,6 +822,12 @@ function rawSoulBriefing(): string {
  * The part of a call answer to speak: everything before a "For the chat:"
  * section (links and details kept in the call's history for send_to_chat).
  */
+/** The "For the chat:" part of a call answer (links and details), if any. */
+export function chatPart(answer: string): string {
+  const m = /(^|\n)\s*\**\s*for the chat\s*:?\**\s*:?/i.exec(answer);
+  return m ? answer.slice(m.index + m[0].length).trim() : '';
+}
+
 export function spokenPart(answer: string): string {
   const cut = answer.search(/(^|\n)\s*\**\s*for the chat\s*:?\**\s*:?/i);
   return (cut >= 0 ? answer.slice(0, cut) : answer).trim();
