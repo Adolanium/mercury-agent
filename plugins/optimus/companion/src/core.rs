@@ -97,6 +97,21 @@ pub struct Shared {
     pub session: Mutex<Option<crate::voice::SessionCtl>>,
     /// How the talk key reads, e.g. "Control+Option+M" (empty when there's none).
     pub hotkey_label: Mutex<String>,
+    /// Screen operations in progress, and the (listening, working) state last reported.
+    working: Mutex<(u32, Option<(bool, bool)>)>,
+}
+
+impl Shared {
+    /// Tell Mercury whether Optimus is listening and/or working (the TUI status bar shows it).
+    pub fn publish_activity(&self) {
+        let listening = self.session.lock().unwrap().is_some();
+        let mut w = self.working.lock().unwrap();
+        let now = (listening, w.0 > 0);
+        if w.1 != Some(now) {
+            w.1 = Some(now);
+            self.out.notify("mercury/channel/activity", json!({ "listening": now.0, "working": now.1 }));
+        }
+    }
 }
 
 /// Run the core until the plugin side goes away.
@@ -111,7 +126,9 @@ pub fn run(inbox: std::sync::mpsc::Receiver<Value>, send: impl Fn(Value) + Send 
         call_approvals: Mutex::new(HashMap::new()),
         session: Mutex::new(None),
         hotkey_label: Mutex::new(String::new()),
+        working: Mutex::new((0, None)),
     });
+    shared.publish_activity();
 
     start_hotkey(&shared);
 
@@ -137,9 +154,26 @@ pub fn run(inbox: std::sync::mpsc::Receiver<Value>, send: impl Fn(Value) + Send 
                     s.narrate(line);
                 }
             }
+            let on_screen = matches!(name.as_str(), "look" | "act" | "open" | "windows");
+            if on_screen {
+                shared.working.lock().unwrap().0 += 1;
+                shared.publish_activity();
+            }
             rt.spawn_blocking(move || {
                 let r = sh.ops.lock().unwrap_or_else(|e| e.into_inner()).run(&name, &args);
                 sh.out.op_result(id, r);
+                if on_screen {
+                    {
+                        let mut w = sh.working.lock().unwrap();
+                        w.0 = w.0.saturating_sub(1);
+                    }
+                    // Linger a moment: a task's steps come a few seconds apart, and the bar shouldn't flicker.
+                    let sh2 = sh.clone();
+                    sh.rt.spawn(async move {
+                        tokio::time::sleep(Duration::from_secs(4)).await;
+                        sh2.publish_activity();
+                    });
+                }
             });
             continue;
         }

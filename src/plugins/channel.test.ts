@@ -7,7 +7,7 @@ import type { Channel } from '../channels/base.js';
 import type { ChannelMessage } from '../types/channel.js';
 import { PluginManager, setProviderLookup } from './manager.js';
 import { PluginChannel } from './channel-bridge.js';
-import { getPluginChannel, setCallLearning, setChannelHost, setVoiceBriefing, splitMessage, spokenPart, toWhatsAppText, voiceBriefing } from './channel-bridge.js';
+import { activityLabel, getPluginChannel, setCallLearning, setChannelHost, setDesktopActivityHook, setVoiceBriefing, splitMessage, spokenPart, toWhatsAppText, voiceBriefing } from './channel-bridge.js';
 import { getPluginTools, resetToolBridge } from './tool-bridge.js';
 import { pluginDataDir } from './store.js';
 import { manifestSchema } from './types.js';
@@ -540,6 +540,24 @@ describe('plugin channels (plugin API 1.1)', () => {
       expect(lines('replies.jsonl')[0].result.answer).toBe('The cheapest is Emirates at 420 dollars.');
       expect(notices.some((n) => /From Optimus[\s\S]*https:\/\/a\.example/.test(n))).toBe(true);
       expect(lines('out.jsonl').filter((m) => m.method === 'mercury/channel/send')).toEqual([]);
+    });
+
+    it('reports what Optimus is doing to the status bar, and clears it when it stops', async () => {
+      const labels: Array<string | null> = [];
+      setDesktopActivityHook((l) => labels.push(l));
+      try {
+        const ch = await installDesktop();
+        ch.handleNotification('mercury/channel/activity', { listening: true, working: false });
+        ch.handleNotification('mercury/channel/activity', { listening: true, working: true });
+        ch.handleNotification('mercury/channel/activity', { listening: false, working: false });
+        expect(labels).toEqual(['🎙 Optimus listening', '🎙🖱 Optimus working', null]);
+        await mgr.disable('optimus');
+        await waitFor(() => labels.length === 4);
+        expect(labels[3]).toBeNull();
+      } finally {
+        setDesktopActivityHook(null);
+      }
+      expect(activityLabel('Optimus', false, true)).toBe('🖱 Optimus working');
     });
 
     it('approvals are asked out loud only', async () => {

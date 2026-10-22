@@ -250,6 +250,7 @@ export class PluginChannel extends BaseChannel {
   }
 
   detach(): void {
+    if (this.desktop) desktopActivityHook?.(null);
     if (live.get(this.manifest.id) === this) live.delete(this.manifest.id);
     host?.unregister(this.type, this);
     this.ready = false;
@@ -269,6 +270,7 @@ export class PluginChannel extends BaseChannel {
     if (method === 'mercury/channel/status') this.onStatusNotification(params);
     else if (method === 'mercury/channel/message') this.onMessageNotification(params as IncomingParams);
     else if (method === 'mercury/call/ended') this.onCallEnded(params);
+    else if (method === 'mercury/channel/activity') this.onActivity(params);
   }
 
   async handleRequest(method: string, params: unknown): Promise<unknown> {
@@ -374,6 +376,12 @@ export class PluginChannel extends BaseChannel {
       if (this.desktop && extra) this.notifyOwner(`🎙 From Optimus:\n${extra}`);
     }
     this.overflow.delete(target);
+  }
+
+  /** Plugin API 1.2: what a desktop plugin is doing right now, for the status bar. */
+  private onActivity(params: unknown): void {
+    const p = (params ?? {}) as Record<string, unknown>;
+    desktopActivityHook?.(activityLabel(this.manifest.name, p.listening === true, p.working === true));
   }
 
   private onCallEnded(params: unknown): void {
@@ -798,6 +806,20 @@ export function setVoiceBriefing(fn: (() => string) | null): void {
 }
 
 /** After a call: let Mercury learn from it like any other conversation. */
+let desktopActivityHook: ((label: string | null) => void) | null = null;
+/** Where desktop activity is shown (the TUI status bar). */
+export function setDesktopActivityHook(fn: ((label: string | null) => void) | null): void {
+  desktopActivityHook = fn;
+}
+
+/** "🎙 Optimus listening", "🖱 Optimus working", both, or null when idle. */
+export function activityLabel(name: string, listening: boolean, working: boolean): string | null {
+  if (listening && working) return `🎙🖱 ${name} working`;
+  if (working) return `🖱 ${name} working`;
+  if (listening) return `🎙 ${name} listening`;
+  return null;
+}
+
 let learnFromCall: ((ownerSaid: string, mercurySaid: string) => void) | null = null;
 export function setCallLearning(fn: ((ownerSaid: string, mercurySaid: string) => void) | null): void {
   learnFromCall = fn;

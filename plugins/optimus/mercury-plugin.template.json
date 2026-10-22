@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "optimus",
   "name": "Optimus",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Mercury uses your computer like a person: sees the screen, moves the mouse, types and opens apps, by chat or out loud with a talk key. macOS, Windows and Linux. Asks before anything that submits, sends, pays or deletes.",
   "kind": "out-of-process",
   "author": "Cosmic Stack",
@@ -169,6 +169,19 @@
         "default": false,
         "label": "I use headphones (let me interrupt by talking)",
         "description": "With speakers, Optimus mutes the mic while Mercury talks so it doesn't hear itself; press the key to interrupt. With headphones, turn this on to interrupt just by talking.",
+        "group": "voice",
+        "when": {
+          "mode": [
+            "voice",
+            "both"
+          ]
+        }
+      },
+      "idleStopSeconds": {
+        "type": "number",
+        "default": 60,
+        "label": "Stop listening after this much silence (seconds)",
+        "description": "The mic closes by itself when you haven't spoken for this long and Mercury isn't working on something, so it never streams (and costs) for nothing. 0 keeps listening until you press the key or say bye.",
         "group": "voice",
         "when": {
           "mode": [

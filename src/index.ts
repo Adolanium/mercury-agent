@@ -54,7 +54,7 @@ import { buildConversationHistoryPayload, CloudSessionSynchronizer, SessionRepos
 import { UserMemoryStore } from './memory/user-memory.js';
 import { BotManager } from './bots/bot-manager.js';
 import { getPluginManager, peekPluginManager, setProviderLookup } from './plugins/manager.js';
-import { setCallLearning, setChannelHost, setVoiceBriefing } from './plugins/channel-bridge.js';
+import { setCallLearning, setChannelHost, setDesktopActivityHook, setVoiceBriefing } from './plugins/channel-bridge.js';
 import { registerPluginsCli } from './cli/plugins-cli.js';
 import { SECOND_BRAIN_UNAVAILABLE_MESSAGE } from './memory/second-brain-db.js';
 import { isSqliteAvailable } from './utils/sqlite-driver.js';
@@ -2694,6 +2694,10 @@ async function runAgent(isDaemon: boolean = false): Promise<void> {
     // Calls know what chats know (identity, about, the owner's profile) and learn like chats do.
     setVoiceBriefing(() => agent.voiceBriefing());
     setCallLearning((ownerSaid, mercurySaid) => agent.learnFromConversation(ownerSaid, mercurySaid));
+    setDesktopActivityHook((label) => {
+      const cli = channels.get('cli');
+      if (cli instanceof CLIChannel) cli.setDesktopActivity(label);
+    });
     pluginManager.setRunsPlugins(true);
     pluginManager.setNotifier((m) => agent.notifyAllChannels(m));
     void pluginManager.boot().catch((err) => logger.error({ err }, 'Plugin boot failed'));

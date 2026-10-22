@@ -96,10 +96,12 @@ pub async fn press(sh: Arc<Shared>, from_tool: bool) -> Result<String, String> {
         }
     };
     log(format!("listening ({})", audio.description));
+    sh.publish_activity();
     let sh2 = sh.clone();
     tokio::spawn(async move {
         run_session(sh2.clone(), audio, rx, call_id, instructions).await;
         *sh2.session.lock().unwrap() = None;
+        sh2.publish_activity();
     });
     let key = sh.hotkey_label.lock().unwrap().clone();
     Ok(if key.is_empty() {
@@ -211,6 +213,9 @@ async fn bridge(
     let mut narration: Option<String> = None;
     let mut last_narrated = Instant::now() - Duration::from_secs(60);
 
+    // Silence ends the session by itself, so an open mic never streams (and bills) for nothing.
+    let idle_stop = settings().get("idleStopSeconds").and_then(Value::as_f64).unwrap_or(60.0).max(0.0);
+    let mut last_activity = Instant::now();
     let max_minutes = settings().get("maxSessionMinutes").and_then(Value::as_f64).unwrap_or(30.0).clamp(1.0, 240.0);
     let deadline = tokio::time::sleep(Duration::from_secs_f64(max_minutes * 60.0));
     tokio::pin!(deadline);
@@ -282,7 +287,17 @@ async fn bridge(
                     deliver(&link, brain, &mut ready_answers, &mut responding);
                     continue;
                 }
-                if responding || out.busy() { continue; }
+                if responding || out.busy() { last_activity = Instant::now(); continue; }
+                if idle_stop > 0.0
+                    && last_activity.elapsed().as_secs_f64() >= idle_stop
+                    && last_narrated.elapsed().as_secs_f64() >= idle_stop
+                    && pending.lock().unwrap().is_empty()
+                    && ready_answers.is_empty()
+                    && awaiting.is_none()
+                {
+                    log(format!("{call_id}: {idle_stop}s of silence, stopping"));
+                    break Ok(());
+                }
                 if awaiting.is_none() {
                     let next = sh.call_approvals.lock().unwrap().get_mut(call_id).and_then(|l| if l.is_empty() { None } else { Some(l.remove(0)) });
                     if let Some((id, prompt)) = next {
@@ -348,6 +363,7 @@ async fn bridge(
                     }
                     LinkEvent::Audio(pcm) => out.play(&pcm),
                     LinkEvent::SpeechStarted => {
+                        last_activity = Instant::now();
                         if barge_in || !out.recently_audible(350) {
                             out.clear();
                             link.send(LinkCmd::Cancel);
@@ -358,6 +374,7 @@ async fn bridge(
                     }
                     LinkEvent::UserText(t) => {
                         if t.is_empty() { continue; }
+                        last_activity = Instant::now();
                         transcript.push(json!({ "role": "owner", "text": t.clone() }));
                         user_said.push((Instant::now(), t.clone()));
                         if user_said.len() > 20 { user_said.remove(0); }
