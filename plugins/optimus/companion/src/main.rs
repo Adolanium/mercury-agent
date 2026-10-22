@@ -22,7 +22,9 @@ mod hotkey;
 mod links;
 #[cfg(target_os = "macos")]
 mod mac;
+mod motion;
 mod ops;
+mod overlay;
 mod voice;
 
 pub use crate::core::log;
@@ -176,7 +178,7 @@ fn action_schema() -> Value {
                         "y": { "type": "number" },
                         "to_x": { "type": "number", "description": "drag: end x" },
                         "to_y": { "type": "number", "description": "drag: end y" },
-                        "text": { "type": "string", "description": "type/paste: the text (with x/y, clicks there first). Use paste for posts, emails and long text in web editors (X, Gmail, LinkedIn, Docs)" },
+                        "text": { "type": "string", "description": "type/paste: the text (with x/y, clicks there first). type is the default for everything; paste is a fallback" },
                         "points": { "type": "array", "items": { "type": "array", "items": { "type": "number" } }, "description": "draw: [[x, y], …] one freehand stroke with the button held (many points for curves)" },
                         "keys": { "type": "string", "description": "key: one key or a combo, e.g. \"enter\", \"cmd+t\", \"ctrl+shift+esc\"" },
                         "modifiers": { "type": "string", "description": "click: keys held while clicking, e.g. \"cmd\" or \"shift\"" },
@@ -198,7 +200,7 @@ fn action_schema() -> Value {
 
 const TOOL_DESCRIPTIONS: [(&str, &str); 7] = [
     ("look", "See the screen: a screenshot of the display the mouse is on (or `display` N), with the active window. Use `zoom` [x0,y0,x1,y1] for a closer look at part of the last screenshot (coordinates stay in the full screenshot)."),
-    ("act", "Use the mouse and keyboard like a person: click, type, paste, press keys, scroll, drag, draw freehand. Returns a fresh screenshot. Pass `actions` as a list. For posts, emails and long text in web pages, use paste (click the box first) rather than type. Only for ordinary, reversible steps. Anything that submits, sends, posts, pays, buys, deletes, installs or changes settings must go through act_consequential instead. Never type passwords, card numbers or 2FA codes: ask the owner to do that part."),
+    ("act", "Use the mouse and keyboard like a person: click, type, paste, press keys, scroll, drag, draw freehand. Returns a fresh screenshot. Pass `actions` as a list. To write text (posts, emails, articles) click the box, then use type: it types key by key like a person, so it works in every editor (up to 3,000 characters per type action; longer text in parts). Use paste only if typing fails. Only for ordinary, reversible steps. Anything that submits, sends, posts, pays, buys, deletes, installs or changes settings must go through act_consequential instead. Never type passwords, card numbers or 2FA codes: ask the owner to do that part."),
     ("act_consequential", "Same as act, for the step that commits something: submit a form, send a message or email, post, pay or buy, delete, install, change a setting. The owner approves it first, so say what it will do."),
     ("open", "Open an app by name (\"Chrome\", \"Notes\", \"Freeform\"), a URL, or a file/folder path. Faster and more reliable than clicking through menus. If the app isn't installed, the reply lists what is. For drawing use Freeform (Mac), Paint (Windows) or a web canvas like https://excalidraw.com."),
     ("windows", "List open windows (app and title), front first."),
@@ -236,7 +238,8 @@ fn call_tool(shell: &Arc<Shell>, name: &str, args: &Value) -> Value {
         return json!({ "content": [{ "type": "text", "text": NOT_ALLOWED }], "isError": true });
     }
     let op = if name == "act_consequential" { "act" } else { name };
-    match shell.op(op, args, Duration::from_secs(150)) {
+    // Long articles are typed key by key, so act may take minutes.
+    match shell.op(op, args, Duration::from_secs(if op == "act" { 310 } else { 150 })) {
         Ok(v) => {
             let mut content = vec![json!({ "type": "text", "text": v["text"].as_str().unwrap_or("Done.") })];
             if let (Some(data), Some(mime)) = (v["image"]["data"].as_str(), v["image"]["mimeType"].as_str()) {

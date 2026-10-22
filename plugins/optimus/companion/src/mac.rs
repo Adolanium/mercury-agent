@@ -128,11 +128,15 @@ pub fn agent_main(socket: &Path) -> ! {
         }
         // The plugin side closed: dropping tx ends the core.
     });
-    crate::core::run(rx, move |v| {
-        let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
-        let _ = writeln!(w, "{v}");
+    // The core runs on a thread; the main thread belongs to AppKit (the overlay).
+    std::thread::spawn(move || {
+        crate::core::run(rx, move |v| {
+            let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
+            let _ = writeln!(w, "{v}");
+        });
+        std::process::exit(0);
     });
-    std::process::exit(0)
+    crate::overlay::run_main_loop()
 }
 
 // ── In the plugin process ──────────────────────────────────────────────

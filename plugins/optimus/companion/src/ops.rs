@@ -13,7 +13,7 @@
 use std::time::{Duration, Instant};
 
 use base64::Engine as _;
-use enigo::{Axis, Button, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
+use enigo::{Button, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
 use serde_json::{Value, json};
 use xcap::image::{DynamicImage, RgbaImage, codecs::jpeg::JpegEncoder, imageops::FilterType};
 use xcap::{Monitor, Window};
@@ -27,7 +27,8 @@ const TAKEOVER_PX: i32 = 12;
 const MAX_ACTIONS: usize = 60;
 /// Points in one freehand stroke.
 const MAX_DRAW_POINTS: usize = 2000;
-const MAX_TYPE_CHARS: usize = 4000;
+/// Typed key by key at a human pace: ~3,000 characters is a few minutes, inside one tool call.
+const MAX_TYPE_CHARS: usize = 3_000;
 
 /// Where the last screenshot came from, to map its pixels back to the screen.
 #[derive(Clone, Copy)]
@@ -150,7 +151,10 @@ impl Ops {
             mon.width().map_err(err)?,
             mon.height().map_err(err)?,
         );
-        let full = mon.capture_image().map_err(|e| capture_error(&e.to_string()))?;
+        let full = {
+            let _hidden = crate::overlay::capture_guard();
+            mon.capture_image().map_err(|e| capture_error(&e.to_string()))?
+        };
 
         // Zoom: a closer look at part of the last screenshot. Coordinates keep
         // referring to the full screenshot, so the zoom never moves the frame.
@@ -220,6 +224,9 @@ impl Ops {
                     }
                 }
             }
+            if i > 0 {
+                std::thread::sleep(Duration::from_millis(if crate::motion::pace() == crate::motion::Pace::Natural { 120 } else { 30 }));
+            }
             match self.one(a, &mut last_set) {
                 Ok(d) => done.push(d),
                 Err(e) => {
@@ -228,6 +235,7 @@ impl Ops {
                 }
             }
         }
+        crate::overlay::done();
         // Let the screen settle, then show what happened (unless asked not to).
         let mut out = json!({});
         let mut text = if done.is_empty() { "Nothing was done.".to_string() } else { format!("Done: {}.", done.join("; ")) };
@@ -272,12 +280,8 @@ impl Ops {
             _ => what.to_string(),
         };
         let e = self.enigo()?;
-        let move_to = |e: &mut Enigo, p: (i32, i32), last: &mut Option<(i32, i32)>| -> Result<(), String> {
-            e.move_mouse(p.0, p.1, Coordinate::Abs).map_err(err)?;
-            *last = Some(p);
-            std::thread::sleep(Duration::from_millis(30));
-            Ok(())
-        };
+        // The pointer glides there like a hand would (motion.rs), never jumps.
+        let move_to = |e: &mut Enigo, p: (i32, i32), last: &mut Option<(i32, i32)>| -> Result<(), String> { crate::motion::glide(e, p, last) };
         match kind {
             "click" | "double_click" | "triple_click" | "right_click" | "middle_click" => {
                 if let Some(p) = at {
@@ -326,31 +330,24 @@ impl Ops {
                 let e = self.enigo()?;
                 move_to(e, from, last_set)?;
                 e.button(Button::Left, Direction::Press).map_err(err)?;
-                for s in 1..=12 {
-                    let t = s as f64 / 12.0;
-                    let p = (
-                        from.0 + ((to.0 - from.0) as f64 * t).round() as i32,
-                        from.1 + ((to.1 - from.1) as f64 * t).round() as i32,
-                    );
-                    e.move_mouse(p.0, p.1, Coordinate::Abs).map_err(err)?;
-                    std::thread::sleep(Duration::from_millis(16));
-                }
-                *last_set = Some(to);
+                std::thread::sleep(Duration::from_millis(60));
+                let moved = crate::motion::glide(e, to, last_set);
                 e.button(Button::Left, Direction::Release).map_err(err)?;
+                moved?;
                 Ok(format!("dragged to ({}, {})", a["to_x"], a["to_y"]))
             }
             "type" => {
                 let text = a.get("text").and_then(Value::as_str).ok_or("type needs text")?;
                 if text.chars().count() > MAX_TYPE_CHARS {
-                    return Err(format!("type at most {MAX_TYPE_CHARS} characters at a time"));
+                    return Err(format!("type at most {MAX_TYPE_CHARS} characters per action; type the rest in the next act call"));
                 }
                 if let Some(p) = at {
                     move_to(e, p, last_set)?;
                     e.button(Button::Left, Direction::Click).map_err(err)?;
                     std::thread::sleep(Duration::from_millis(200)); // let the field take focus
                 }
-                e.text(text).map_err(err)?;
-                Ok(format!("typed {} characters", text.chars().count()))
+                let n = crate::motion::type_text(e, text, last_set)?;
+                Ok(format!("typed {n} characters"))
             }
             "paste" => {
                 // Rich web editors (X, Gmail, LinkedIn, Docs) take pasted text more reliably than typed keys.
@@ -424,14 +421,7 @@ impl Ops {
                 }
                 let dir = a.get("direction").and_then(Value::as_str).unwrap_or("down");
                 let amount = a.get("amount").and_then(Value::as_i64).unwrap_or(3).clamp(1, 30) as i32;
-                let (len, axis) = match dir {
-                    "down" => (amount, Axis::Vertical),
-                    "up" => (-amount, Axis::Vertical),
-                    "right" => (amount, Axis::Horizontal),
-                    "left" => (-amount, Axis::Horizontal),
-                    other => return Err(format!("scroll direction is up, down, left or right, not {other}")),
-                };
-                e.scroll(len, axis).map_err(err)?;
+                crate::motion::smooth_scroll(e, dir, amount)?;
                 Ok(label(&format!("scrolled {dir} {amount}")))
             }
             "wait" => {
