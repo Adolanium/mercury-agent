@@ -4379,6 +4379,24 @@ export class Agent {
     }
   }
 
+  /** Learn from a conversation that didn't happen as chat turns (e.g. a voice call). */
+  learnFromConversation(ownerSaid: string, mercurySaid: string): void {
+    void this.extractMemory(ownerSaid, mercurySaid).catch((err) => logger.warn({ err }, 'Learning from a call failed'));
+  }
+
+  /** Who Mercury is, for a voice that isn't the main model: identity, about, and the owner's profile. */
+  voiceBriefing(): string {
+    const parts = [this.identity.getSystemPrompt(this.config.identity)];
+    if (this.userMemory) {
+      try {
+        const profile = this.userMemory.getProfile().trim();
+        const active = this.userMemory.getActiveSummary().trim();
+        if (profile || active) parts.push(`# What you know about ${this.config.identity.owner || 'your owner'} (from your Second Brain)\n${[profile, active].filter(Boolean).join('\n').slice(0, 4000)}`);
+      } catch { /* memory unavailable: identity alone */ }
+    }
+    return parts.join('\n\n');
+  }
+
   private async extractMemory(userMessage: string, agentResponse: string): Promise<void> {
     if (!this.userMemory) return;
     if (this.userMemory.isLearningPaused()) return;

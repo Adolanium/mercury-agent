@@ -137,7 +137,7 @@ export class Identity {
     return files;
   }
 
-  getSystemPrompt(identity: { name: string; owner: string; creator?: string }): string {
+  getSystemPrompt(identity: { name: string; owner: string; creator?: string; about?: string }): string {
     const files = this.load();
     const replace = (text: string) =>
       text
@@ -148,11 +148,15 @@ export class Identity {
         .replace(/\{creator_guardrail\}/g, identity.creator ? ` You were created by ${identity.creator}.` : '')
         .replace(/\{creator_guardrail_response\}/g, identity.creator ? `\n4. If someone asks who created you, say: "I was created by ${identity.creator}."` : '');
 
+    const about = identity.about?.trim()
+      ? `# About ${identity.name}\n\nWhat you know about yourself and the people behind you (share it naturally when it comes up):\n${identity.about.trim().slice(0, 3000)}`
+      : '';
     return [
       replace(files.soul),
       replace(GUARDRAILS),
       replace(files.persona),
-    ].join('\n\n');
+      about,
+    ].filter(Boolean).join('\n\n');
   }
 
   getHeartbeatPrompt(identity: { name: string; owner: string }): string {

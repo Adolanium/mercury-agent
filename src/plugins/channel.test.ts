@@ -7,7 +7,7 @@ import type { Channel } from '../channels/base.js';
 import type { ChannelMessage } from '../types/channel.js';
 import { PluginManager, setProviderLookup } from './manager.js';
 import { PluginChannel } from './channel-bridge.js';
-import { getPluginChannel, setChannelHost, splitMessage, spokenPart, toWhatsAppText } from './channel-bridge.js';
+import { getPluginChannel, setCallLearning, setChannelHost, setVoiceBriefing, splitMessage, spokenPart, toWhatsAppText, voiceBriefing } from './channel-bridge.js';
 import { getPluginTools, resetToolBridge } from './tool-bridge.js';
 import { pluginDataDir } from './store.js';
 import { manifestSchema } from './types.js';
@@ -458,5 +458,36 @@ describe('plugin channels (plugin API 1.1)', () => {
       .toBe('The Pixel 10 and iPhone 18 are the best picks. Want me to send the links to your chat?');
     expect(spokenPart('Just a plain answer.')).toBe('Just a plain answer.');
     expect(spokenPart('Answer.\n**For the chat:** links')).toBe('Answer.');
+  });
+
+  describe('calls know what chats know, and learn', () => {
+    afterEach(() => { setVoiceBriefing(null); setCallLearning(null); });
+
+    it('the voice gets the runtime briefing (filled-in identity, about, profile)', async () => {
+      setVoiceBriefing(() => 'You are Mercury, serving Salman. Created by Cosmic Stack.');
+      expect(voiceBriefing()).toBe('You are Mercury, serving Salman. Created by Cosmic Stack.');
+      await installChannel();
+      await inject({ method: 'mercury/call/briefing', params: { callId: 'b1' } }, 'callsim');
+      const f = join(pluginDataDir('whatsapp'), 'replies.jsonl');
+      await waitFor(() => existsSync(f));
+      expect(readFileSync(f, 'utf8')).toContain('Created by Cosmic Stack');
+    });
+
+    it('a finished call feeds memory at Extended, never at General', async () => {
+      const learned: string[] = [];
+      setCallLearning((said, replied) => learned.push(`${said} | ${replied}`));
+      await installChannel();
+      const end = (id: string) => inject({ callId: id, direction: 'incoming', outcome: 'completed', durationSec: 60, transcript: [
+        { role: 'owner', text: 'I prefer morning calls before my standup at 10.' },
+        { role: 'mercury', text: 'Got it, mornings before 10.' },
+      ] }, 'callend');
+      await end('l1');
+      await sleep(80);
+      expect(learned).toEqual([]); // General: memory stays off
+      await mgr.setSetting('whatsapp', 'access', 'extended');
+      await end('l2');
+      await waitFor(() => learned.length === 1);
+      expect(learned[0]).toMatch(/morning calls[\s\S]*\| Got it, mornings/);
+    });
   });
 });

@@ -342,6 +342,15 @@ export class PluginChannel extends BaseChannel {
 
   private onCallEnded(params: unknown): void {
     const p = (params ?? {}) as Record<string, unknown>;
+    // Learn from the call like a chat (only at Extended: General keeps memory off).
+    if (learnFromCall && this.accessFor('admin') === 'extended' && Array.isArray(p.transcript)) {
+      const lines = (p.transcript as Array<{ role?: unknown; text?: unknown }>).filter((t) => typeof t.text === 'string' && t.text);
+      const said = lines.filter((t) => t.role === 'owner').map((t) => String(t.text)).join('\n');
+      const replied = lines.filter((t) => t.role === 'mercury').map((t) => String(t.text)).join('\n');
+      if (said.trim().length > 20) {
+        try { learnFromCall(said.slice(0, 6000), replied.slice(0, 6000)); } catch { /* best effort */ }
+      }
+    }
     this.activeCalls.delete(String(p.callId ?? ''));
     for (const [id, a] of this.callApprovals) if (a.callId === String(p.callId ?? '')) this.resolveCallApproval(id, 'no', 'timeout');
     const secs = typeof p.durationSec === 'number' ? Math.round(p.durationSec) : 0;
@@ -721,10 +730,32 @@ export class PluginChannel extends BaseChannel {
 }
 
 /**
- * Who Mercury is on a call: its soul and persona, trimmed. Read fresh for
- * each call so edits to the soul files apply to the next call.
+ * Who Mercury is on a call. The runtime provides it (identity with name,
+ * owner and creator filled in, the "about" text, and the owner's Second
+ * Brain profile) so the voice knows the same things text chats do.
  */
+let briefingSource: (() => string) | null = null;
+export function setVoiceBriefing(fn: (() => string) | null): void {
+  briefingSource = fn;
+}
+
+/** After a call: let Mercury learn from it like any other conversation. */
+let learnFromCall: ((ownerSaid: string, mercurySaid: string) => void) | null = null;
+export function setCallLearning(fn: ((ownerSaid: string, mercurySaid: string) => void) | null): void {
+  learnFromCall = fn;
+}
+
 export function voiceBriefing(): string {
+  if (briefingSource) {
+    try {
+      const b = briefingSource().trim();
+      if (b) return b.slice(0, 12_000);
+    } catch { /* fall back to the soul files */ }
+  }
+  return rawSoulBriefing();
+}
+
+function rawSoulBriefing(): string {
   const parts: string[] = [];
   for (const name of ['soul.md', 'persona.md']) {
     try {
