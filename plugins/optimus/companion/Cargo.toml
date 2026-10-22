@@ -1,9 +1,9 @@
 [package]
 name = "mercury-optimus"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.94"
-description = "Optimus: full computer control for Mercury (screen, mouse, keyboard, apps)"
+description = "Optimus: full computer control for Mercury (screen, mouse, keyboard, apps, voice)"
 license = "MIT"
 publish = false
 
@@ -13,9 +13,24 @@ enigo = "0.6"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 base64 = "0.22"
 serde_json = "1"
+# Voice: the same links as the WhatsApp plugin (rustls + ring).
+tokio = { version = "1.47", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
+tokio-websockets = { version = "0.13.3", features = ["client", "rustls-webpki-roots", "rand", "ring"] }
+http = "1"
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+ureq = "3"
+# Microphone and speaker.
+cpal = "0.16"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-graphics = "0.24"
+core-foundation = "0.10"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+x11rb = "0.13"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_UI_HiDpi", "Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.61", features = ["Win32_UI_HiDpi", "Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse"] }
 
 [profile.release]
 opt-level = 3

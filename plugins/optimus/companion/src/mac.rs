@@ -22,7 +22,6 @@ use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
-use crate::ops::Ops;
 
 pub const BUNDLE_ID: &str = "sh.mercuryagent.optimus";
 const CERT_NAME: &str = "Mercury Optimus (local)";
@@ -77,7 +76,7 @@ pub fn permission_report(request: bool) -> Value {
     json!({ "ready": ax && screen, "accessibility": ax, "screenRecording": screen, "text": text })
 }
 
-/// `optimus agent --socket <path>`: serve one connection, then exit.
+/// `optimus agent --socket <path>`: run the core for one connection, then exit.
 pub fn agent_main(socket: &Path) -> ! {
     let _ = fs::remove_file(socket);
     let listener = match UnixListener::bind(socket) {
@@ -101,59 +100,42 @@ pub fn agent_main(socket: &Path) -> ! {
         }
     };
     let _ = stream.set_nonblocking(false);
-    let mut ops = Ops::new();
-    let mut out = stream.try_clone().expect("socket clone");
-    for line in BufReader::new(stream).lines() {
-        let Ok(line) = line else { break };
-        let Ok(req) = serde_json::from_str::<Value>(&line) else { continue };
-        let op = req["op"].as_str().unwrap_or("");
-        if op == "quit" {
-            break;
-        }
-        let reply = match op {
-            "hello" => json!({ "ok": { "version": env!("CARGO_PKG_VERSION") } }),
-            _ => match ops.run(op, &req["args"]) {
-                Ok(v) => json!({ "ok": v }),
-                Err(e) => json!({ "err": e }),
-            },
-        };
-        if writeln!(out, "{reply}").is_err() {
-            break;
+    let _ = fs::remove_file(socket);
+    let writer = std::sync::Mutex::new(stream.try_clone().expect("socket clone"));
+    let mut reader = BufReader::new(stream);
+    // LaunchServices started us with launchd's environment, not Mercury's: the
+    // plugin sends its settings and voice keys first, over this private socket.
+    let mut first = String::new();
+    if reader.read_line(&mut first).is_ok() {
+        if let Some(env) = serde_json::from_str::<Value>(&first).ok().and_then(|v| v.get("env").cloned()).and_then(|e| e.as_object().cloned()) {
+            for (k, v) in env {
+                if let Some(v) = v.as_str() {
+                    // Single-threaded here: nothing else reads the environment yet.
+                    unsafe { std::env::set_var(k, v) };
+                }
+            }
         }
     }
-    let _ = fs::remove_file(socket);
+    let (tx, rx) = std::sync::mpsc::channel::<Value>();
+    std::thread::spawn(move || {
+        for line in reader.lines() {
+            let Ok(line) = line else { break };
+            if let Ok(v) = serde_json::from_str::<Value>(&line) {
+                if tx.send(v).is_err() {
+                    break;
+                }
+            }
+        }
+        // The plugin side closed: dropping tx ends the core.
+    });
+    crate::core::run(rx, move |v| {
+        let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = writeln!(w, "{v}");
+    });
     std::process::exit(0)
 }
 
 // ── In the plugin process ──────────────────────────────────────────────
-
-pub struct Agent {
-    reader: BufReader<UnixStream>,
-    writer: UnixStream,
-}
-
-impl Agent {
-    pub fn call(&mut self, op: &str, args: &Value) -> Result<Value, String> {
-        writeln!(self.writer, "{}", json!({ "op": op, "args": args })).map_err(|e| format!("Optimus.app went away: {e}"))?;
-        let mut line = String::new();
-        self.reader.read_line(&mut line).map_err(|e| format!("Optimus.app went away: {e}"))?;
-        if line.is_empty() {
-            return Err("Optimus.app went away".into());
-        }
-        let v: Value = serde_json::from_str(&line).map_err(|e| format!("bad reply from Optimus.app: {e}"))?;
-        match (v.get("ok"), v.get("err")) {
-            (Some(ok), _) => Ok(ok.clone()),
-            (_, Some(e)) => Err(e.as_str().unwrap_or("failed").to_string()),
-            _ => Err("bad reply from Optimus.app".into()),
-        }
-    }
-}
-
-impl Drop for Agent {
-    fn drop(&mut self) {
-        let _ = writeln!(self.writer, "{}", json!({ "op": "quit" }));
-    }
-}
 
 fn data_dir() -> PathBuf {
     std::env::var_os("MERCURY_PLUGIN_DATA_DIR")
@@ -161,8 +143,8 @@ fn data_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".into())).join(".mercury/optimus"))
 }
 
-/// Build (or refresh) Optimus.app, sign it, launch it and connect.
-pub fn start_agent() -> Result<Agent, String> {
+/// Build (or refresh) Optimus.app, sign it, launch it and connect to its core.
+pub fn start_agent() -> Result<UnixStream, String> {
     let dir = data_dir();
     fs::create_dir_all(&dir).map_err(|e| format!("can't create {}: {e}", dir.display()))?;
     let app = dir.join("Optimus.app");
@@ -189,10 +171,14 @@ pub fn start_agent() -> Result<Agent, String> {
             Err(e) => return Err(format!("Optimus.app didn't start: {e}")),
         }
     };
-    let writer = stream.try_clone().map_err(|e| e.to_string())?;
-    let mut agent = Agent { reader: BufReader::new(stream), writer };
-    agent.call("hello", &json!({}))?;
-    Ok(agent)
+    // Mercury's environment for the core: settings, plugin info and the voice keys it was given.
+    let env: serde_json::Map<String, Value> = std::env::vars()
+        .filter(|(k, _)| k.starts_with("MERCURY_") || k.ends_with("_API_KEY"))
+        .map(|(k, v)| (k, Value::String(v)))
+        .collect();
+    let mut w = stream.try_clone().map_err(|e| e.to_string())?;
+    writeln!(w, "{}", json!({ "env": env })).map_err(|e| format!("Optimus.app went away: {e}"))?;
+    Ok(stream)
 }
 
 fn ensure_bundle(app: &Path, dir: &Path) -> Result<(), String> {
