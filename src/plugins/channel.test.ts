@@ -237,7 +237,7 @@ describe('plugin channels (plugin API 1.1)', () => {
     const callsim = (method: string, params: Record<string, unknown>) => inject({ method, params }, 'callsim');
 
     it('answers only the owner, and only with a voice provider', async () => {
-      await installChannel();
+      expect((await installChannel()).noBroadcast).toBe(false);
       await callsim('mercury/call/incoming', { callId: 'c1', from: 'x@lid', fromPhone: '15550002', voiceReady: true });
       await callsim('mercury/call/incoming', { callId: 'c2', from: '19998887777@s.whatsapp.net', voiceReady: true });
       await callsim('mercury/call/incoming', { callId: 'c3', from: 'x@lid', fromPhone: '15550002', voiceReady: false });
@@ -515,6 +515,7 @@ describe('plugin channels (plugin API 1.1)', () => {
 
     it('only the person at the computer is the owner', async () => {
       const ch = await installDesktop();
+      expect(ch.noBroadcast).toBe(true); // broadcasts skip it: its send() forwards to the owner's chats
       expect(ch.roleOf('local')).toBe('admin');
       expect(ch.roleOf('15550002')).toBeNull();
       expect(ch.accessFor('admin')).toBe('extended');

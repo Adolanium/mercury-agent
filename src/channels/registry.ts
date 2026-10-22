@@ -123,7 +123,7 @@ export class ChannelRegistry {
     if (whatsapp?.isReady()) return whatsapp;
     const cli = this.channels.get('cli');
     if (cli?.isReady()) return cli;
-    return this.channels.values().next().value;
+    return [...this.channels.values()].find((c) => !c.noBroadcast);
   }
 
   private incomingHandler?: (msg: ChannelMessage) => void;

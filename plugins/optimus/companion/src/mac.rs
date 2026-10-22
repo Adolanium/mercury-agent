@@ -153,8 +153,18 @@ pub fn start_agent() -> Result<UnixStream, String> {
     // Short path: Unix socket paths are limited to ~104 bytes.
     let socket = std::env::temp_dir().join(format!("mercury-optimus-{}.sock", std::process::id()));
     let _ = fs::remove_file(&socket);
+    // LaunchServices drops our stderr: Optimus.app logs to a file next to it.
+    let log_file = dir.join("optimus.log");
+    if fs::metadata(&log_file).map(|m| m.len() > 2_000_000).unwrap_or(false) {
+        let _ = fs::rename(&log_file, dir.join("optimus.log.1"));
+    }
+    let _ = fs::OpenOptions::new().create(true).append(true).open(&log_file);
     let status = Command::new("open")
         .args(["-n", "-g"])
+        .arg("--stdout")
+        .arg(&log_file)
+        .arg("--stderr")
+        .arg(&log_file)
         .arg(&app)
         .args(["--args", "agent", "--socket"])
         .arg(&socket)

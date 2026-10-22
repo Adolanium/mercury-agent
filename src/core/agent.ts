@@ -97,6 +97,7 @@ import { buildFileChangePreview } from '../utils/file-preview.js';
 import { whatsNewText } from '../utils/whats-new.js';
 import { handleBotsCommand as handleBotsCommandImpl } from './commands/bots-command.js';
 import { modelSeesImages, withAttachments } from './attachments.js';
+import { AlertGate } from './alert-gate.js';
 import { setPluginImagesAllowed } from '../plugins/tool-bridge.js';
 import { handleCallCommand } from '../plugins/call-schedule.js';
 import { handlePluginsCommand, tryPluginCommand, pluginCommandHelp, hasPluginDialog, answerPluginDialog } from '../plugins/commands.js';
@@ -528,6 +529,7 @@ export function looksLikeCodingTask(text: string): boolean {
 
   return (intent.test(t) && artifact.test(t)) || pathOrCommand.test(t) || fence.test(t);
 }
+
 
 export class Agent {
   readonly lifecycle: Lifecycle;
@@ -4581,10 +4583,18 @@ RULES:
    * what happened to their task.
    */
   async notifyAllChannels(message: string): Promise<void> {
+    const outcome = await this.alertGate.run(message, () => this.broadcastToChannels(message));
+    if (outcome !== 'sent') logger.warn({ outcome, message: message.slice(0, 120) }, 'Broadcast not sent');
+  }
+
+  /** Broadcasts never nest or repeat (see AlertGate). */
+  private alertGate = new AlertGate();
+
+  private async broadcastToChannels(message: string): Promise<void> {
     const active = this.channels.getActiveChannels();
     const sends = active.map((type) => {
       const ch = this.channels.get(type);
-      if (!ch) return Promise.resolve();
+      if (!ch || ch.noBroadcast) return Promise.resolve();
       return ch.send(message).catch((e) => {
         logger.warn({ e, channel: type }, 'Failed to notify channel before exit');
       });

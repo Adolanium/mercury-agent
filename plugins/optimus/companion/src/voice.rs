@@ -142,10 +142,12 @@ async fn run_session(sh: Arc<Shared>, audio: Audio, ctl: mpsc::UnboundedReceiver
     let started = Instant::now();
     let mut transcript: Vec<Value> = Vec::new();
     audio.out.chime(true);
+    let engine = links::engine(&settings());
+    log(format!("session {call_id} starting with {engine}"));
     let outcome = match bridge(&sh, audio, ctl, &call_id, &instructions, &mut transcript).await {
         Ok(()) => "completed".to_string(),
         Err(e) => {
-            log(format!("voice session ended: {e}"));
+            log(format!("session {call_id} ({engine}) failed: {e}"));
             format!("failed: {e}")
         }
     };

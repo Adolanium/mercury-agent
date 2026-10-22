@@ -22,7 +22,14 @@ use tokio::sync::oneshot;
 use crate::ops::Ops;
 
 pub fn log(msg: impl AsRef<str>) {
-    eprintln!("optimus: {}", msg.as_ref());
+    let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    eprintln!("[{t}] optimus: {}", msg.as_ref());
+}
+
+/// A short "that didn't work" sound, for a talk-key press that couldn't start.
+fn error_sound() {
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("afplay").arg("/System/Library/Sounds/Basso.aiff").spawn();
 }
 
 pub fn settings() -> Value {
@@ -165,6 +172,7 @@ fn start_hotkey(shared: &Arc<Shared>) {
         sh.rt.spawn(async move {
             if let Err(e) = crate::voice::press(sh2.clone(), false).await {
                 log(format!("listening: {e}"));
+                error_sound();
             }
         });
     }) {

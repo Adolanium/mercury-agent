@@ -146,7 +146,12 @@ async fn connect(key: &str, cfg: &LinkConfig, handle: Option<&str>) -> Result<ws
             let m = m.map_err(|e| e.to_string())?;
             if m.is_close() {
                 let reason = m.as_close().map(|(_, r)| r.to_string()).unwrap_or_default();
-                return Err(format!("Gemini refused the session: {reason}"));
+                let model = setting(&cfg.settings, "geminiModel", "gemini-3.8-live");
+                return Err(if reason.to_lowercase().contains("not found") || reason.to_lowercase().contains("not supported") {
+                    format!("Gemini doesn't accept the model \"{model}\" for live voice ({reason}). Set the Gemini Live model to gemini-3.8-live (or gemini-3.1-flash-live-preview)")
+                } else {
+                    format!("Gemini refused the session (model {model}): {reason}")
+                });
             }
             let text = if let Some(t) = m.as_text() { t.to_string() } else { String::from_utf8_lossy(&m.as_payload().to_vec()).to_string() };
             if text.contains("setupComplete") { return Ok(()); }

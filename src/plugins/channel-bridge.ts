@@ -223,6 +223,11 @@ export class PluginChannel extends BaseChannel {
     return this.type === 'desktop';
   }
 
+  /** The desktop has no chat: broadcasts must skip it (its send() forwards to the owner's chats). */
+  get noBroadcast(): boolean {
+    return this.desktop;
+  }
+
 
   get pluginId(): string {
     return this.manifest.id;
@@ -274,7 +279,8 @@ export class PluginChannel extends BaseChannel {
         if (this.roleOf(from) !== 'admin') return { accept: false, reason: 'only the owner can call Mercury' };
         if (p.voiceReady !== true) {
           const why = typeof p.voiceProblem === 'string' && p.voiceProblem ? p.voiceProblem : 'voice calls need an OpenAI provider: add your OpenAI key once in the dashboard (Providers) or with `mercury doctor`';
-          void this.send(`📞 I couldn't answer your call: ${why}.`).catch(() => {});
+          if (this.desktop) this.notifyOwner(`🎙 Optimus can't listen yet: ${why}.`);
+          else void this.send(`📞 I couldn't answer your call: ${why}.`).catch(() => {});
           return { accept: false, reason: 'voice engine not ready' };
         }
         this.callStarted(String(p.callId ?? ''));
