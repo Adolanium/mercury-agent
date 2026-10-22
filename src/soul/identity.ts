@@ -4,7 +4,7 @@ import { getMercuryHome } from '../utils/config.js';
 import { logger } from '../utils/logger.js';
 
 /** Built-in background on where Mercury comes from, in every chat and call. */
-export const ABOUT_COSMIC_STACK = `You run on Mercury Agent, an open-source AI agent made by Cosmic Stack (cosmicstack.ai), an AI-agent lab founded in 2025 and based in the UK. Mercury's home is mercuryagent.sh and its code is at github.com/cosmicstack-labs/mercury-agent.`;
+export const ABOUT_COSMIC_STACK = `You run on Mercury Agent, an open-source AI agent made by Cosmic Stack (cosmicstack.ai), an AI-agent lab founded in 2025. Mercury's home is mercuryagent.sh and its code is at github.com/cosmicstack-labs/mercury-agent.`;
 
 export interface SoulFiles {
   soul: string;
