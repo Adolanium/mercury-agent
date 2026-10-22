@@ -4556,6 +4556,27 @@ RULES:
    * next start does not auto-resume killed tasks. Crash recovery is
    * unaffected — this is only invoked on intentional exits.
    */
+  /**
+   * Stop only the work started from one place (e.g. a desktop voice session,
+   * "desktop:call:<id>"): the running turn if it's theirs, and anything
+   * queued for it. Other chats keep going. Returns whether anything stopped.
+   */
+  stopWorkFor(channelPrefix: string, reason = 'Stopped by the owner.'): boolean {
+    const before = this.messageQueue.length;
+    this.messageQueue = this.messageQueue.filter((i) => !i.message.channelId.startsWith(channelPrefix));
+    let stopped = this.messageQueue.length !== before;
+    if (this.currentMessage?.channelId.startsWith(channelPrefix) && this.currentAbort && !this.currentAbort.signal.aborted) {
+      this.currentAbortReason = 'stopped';
+      this.currentAbort.abort();
+      if (this.currentWorkKey) {
+        try { this.workLedger.markCancelled(this.currentWorkKey, reason); } catch { /* entry may not exist */ }
+      }
+      stopped = true;
+    }
+    if (stopped) logger.info({ channelPrefix }, 'Work stopped for one channel');
+    return stopped;
+  }
+
   cancelActiveWork(reason = 'Cancelled by the user.'): number {
     try {
       return this.workLedger.cancelActive(reason);

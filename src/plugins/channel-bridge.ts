@@ -308,6 +308,22 @@ export class PluginChannel extends BaseChannel {
         const ok = this.resolveCallApproval(approvalId, p.approved === true ? 'yes' : 'no', 'voice');
         return { ok, reason: ok ? undefined : 'that approval is no longer open (answered in the chat, or timed out)' };
       }
+      case 'mercury/call/stop': {
+        // The owner said stop (or goodbye) on the call: end the work it started, now.
+        const callId = String(p.callId ?? '').replace(/[^\w.-]/g, '').slice(0, 80);
+        if (!callId) throw new Error('callId is required');
+        const target = `call:${callId}`;
+        const stopped = workStopper?.(`${this.type}:${target}`) ?? false;
+        const ask = this.callAsks.get(target);
+        if (ask) {
+          clearTimeout(ask.timer);
+          this.callAsks.delete(target);
+          ask.resolve('(stopped by the owner)');
+        }
+        this.overflow.delete(target);
+        for (const [id, a] of this.callApprovals) if (a.callId === callId) this.resolveCallApproval(id, 'no', 'timeout');
+        return { stopped };
+      }
       case 'mercury/call/ask': {
         const callId = typeof p.callId === 'string' ? p.callId.replace(/[^\w.-]/g, '').slice(0, 80) : '';
         const question = typeof p.question === 'string' ? p.question.trim().slice(0, 4000) : '';
@@ -806,6 +822,12 @@ export function setVoiceBriefing(fn: (() => string) | null): void {
 }
 
 /** After a call: let Mercury learn from it like any other conversation. */
+let workStopper: ((channelPrefix: string) => boolean) | null = null;
+/** How a call's "stop" ends the Mercury work it started (agent.stopWorkFor). */
+export function setWorkStopper(fn: ((channelPrefix: string) => boolean) | null): void {
+  workStopper = fn;
+}
+
 let desktopActivityHook: ((label: string | null) => void) | null = null;
 /** Where desktop activity is shown (the TUI status bar). */
 export function setDesktopActivityHook(fn: ((label: string | null) => void) | null): void {

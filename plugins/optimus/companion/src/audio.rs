@@ -66,11 +66,28 @@ impl Output {
         }
     }
 
+    /// The "still working" tick: two very soft, short clicks, well below speech level.
+    pub fn tick(&self) {
+        let mut q = self.queue.lock().unwrap();
+        for (f, gap) in [(1500.0f32, 0.07f32), (1150.0, 0.0)] {
+            let n = (self.rate as f32 * 0.016) as usize;
+            for i in 0..n {
+                let t = i as f32 / self.rate as f32;
+                let env = (1.0 - i as f32 / n as f32).powi(3);
+                q.push_back((2.0 * std::f32::consts::PI * f * t).sin() * 0.03 * env);
+            }
+            for _ in 0..(self.rate as f32 * gap) as usize {
+                q.push_back(0.0);
+            }
+        }
+    }
+
     fn next(&self) -> f32 {
         let s = self.queue.lock().unwrap().pop_front();
         match s {
             Some(v) => {
-                if v.abs() > 0.004 {
+                // Only real sound (speech, chimes) counts: the quiet thinking tick doesn't mute the mic.
+                if v.abs() > 0.06 {
                     self.last_sound.store(self.start.elapsed().as_millis() as u64, Ordering::Relaxed);
                 }
                 v

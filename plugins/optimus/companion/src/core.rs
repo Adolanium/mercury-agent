@@ -32,6 +32,31 @@ fn error_sound() {
     let _ = std::process::Command::new("afplay").arg("/System/Library/Sounds/Basso.aiff").spawn();
 }
 
+/// "Stop" from the owner: until this time (ms since the epoch) no screen action
+/// runs, and any in progress aborts at its next step.
+static HALT_UNTIL_MS: AtomicU64 = AtomicU64::new(0);
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+}
+
+/// Stop every screen action now, and refuse new ones for `secs` (while Mercury cancels the task).
+pub fn halt(secs: u64) {
+    HALT_UNTIL_MS.store(now_ms() + secs * 1000, Ordering::Relaxed);
+    crate::overlay::done();
+}
+
+pub fn halted() -> bool {
+    now_ms() < HALT_UNTIL_MS.load(Ordering::Relaxed)
+}
+
+/// A new request from the owner lifts an earlier stop.
+pub fn clear_halt() {
+    HALT_UNTIL_MS.store(0, Ordering::Relaxed);
+}
+
+pub const STOPPED: &str = "Stopped: the owner said stop. Don't continue this task or try again unless they ask.";
+
 pub fn settings() -> Value {
     std::env::var("MERCURY_PLUGIN_SETTINGS").ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(json!({}))
 }
@@ -102,6 +127,11 @@ pub struct Shared {
 }
 
 impl Shared {
+    /// A screen action is running right now.
+    pub fn is_working(&self) -> bool {
+        self.working.lock().unwrap().0 > 0
+    }
+
     /// Tell Mercury whether Optimus is listening and/or working (the TUI status bar shows it).
     pub fn publish_activity(&self) {
         let listening = self.session.lock().unwrap().is_some();
@@ -155,6 +185,10 @@ pub fn run(inbox: std::sync::mpsc::Receiver<Value>, send: impl Fn(Value) + Send 
                 }
             }
             let on_screen = matches!(name.as_str(), "look" | "act" | "open" | "windows");
+            if on_screen && name != "look" && halted() {
+                shared.out.op_result(id, Err(STOPPED.into()));
+                continue;
+            }
             if on_screen {
                 shared.working.lock().unwrap().0 += 1;
                 shared.publish_activity();

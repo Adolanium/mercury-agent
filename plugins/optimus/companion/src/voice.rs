@@ -69,6 +69,7 @@ pub async fn press(sh: Arc<Shared>, from_tool: bool) -> Result<String, String> {
         }
         *live = Some(SessionCtl { tx });
     }
+    crate::core::clear_halt();
     let call_id = format!("desk-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0));
     let problem = links::not_ready(&settings());
     let decision = sh
@@ -211,6 +212,9 @@ async fn bridge(
     let silence = vec![0i16; FRAME];
     // Live narration: the newest line waits while the voice is speaking; older ones are dropped.
     let mut narration: Option<String> = None;
+    let thinking_sound = settings().get("thinkingSound").and_then(Value::as_bool).unwrap_or(true);
+    let mut tick = tokio::time::interval(Duration::from_millis(1100));
+    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut last_narrated = Instant::now() - Duration::from_secs(60);
 
     // Silence ends the session by itself, so an open mic never streams (and bills) for nothing.
@@ -241,11 +245,33 @@ async fn bridge(
         });
     };
 
+    // "Stop": the screen actions and the Mercury task this session started end now.
+    let stop_all = |pending: &Arc<std::sync::Mutex<HashMap<String, (Instant, Instant, u32)>>>| {
+        crate::core::halt(8);
+        pending.lock().unwrap().clear();
+        let sh2 = sh.clone();
+        let call = call_id.to_string();
+        tokio::spawn(async move {
+            let _ = sh2.out.request("mercury/call/stop", json!({ "callId": call }), Duration::from_secs(5)).await;
+        });
+        log(format!("{call_id}: stopped by the owner"));
+    };
+    let busy_working = |pending: &Arc<std::sync::Mutex<HashMap<String, (Instant, Instant, u32)>>>| !pending.lock().unwrap().is_empty() || sh.is_working();
+
     let result = loop {
         tokio::select! {
             _ = &mut deadline => break Ok(()),
+            _ = tick.tick() => {
+                // Soft "still working" tick while Mercury searches or acts and nobody is talking.
+                if thinking_sound && !pending.lock().unwrap().is_empty() && !responding && !out.busy() && last_narrated.elapsed() > Duration::from_secs(2) {
+                    out.tick();
+                }
+            }
             c = ctl.recv() => match c {
-                None | Some(Ctl::Stop) => break Ok(()),
+                None | Some(Ctl::Stop) => {
+                    if busy_working(&pending) { stop_all(&pending); }
+                    break Ok(());
+                }
                 Some(Ctl::Narrate(line)) => {
                     last_narrated = Instant::now();
                     narration = Some(line);
@@ -254,7 +280,16 @@ async fn bridge(
                     }
                 }
                 Some(Ctl::Press) => {
-                    if responding || out.recently_audible(300) {
+                    if busy_working(&pending) {
+                        // While it's working, the key is the stop button: everything halts, the session stays.
+                        stop_all(&pending);
+                        narration = None;
+                        ready_answers.clear();
+                        out.clear();
+                        link.send(LinkCmd::Cancel);
+                        say_stopped(&link, brain);
+                        responding = true;
+                    } else if responding || out.recently_audible(300) {
                         // Mercury is talking: the key interrupts.
                         out.clear();
                         link.send(LinkCmd::Cancel);
@@ -271,7 +306,7 @@ async fn bridge(
                 link.send(LinkCmd::Audio(if muted { silence.clone() } else { frame }));
             }
             Some(a) = answer_rx.recv() => {
-                if a.1.starts_with("(superseded") { continue; }
+                if a.1.starts_with("(superseded") || a.1.starts_with("(stopped") { continue; }
                 narration = None; // the result supersedes anything still unsaid
                 ready_answers.push_back(a);
                 if !responding { deliver(&link, brain, &mut ready_answers, &mut responding); }
@@ -378,6 +413,17 @@ async fn bridge(
                         transcript.push(json!({ "role": "owner", "text": t.clone() }));
                         user_said.push((Instant::now(), t.clone()));
                         if user_said.len() > 20 { user_said.remove(0); }
+                        if is_stop(&t) && verifying.is_none() && awaiting.is_none() {
+                            // "Stop" / "cancel" / "ruko": halt everything at once.
+                            stop_all(&pending);
+                            narration = None;
+                            ready_answers.clear();
+                            out.clear();
+                            link.send(LinkCmd::Cancel);
+                            say_stopped(&link, brain);
+                            responding = true;
+                            continue;
+                        }
                         if let Some((fc, id, asked_at, _)) = verifying.clone() {
                             if let Some(v) = spoken_verdict(&user_said, asked_at) {
                                 verifying = None;
@@ -398,6 +444,7 @@ async fn bridge(
                                 }
                             }
                             if is_goodbye(&t) {
+                                if busy_working(&pending) { stop_all(&pending); }
                                 link.send(LinkCmd::Say("Okay, bye for now!".into()));
                                 tokio::time::sleep(Duration::from_millis(2500)).await;
                                 break Ok(());
@@ -409,6 +456,7 @@ async fn bridge(
                     }
                     LinkEvent::ToolCall { id, name, args } => {
                         if name == "end_conversation" || name == "end_call" {
+                            if busy_working(&pending) { stop_all(&pending); }
                             for _ in 0..50 {
                                 if !out.busy() { break; }
                                 tokio::time::sleep(Duration::from_millis(100)).await;
@@ -451,6 +499,23 @@ async fn bridge(
     out.chime(false);
     audio.drain(Duration::from_secs(1)).await;
     result
+}
+
+fn say_stopped(link: &Link, brain: Brain) {
+    match brain {
+        Brain::Voice => link.send(LinkCmd::Instruct("[The user stopped everything, not said by the user] All of Mercury's actions have been stopped. Say only: 'Stopped.' Then wait.".into())),
+        Brain::Mercury => link.send(LinkCmd::Say("Stopped.".into())),
+    }
+}
+
+/// A short "stop!" / "cancel" / "ruko" / "bas": halt everything.
+fn is_stop(t: &str) -> bool {
+    let t = format!(" {} ", t.to_lowercase().replace(|c: char| !c.is_alphanumeric() && !c.is_whitespace() && (c as u32) < 128, " "));
+    t.split_whitespace().count() <= 4
+        && [" stop ", " cancel ", " halt ", " abort ", " enough ", " never mind ", " nevermind ", " ruko ", " ruk jao ", " ruk ", " bas ", " band karo ", "रुको", "रुक जाओ", "बस", "رکو", "بس"]
+            .iter()
+            .any(|w| t.contains(w))
+        && !t.contains(" stop listening ")
 }
 
 fn is_goodbye(t: &str) -> bool {
@@ -541,6 +606,15 @@ mod tests {
         assert_eq!(spoken_verdict(&[(after, "No, don't".into())], asked), Some(false));
         assert_eq!(spoken_verdict(&[(after, "what?".into())], asked), None);
         assert_eq!(spoken_verdict(&[(asked - Duration::from_secs(5), "yes".into())], asked), None);
+    }
+
+    #[test]
+    fn stop_words() {
+        assert!(is_stop("Stop!"));
+        assert!(is_stop("cancel that"));
+        assert!(is_stop("ruko"));
+        assert!(!is_stop("stop listening"), "that's a goodbye, handled separately");
+        assert!(!is_stop("can you stop by the store on your way home later"));
     }
 
     #[test]

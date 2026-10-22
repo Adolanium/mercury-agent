@@ -212,6 +212,10 @@ impl Ops {
         let mut stopped: Option<String> = None;
 
         for (i, a) in actions.iter().enumerate() {
+            if crate::core::halted() {
+                stopped = Some(format!("Stopped before action {}: {}", i + 1, crate::core::STOPPED));
+                break;
+            }
             // The user moved the mouse since our last move: they're taking over.
             if let Some((lx, ly)) = last_set {
                 if let Some((cx, cy)) = self.cursor() {

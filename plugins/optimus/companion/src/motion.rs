@@ -88,6 +88,10 @@ pub fn glide(e: &mut Enigo, to: (i32, i32), last: &mut Option<(i32, i32)>) -> Re
         let x = u * u * from.0 as f64 + 2.0 * u * s * ctrl.0 + s * s * to.0 as f64;
         let y = u * u * from.1 as f64 + 2.0 * u * s * ctrl.1 + s * s * to.1 as f64;
         let p = (x.round() as i32, y.round() as i32);
+        if crate::core::halted() {
+            *last = None;
+            return Err(crate::core::STOPPED.into());
+        }
         if p != prev {
             // Something other than us moved it since the last step: the owner took over.
             if let Ok(now) = e.location() {
@@ -118,6 +122,9 @@ pub fn type_text(e: &mut Enigo, text: &str, last: &Option<(i32, i32)>) -> Result
     let fast = pace() == Pace::Fast;
     let mut n = 0usize;
     for c in text.chars() {
+        if crate::core::halted() {
+            return Err(format!("typed {n} characters, then: {}", crate::core::STOPPED));
+        }
         if n % 12 == 0 {
             if let (Some((lx, ly)), Ok(now)) = (*last, e.location()) {
                 if (now.0 - lx).abs() > TAKEOVER_PX || (now.1 - ly).abs() > TAKEOVER_PX {

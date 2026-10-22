@@ -7,7 +7,7 @@ import type { Channel } from '../channels/base.js';
 import type { ChannelMessage } from '../types/channel.js';
 import { PluginManager, setProviderLookup } from './manager.js';
 import { PluginChannel } from './channel-bridge.js';
-import { activityLabel, getPluginChannel, setCallLearning, setChannelHost, setDesktopActivityHook, setVoiceBriefing, splitMessage, spokenPart, toWhatsAppText, voiceBriefing } from './channel-bridge.js';
+import { activityLabel, getPluginChannel, setCallLearning, setChannelHost, setDesktopActivityHook, setVoiceBriefing, setWorkStopper, splitMessage, spokenPart, toWhatsAppText, voiceBriefing } from './channel-bridge.js';
 import { getPluginTools, resetToolBridge } from './tool-bridge.js';
 import { pluginDataDir } from './store.js';
 import { manifestSchema } from './types.js';
@@ -558,6 +558,26 @@ describe('plugin channels (plugin API 1.1)', () => {
         setDesktopActivityHook(null);
       }
       expect(activityLabel('Optimus', false, true)).toBe('🖱 Optimus working');
+    });
+
+    it('"stop" on the call ends the work it started, and its pending approvals', async () => {
+      const stoppedFor: string[] = [];
+      setWorkStopper((prefix) => { stoppedFor.push(prefix); return true; });
+      try {
+        const ch = await installDesktop();
+        await callsim('mercury/call/ask', { callId: 's1', question: 'Clean my junk mail' });
+        await waitFor(() => received.length === 1);
+        const approval = ch.askPermission('Delete 40 emails', 'desktop:call:s1');
+        await callsim('mercury/call/stop', { callId: 's1' });
+        await waitFor(() => lines('replies.jsonl').length === 2);
+        const r = lines('replies.jsonl');
+        expect(r.find((x) => 'answer' in (x.result ?? {}))?.result.answer).toBe('(stopped by the owner)');
+        expect(r.find((x) => 'stopped' in (x.result ?? {}))?.result.stopped).toBe(true);
+        expect(stoppedFor).toEqual(['desktop:call:s1']);
+        expect(await approval).toBe('no');
+      } finally {
+        setWorkStopper(null);
+      }
     });
 
     it('approvals are asked out loud only', async () => {
