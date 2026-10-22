@@ -1,6 +1,6 @@
 {
   "catalogVersion": 1,
-  "updatedAt": "2026-10-22T00:00:00Z",
+  "updatedAt": "2026-10-22T12:00:00Z",
   "plugins": [
     {
       "id": "whatsapp",
@@ -17,28 +17,28 @@
       "artifacts": {
         "darwin-arm64": {
           "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/mercury-dev-latest/mercury-plugin-whatsapp-darwin-arm64.tgz",
-          "sha256": "8cd755190bceab2404bb1314b13cb55b183fefb61e7f3e52528fc6acce650b03",
-          "size": 4192333
+          "sha256": "c03fdfa8915ae064b33ab2211565fef0bce754f1ae50dbdb1a3ac8d7e1acab7c",
+          "size": 4199672
         },
         "darwin-x64": {
           "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/mercury-dev-latest/mercury-plugin-whatsapp-darwin-x64.tgz",
-          "sha256": "1cef9d413a7d8f61dafd1db0d3d6552838345702daaf4b981524b4aec04cd474",
-          "size": 4533334
+          "sha256": "1d1b5e61a8b99467ad8f61d3589a4039eb4bbcdf5d7b3df82b92811fd7859155",
+          "size": 4538375
         },
         "linux-x64": {
           "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/mercury-dev-latest/mercury-plugin-whatsapp-linux-x64.tgz",
-          "sha256": "b386087bb5431322710f2d10c54f54b7024808115cd01147a1f7ef5d2bfca69a",
-          "size": 4868614
+          "sha256": "3dc0daef7a55f5b0be6a56fa6bf654e49ff40fdd8adce9caa17862c858292c77",
+          "size": 4873852
         },
         "linux-arm64": {
           "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/mercury-dev-latest/mercury-plugin-whatsapp-linux-arm64.tgz",
-          "sha256": "afdad0bac67314622d0f54898feba31446870d0ce2bd8957efe07c8e0cc23cf3",
-          "size": 4681966
+          "sha256": "c4f4a0b8ec37c22183b1ce9e846d05f688ed923b05477c6d095d99487346bea0",
+          "size": 4686482
         },
         "win32-x64": {
           "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/mercury-dev-latest/mercury-plugin-whatsapp-win32-x64.tgz",
-          "sha256": "295735cbe9c8b3853cf52fde7e68f7849ee5a380a233d7c29a86e18fed704548",
-          "size": 4459462
+          "sha256": "abac8d84cb5acbad3b699d1cec38efa293e8439336feb94ac7df911378fa6501",
+          "size": 4464976
         }
       },
       "tools": [
