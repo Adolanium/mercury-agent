@@ -17,7 +17,7 @@ import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { PLUGIN_API_VERSION, type PluginManifest } from '../types.js';
 import { currentPlatform } from '../store.js';
-import { publishTool, unpublishPlugin } from '../tool-bridge.js';
+import { PLUGIN_IMAGE_TYPES, publishTool, toolContent, unpublishPlugin } from '../tool-bridge.js';
 import type { PluginRuntime, RuntimeDeps } from './types.js';
 
 export const OUT_OF_PROCESS = {
@@ -187,12 +187,20 @@ export class OutOfProcessRuntime implements PluginRuntime {
   private async callTool(name: string, args: Record<string, unknown>, signal: AbortSignal, timeoutMs: number): Promise<unknown> {
     if (!this.ready) throw new Error('the plugin process is not running');
     const res = (await this.request('tools/call', { name, arguments: args }, timeoutMs + 1000, signal)) as {
-      content?: Array<{ type: string; text?: string }>;
+      content?: Array<{ type: string; text?: string; data?: string; mimeType?: string }>;
       isError?: boolean;
       structuredContent?: unknown;
     };
-    const text = (res?.content ?? []).map((c) => (c.type === 'text' ? c.text ?? '' : `[${c.type} content]`)).join('\n');
+    const parts = res?.content ?? [];
+    const isImage = (c: (typeof parts)[number]) => c.type === 'image' && typeof c.data === 'string' && PLUGIN_IMAGE_TYPES.has(c.mimeType ?? '');
+    const images = parts.filter(isImage).map((c) => ({ data: c.data!, mimeType: c.mimeType! }));
+    const text = parts
+      .filter((c) => !isImage(c))
+      .map((c) => (c.type === 'text' ? c.text ?? '' : `[${c.type} content]`))
+      .join('\n');
     if (res?.isError) throw new Error(text || 'the tool reported an error');
+    // Plugin API 1.2: images (screenshots) go to the model as images, not text.
+    if (images.length) return toolContent(text, images);
     return text || (res?.structuredContent !== undefined ? res.structuredContent : 'Done.');
   }
 

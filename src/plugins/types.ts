@@ -24,7 +24,7 @@ export const MANIFEST_VERSION = 1 as const;
  * Minor bumps only add; a major bump is a breaking change and the previous
  * major stays supported for at least two Mercury minor releases.
  */
-export const PLUGIN_API_VERSION = '1.1.0';
+export const PLUGIN_API_VERSION = '1.2.0';
 
 export const PLUGIN_ID_RE = /^[a-z][a-z0-9-]{1,30}[a-z0-9]$/;
 /** Tool and command names a plugin declares (before namespacing). */
@@ -181,6 +181,12 @@ export const manifestSchema = z.object({
     network: z.array(z.string().min(1).max(253)).max(32).default([]),
     /** Secret names from ~/.mercury/.env the plugin may read. Nothing else is visible to it. */
     secrets: z.array(z.string().regex(SECRET_NAME_RE)).max(16).default([]),
+    /**
+     * Plugin API 1.2: the plugin controls this computer (sees the screen,
+     * moves the mouse and types). Shown to the owner as a warning in
+     * /plugins info; the plugin must also ask for consent in its own setup.
+     */
+    desktop: z.boolean().optional(),
     /**
      * Secrets the plugin works without, and what they unlock, e.g.
      * { "OPENAI_API_KEY": "Voice calls" }. A missing one is reported to the

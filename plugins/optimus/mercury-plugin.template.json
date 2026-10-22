@@ -1,0 +1,82 @@
+{
+  "manifestVersion": 1,
+  "id": "optimus",
+  "name": "Optimus",
+  "version": "0.1.0",
+  "description": "Mercury uses your computer like a person: sees the screen, moves the mouse, types, and opens apps on macOS, Windows and Linux. Asks before anything that submits, sends, pays or deletes.",
+  "kind": "out-of-process",
+  "author": "Cosmic Stack",
+  "homepage": "https://github.com/cosmicstack-labs/mercury-agent/tree/main/plugins/optimus",
+  "license": "MIT",
+  "engines": {
+    "mercury": ">=1.3.9 <2.0.0",
+    "pluginApi": "^1.2.0"
+  },
+  "server": {
+    "command": "bin/mercury-optimus",
+    "args": [],
+    "platforms": {
+      "win32-x64": {
+        "command": "bin/mercury-optimus.exe",
+        "args": []
+      }
+    }
+  },
+  "contributes": {
+    "tools": [
+      {
+        "name": "look",
+        "description": "See the screen: a screenshot of the display the mouse is on (or `display` N), with the active window. Use `zoom` [x0,y0,x1,y1] for a closer look at part of the last screenshot (coordinates stay in the full screenshot).",
+        "readOnly": true,
+        "timeoutMs": 30000
+      },
+      {
+        "name": "act",
+        "description": "Use the mouse and keyboard like a person: click, type, press keys, scroll, drag. Returns a fresh screenshot. Only for ordinary, reversible steps. Anything that submits, sends, posts, pays, buys, deletes, installs or changes settings must go through act_consequential instead. Never type passwords, card numbers or 2FA codes: ask the owner to do that part.",
+        "readOnly": true,
+        "timeoutMs": 120000
+      },
+      {
+        "name": "act_consequential",
+        "description": "Same as act, for the step that commits something: submit a form, send a message or email, post, pay or buy, delete, install, change a setting. The owner approves it first, so say what it will do.",
+        "readOnly": false,
+        "timeoutMs": 120000
+      },
+      {
+        "name": "open",
+        "description": "Open an app by name (\"Safari\", \"Blender\", \"Notepad\"), a URL, or a file/folder path. Faster and more reliable than clicking through menus.",
+        "readOnly": true,
+        "timeoutMs": 30000
+      },
+      {
+        "name": "windows",
+        "description": "List open windows (app and title), front first.",
+        "readOnly": true,
+        "timeoutMs": 15000
+      },
+      {
+        "name": "permissions",
+        "description": "Check what the OS lets Optimus do (macOS: Accessibility and Screen Recording). With request=true, shows the system prompts and opens the right Settings page.",
+        "readOnly": true,
+        "timeoutMs": 60000
+      }
+    ]
+  },
+  "permissions": {
+    "network": [],
+    "secrets": [],
+    "desktop": true
+  },
+  "settings": {
+    "fields": {
+      "allowControl": {
+        "type": "boolean",
+        "label": "Let Optimus control this computer?",
+        "description": "Optimus sees your screen and uses the mouse and keyboard in any app. It asks before anything that submits, sends, pays, deletes or installs, and stops the moment you move the mouse.",
+        "default": false,
+        "setup": true,
+        "required": true
+      }
+    }
+  }
+}

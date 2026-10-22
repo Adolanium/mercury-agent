@@ -96,7 +96,8 @@ import { createTaskSurface } from './task-surface.js';
 import { buildFileChangePreview } from '../utils/file-preview.js';
 import { whatsNewText } from '../utils/whats-new.js';
 import { handleBotsCommand as handleBotsCommandImpl } from './commands/bots-command.js';
-import { withAttachments } from './attachments.js';
+import { modelSeesImages, withAttachments } from './attachments.js';
+import { setPluginImagesAllowed } from '../plugins/tool-bridge.js';
 import { handleCallCommand } from '../plugins/call-schedule.js';
 import { handlePluginsCommand, tryPluginCommand, pluginCommandHelp, hasPluginDialog, answerPluginDialog } from '../plugins/commands.js';
 import { handleChatCommand as handleChatCommandImpl } from './commands/chat-command.js';
@@ -3164,6 +3165,7 @@ export class Agent {
           // passed back with assistant turns (issue #24); other providers
           // get plain text.
           // Photos and PDFs from the chat go to models that can take them.
+          setPluginImagesAllowed(modelSeesImages(provider.name, provider.getModel()));
           const providerMessages = withAttachments(deepseekProviderOptions ? withReasoningParts(messages) : messages, msg, provider.name, provider.getModel());
           // Per-provider output ceiling: a 32K request is rejected outright by
           // providers with smaller limits and burned a halve-and-retry round.

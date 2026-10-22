@@ -82,6 +82,7 @@ function describe(i: PluginListItem): string {
   const p = i.permissions;
   lines.push(`Network: ${p?.network.length ? p.network.join(', ') : 'none'}`);
   lines.push(`Secrets it can read: ${p?.secrets.length ? p.secrets.join(', ') : 'none'}`);
+  if (p?.desktop) lines.push('⚠️ Controls this computer: it can see your screen, move the mouse and type, in any app.');
   for (const m of i.missing ?? []) lines.push(`⚠️ ${m.unlocks} is off: needs ${m.needs}. ${m.fix}`);
   const providers = Object.keys(i.permissions?.providers ?? {});
   if (providers.length) lines.push(`Uses your Mercury providers: ${providers.join(', ')}`);
