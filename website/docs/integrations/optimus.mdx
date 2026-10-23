@@ -8,7 +8,7 @@ keywords: [mercury, optimus, computer use, desktop agent, voice, talk key, plugi
 
 Optimus is a plugin that lets Mercury use your computer. It looks at the screen, then moves the pointer, scrolls and types the way a person does, and opens apps, URLs and files. Ask in any Mercury chat ("look at my screen", "open Safari and search for…"), or press a **talk key**, say what you want, and hear Mercury answer while it works.
 
-It's an optional [plugin](../cli-commands/plugins), version **0.4.7**, from the official plugin catalog. It needs Mercury **1.4.0** or newer.
+It's an optional [plugin](../cli-commands/plugins), version **0.4.8**, from the official plugin catalog. It needs Mercury **1.4.0** or newer.
 
 ## Platform support
 
@@ -68,7 +68,7 @@ Nothing to grant. Optimus can't control windows that run as administrator, such 
 
 ### Linux
 
-On **X11** nothing to grant. On **Wayland**, see the limits in [Platform support](#platform-support). Pasting uses `xclip` on X11 and `wl-copy` on Wayland, so install the one for your session if you want the paste fallback.
+On **X11** nothing to grant. On **Wayland**, see the limits in [Platform support](#platform-support). Optimus also starts on servers and minimal installs that lack ALSA or the X11 libraries: the package carries its own copies and uses them only when your system has none. Seeing and using the screen still needs a running X11 or Wayland session, and voice needs a sound device. Pasting uses `xclip` on X11 and `wl-copy` on Wayland, so install the one for your session if you want the paste fallback.
 
 ## Chat and listening
 

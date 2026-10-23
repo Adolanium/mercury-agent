@@ -276,6 +276,12 @@ fn channel_request(method: &str, params: &Value) -> Result<Value, String> {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    // linux/mercury-optimus.sh runs this to check that every library loads.
+    if args.get(1).map(String::as_str) == Some("--probe") {
+        return;
+    }
+    #[cfg(target_os = "linux")]
+    restore_library_path();
     if args.get(1).map(String::as_str) == Some("agent") {
         #[cfg(target_os = "macos")]
         {
@@ -353,4 +359,22 @@ fn main() {
     }
     let _ = shell.send_core(json!({ "quit": true }));
     std::thread::sleep(Duration::from_millis(300));
+}
+
+/// The Linux launcher may point LD_LIBRARY_PATH at the libraries bundled with
+/// the plugin. They're loaded by now, so put the owner's own value back before
+/// any app Optimus opens inherits it.
+#[cfg(target_os = "linux")]
+fn restore_library_path() {
+    let Some(original) = std::env::var_os("OPTIMUS_SYSTEM_LD_LIBRARY_PATH") else { return };
+    // SAFETY: called first thing in main, before any other thread exists.
+    unsafe {
+        if std::env::var_os("OPTIMUS_LD_LIBRARY_PATH_SET").is_some() {
+            std::env::set_var("LD_LIBRARY_PATH", original);
+        } else {
+            std::env::remove_var("LD_LIBRARY_PATH");
+        }
+        std::env::remove_var("OPTIMUS_SYSTEM_LD_LIBRARY_PATH");
+        std::env::remove_var("OPTIMUS_LD_LIBRARY_PATH_SET");
+    }
 }
