@@ -132,49 +132,83 @@ export class PluginDialog {
   private settingStep(s: Setting, ctx: { index?: number; total?: number; setup?: boolean } = {}): Step {
     const title = s.label ?? s.key;
     const counter = ctx.index ? ` (${ctx.index}/${ctx.total})` : '';
-    const current = s.type === 'secret' ? (s.isSet ? 'set ✓' : 'not set') : s.value === undefined || s.value === '' ? 'not set' : String(s.optionLabels?.[String(s.value)] ?? s.value);
+    const current = shownValue(s);
     const hasValue = s.type === 'secret' ? !!s.isSet : s.value !== undefined && s.value !== '';
-    const keep = ctx.setup && hasValue ? [{ label: `Keep: ${current}`, value: '__keep' }] : [];
+    // Setup offers "Keep"; the menu always offers a way back, so no question is a dead end.
+    const keep = ctx.setup
+      ? (hasValue ? [{ label: `Keep: ${current}`, value: '__keep' }] : [])
+      : [{ label: '← Back (no change)', value: '__keep' }];
+    const head = `${ctx.setup ? `⚙️ ${this.title}${counter}\n` : ''}*${title}*${s.description ? `\n${s.description}` : ''}`;
+    const mark = (label: string, isCurrent: boolean) => (isCurrent ? `${label} ✓ now` : label);
     return {
       applies: async () => settingApplies(s, (await this.svc.info(this.pluginId))?.settings ?? []),
       prompt: async () => {
         if (s.type === 'secret') {
-          const head = `${ctx.setup ? `⚙️ ${this.title}${counter}\n` : ''}*${title}*${s.description ? `\n${s.description}` : ''}`;
           return {
             text: `${head}\nNow: ${current}`,
-            freeText: 'Paste the key here. It\'s stored with Mercury\'s keys (never shown again), and only this plugin can use it. You can delete your message afterwards.',
+            freeText: 'Paste the key here. It\'s stored with Mercury\'s keys (never shown again), and only plugins that declare it can use it. You can delete your message afterwards.',
             options: keep.length ? keep : (s.required ? undefined : [{ label: 'Skip', value: '__keep' }]),
           };
         }
-        const head = `${ctx.setup ? `⚙️ ${this.title}${counter}\n` : ''}*${title}*${s.description ? `\n${s.description}` : ''}`;
         if (s.type === 'enum') {
-          return { text: `${head}\nNow: ${current}`, options: (s.options ?? []).map((o) => ({ label: s.optionLabels?.[o] ?? o, value: o })) };
+          const options = (s.options ?? []).map((o) => ({ label: mark(s.optionLabels?.[o] ?? o, String(s.value) === o), value: o }));
+          return { text: `${head}\nNow: ${current}`, options: ctx.setup ? options : [...options, ...keep] };
         }
         if (s.type === 'boolean') {
-          return { text: `${head}\nNow: ${s.value === true ? 'yes' : 'no'}`, options: [{ label: 'Yes', value: 'true' }, { label: 'No', value: 'false' }] };
+          const options = [
+            { label: mark(s.optionLabels?.true ?? 'Yes', s.value === true), value: 'true' },
+            { label: mark(s.optionLabels?.false ?? 'No', s.value !== true), value: 'false' },
+          ];
+          return { text: `${head}\nNow: ${current}`, options: ctx.setup ? options : [...options, ...keep] };
         }
-        const hint = s.format === 'phone' ? 'Reply with the number, including the country code (e.g. +15551234567).' : `Reply with the new value${s.type === 'number' ? ' (a number)' : ''}.`;
-        return { text: `${head}\nNow: ${current}`, freeText: hint, options: keep.length ? keep : (ctx.setup && !s.required ? [{ label: 'Skip', value: '__keep' }] : undefined) };
+        const hint = s.format === 'phone'
+          ? 'Reply with the number, including the country code (e.g. +15551234567).'
+          : `Pick one, or reply with your own${s.type === 'number' ? ' number' : ' value'}.`;
+        const examples = (s.examples ?? []).map((e) => ({ label: mark(e, String(s.value) === e), value: `__ex:${e}` }));
+        const skip = ctx.setup && !hasValue && !s.required ? [{ label: 'Skip', value: '__keep' }] : [];
+        const options = [...examples, ...keep, ...skip];
+        return { text: `${head}\nNow: ${current}`, freeText: examples.length || s.format === 'phone' ? hint : `Reply with the new value${s.type === 'number' ? ' (a number)' : ''}.`, options: options.length ? options : undefined };
       },
       answer: async (input, option) => {
         if (option?.value === '__keep') return { kind: 'next' };
         if (s.type === 'secret') {
           if (!input || input.length < 8) return { kind: 'retry', message: 'Paste the whole key, or reply "skip".' };
           await this.svc.setSetting(this.pluginId, s.key, input.trim());
-          return { kind: 'next', message: `✅ ${title} saved.` };
+          return this.afterSave(s, `✅ ${title} saved.`, ctx.setup);
         }
         let value: string;
         if (s.type === 'enum' || s.type === 'boolean') {
           if (!option) return { kind: 'retry', message: 'Reply with one of the numbers.' };
           value = option.value;
+        } else if (option?.value.startsWith('__ex:')) {
+          value = option.value.slice('__ex:'.length);
         } else {
           if (!input) return { kind: 'retry', message: 'Reply with a value.' };
           value = input;
         }
         await this.svc.setSetting(this.pluginId, s.key, s.type === 'boolean' ? value === 'true' : s.type === 'number' ? Number(value) : value);
-        const shown = s.type === 'enum' ? (s.optionLabels?.[value] ?? value).split(':')[0] : s.type === 'boolean' ? (value === 'true' ? 'yes' : 'no') : value;
-        return { kind: 'next', message: `✅ ${title}: ${shown}` };
+        const fresh = (await this.svc.info(this.pluginId))?.settings?.find((x) => x.key === s.key) ?? { ...s, value: s.type === 'boolean' ? value === 'true' : value };
+        // Say what the choice does, not just "yes".
+        const effect = s.type === 'boolean' || s.type === 'enum' ? (s.optionLabels?.[value] ?? shownValue(fresh)) : shownValue(fresh);
+        return this.afterSave(s, `✅ ${title}: ${effect}`, ctx.setup);
       },
+    };
+  }
+
+  /**
+   * After a change in the menu, ask straight away what the choice now needs
+   * (pick Gemini → the Gemini key and model), instead of leaving the owner to
+   * find those settings. Setup already walks every applicable setting.
+   */
+  private async afterSave(s: Setting, message: string, setup?: boolean): Promise<StepOutcome> {
+    if (setup) return { kind: 'next', message };
+    const all = (await this.svc.info(this.pluginId))?.settings ?? [];
+    const follow = all.filter((x) => x.key !== s.key && whenMentions(x.when, s.key) && settingApplies(x, all) && (x.type === 'secret' ? !x.isSet : x.setup || x.required || x.type === 'enum'));
+    if (!follow.length) return { kind: 'next', message };
+    return {
+      kind: 'push',
+      steps: follow.map((f, n) => this.liveSettingStep(f.key, { index: n + 1, total: follow.length })),
+      message: `${message}\nNext, ${follow.length === 1 ? 'one more thing it needs' : `${follow.length} things it needs`}:`,
     };
   }
 
@@ -240,23 +274,23 @@ export class PluginDialog {
         const status = i.installedVersion ? (i.enabled ? (i.status === 'enabled' ? 'on' : i.status) : 'off') : 'not installed';
         lines.push('', `Status: ${status}`);
         if (i.channel) lines.push(`Account: ${i.channel.state === 'connected' ? `linked${i.channel.account ? ` as +${i.channel.account}` : ''}` : (i.channel.state ?? 'not linked')}`);
-        for (const g of i.settingGroups ?? []) {
-          const first = (i.settings ?? []).find((x) => x.group === g.id && x.type === 'enum');
-          const choice = first ? String(first.optionLabels?.[String(first.value)] ?? first.value ?? '').split(':')[0] : '';
-          lines.push(`${g.label}: ${g.ready ? 'ready ✓' : 'not set up ⚠'}${choice ? ` (${choice})` : ''}`);
-        }
-        for (const s of (i.settings ?? []).filter((x) => !x.group && (x.setup || x.label) && settingApplies(x, i.settings ?? []))) {
-          const v = s.type === 'secret' ? (s.isSet ? 'set ✓' : 'not set') : s.value === undefined || s.value === '' ? 'not set' : s.type === 'boolean' ? (s.value ? 'yes' : 'no') : String(s.optionLabels?.[String(s.value)]?.split(':')[0] ?? s.value);
-          lines.push(`${s.label ?? s.key}: ${v}`);
-        }
         for (const m of i.missing ?? []) lines.push(`⚠️ ${m.unlocks} is off: needs ${m.needs}.`);
         const options: DialogOption[] = [];
         if (!this.admin) return { text: lines.join('\n') };
         if (!i.installedVersion) {
           options.push({ label: 'Install', value: 'install' });
         } else {
-          for (const g of i.settingGroups ?? []) options.push({ label: `${g.label}${g.ready ? '' : ' ⚠ set up'}`, value: `group:${g.id}` });
-          if (i.settings?.some((x) => !x.group)) options.push({ label: 'Change a setting', value: 'settings' });
+          // Every setting is one tap away, with what it's set to now.
+          for (const g of i.settingGroups ?? []) {
+            const first = (i.settings ?? []).find((x) => x.group === g.id && x.type === 'enum' && settingApplies(x, i.settings ?? []));
+            const choice = first ? shownValue(first) : '';
+            options.push({ label: `${g.label}${choice ? `: ${choice}` : ''}${g.ready ? ' ✓' : ' ⚠ needs setup'}`, value: `group:${g.id}` });
+          }
+          const loose = (i.settings ?? []).filter((x) => !x.group && (x.setup || x.label) && settingApplies(x, i.settings ?? []));
+          for (const x of loose.slice(0, MENU_SETTINGS)) options.push({ label: `${x.label ?? x.key}: ${shownValue(x)}`, value: `set:${x.key}` });
+          if (loose.length > MENU_SETTINGS || (i.settings ?? []).some((x) => !x.group && !x.setup && !x.label && settingApplies(x, i.settings ?? []))) {
+            options.push({ label: 'More settings', value: 'settings' });
+          }
           if (i.channel && i.enabled) {
             if (i.channel.state === 'connected') {
               options.push({ label: 'Send me a test message', value: 'test' });
@@ -279,7 +313,11 @@ export class PluginDialog {
         const i = (await this.svc.info(this.pluginId))!;
         if (option.value.startsWith('group:')) {
           const gid = option.value.slice('group:'.length);
-          return { kind: 'push', steps: [...this.groupSteps(i, gid), this.menuStep()] };
+          return { kind: 'push', steps: [this.groupMenuStep(gid), this.menuStep()] };
+        }
+        if (option.value.startsWith('set:')) {
+          const fresh = i.settings?.find((x) => x.key === option.value.slice('set:'.length));
+          return fresh ? { kind: 'push', steps: [this.settingStep(fresh), this.menuStep()] } : { kind: 'retry', message: 'That setting is gone.' };
         }
         switch (option.value) {
           case 'close':
@@ -320,23 +358,34 @@ export class PluginDialog {
     };
   }
 
-  /** A menu section: its intro, then each of its settings that applies (keys asked only when needed). */
-  private groupSteps(i: PluginListItem, gid: string): Step[] {
-    const g = (i.settingGroups ?? []).find((x) => x.id === gid);
-    const fields = (i.settings ?? []).filter((x) => x.group === gid);
-    const intro: Step = {
-      prompt: async () => ({
-        text: `*${g?.label ?? gid}*${g?.description ? `\n${g.description}` : ''}\nNow: ${g?.ready ? 'ready ✓' : 'not set up yet ⚠'}`,
-        options: [{ label: 'Change it', value: 'go' }, { label: 'Back', value: 'back' }],
-      }),
+  /** A menu section: its settings with current values (one tap each), or a guided walk through them. */
+  private groupMenuStep(gid: string): Step {
+    return {
+      prompt: async () => {
+        const i = (await this.svc.info(this.pluginId))!;
+        const g = (i.settingGroups ?? []).find((x) => x.id === gid);
+        const fields = (i.settings ?? []).filter((x) => x.group === gid && settingApplies(x, i.settings ?? []));
+        return {
+          text: `*${g?.label ?? gid}*${g?.description ? `\n${g.description}` : ''}\nNow: ${g?.ready ? 'ready ✓' : 'not set up yet ⚠'}`,
+          options: [
+            ...fields.map((f) => ({ label: `${f.label ?? f.key}: ${shownValue(f)}`, value: `set:${f.key}` })),
+            { label: 'Set up step by step', value: 'walk' },
+            { label: '← Back', value: 'back' },
+          ],
+        };
+      },
       answer: async (_input, option) => {
-        if (!option) return { kind: 'retry', message: 'Reply 1 or 2.' };
-        return option.value === 'back' ? { kind: 'done' } : { kind: 'next' };
+        if (!option) return { kind: 'retry', message: 'Reply with one of the numbers.' };
+        if (option.value === 'back') return { kind: 'next' };
+        const i = (await this.svc.info(this.pluginId))!;
+        if (option.value === 'walk') {
+          const keys = (i.settings ?? []).filter((x) => x.group === gid).map((x) => x.key);
+          return { kind: 'push', steps: [...keys.map((k, n) => this.liveSettingStep(k, { index: n + 1, total: keys.length })), this.groupMenuStep(gid)] };
+        }
+        const fresh = i.settings?.find((x) => x.key === option.value.slice('set:'.length));
+        return fresh ? { kind: 'push', steps: [this.settingStep(fresh), this.groupMenuStep(gid)] } : { kind: 'retry', message: 'That setting is gone.' };
       },
     };
-    // Re-read each setting fresh, so a key question follows the engine just chosen.
-    const steps = fields.map((f, n) => this.liveSettingStep(f.key, { index: n + 1, total: fields.length }));
-    return [intro, ...steps];
   }
 
   /** A setting step that looks the setting up when it's reached (values may have changed since). */
@@ -359,7 +408,7 @@ export class PluginDialog {
     return {
       prompt: async () => ({
         text: '*Which setting?*',
-        options: [...settings.map((s) => ({ label: s.label ?? s.key, value: s.key })), { label: 'Back', value: '__back' }],
+        options: [...settings.map((s) => ({ label: `${s.label ?? s.key}: ${shownValue(s)}`, value: s.key })), { label: '← Back', value: '__back' }],
       }),
       answer: async (_input, option) => {
         if (!option) return { kind: 'retry', message: 'Reply with one of the numbers.' };
@@ -398,6 +447,28 @@ export class PluginDialog {
       },
     };
   }
+}
+
+/** Settings listed directly on a plugin's menu; the rest go under "More settings". */
+const MENU_SETTINGS = 10;
+
+/** A setting's current value in a few words: "Control+Option+M", "On", "Gemini Live", "set ✓". */
+export function shownValue(s: Setting): string {
+  if (s.type === 'secret') return s.isSet ? 'set ✓' : 'not set';
+  if (s.value === undefined || s.value === '') return 'not set';
+  const short = (label: string) => label.split(':')[0].replace(/⭐\s*/g, '').trim();
+  if (s.type === 'boolean') {
+    const label = s.optionLabels?.[s.value === true ? 'true' : 'false'];
+    return label ? short(label) : s.value === true ? 'On' : 'Off';
+  }
+  const label = s.optionLabels?.[String(s.value)];
+  return label ? short(label) : String(s.value);
+}
+
+/** Does `when` depend on `key`? */
+function whenMentions(when: Setting['when'], key: string): boolean {
+  if (!when) return false;
+  return (Array.isArray(when) ? when : [when]).some((c) => Object.prototype.hasOwnProperty.call(c, key));
 }
 
 /** Does a setting apply, given the current values of the settings it depends on (`when`)? */

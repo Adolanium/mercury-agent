@@ -87,22 +87,92 @@ describe('setup dialog', () => {
 });
 
 describe('/plugins <id> menu', () => {
-  it('shows status and settings, and its actions work', async () => {
+  it('shows status, every setting with its value, and its actions work', async () => {
     const { svc, calls, values, link } = fakeService();
     link();
     const d = (await PluginDialog.menu(svc, 'whatsapp', true))!;
     const menu = renderPrompt((await d.current())!, false);
-    expect(menu).toMatch(/WhatsApp[\s\S]*Account: linked as \+639759021037[\s\S]*What can Mercury do in your chat\?: General/);
-    expect(menu).toMatch(/Change a setting[\s\S]*Send me a test message[\s\S]*Unlink the account[\s\S]*Turn off[\s\S]*Uninstall[\s\S]*Close/);
+    expect(menu).toMatch(/WhatsApp[\s\S]*Account: linked as \+639759021037/);
+    expect(menu).toMatch(/What can Mercury do in your chat\?: General[\s\S]*Answer your voice calls: On[\s\S]*Send me a test message[\s\S]*Unlink the account[\s\S]*Turn off[\s\S]*Uninstall[\s\S]*Close/);
+    expect(menu).not.toMatch(/Change a setting/);
 
     await say(d, 'Send me a test message');
     expect(calls).toContain('test');
-    await say(d, '1', '2', '2'); // Change a setting → access → Extended
+    // One tap opens the setting; the current choice is marked; a way back is always there.
+    const opened = await say(d, '2');
+    expect(opened.at(-1)).toMatch(/General: chat only ✓ now[\s\S]*Extended: memory, files, tools[\s\S]*← Back \(no change\)/);
+    const saved = await say(d, '2');
     expect(values.access).toBe('extended');
+    expect(saved[0]).toBe('✅ What can Mercury do in your chat?: Extended: memory, files, tools');
     await say(d, 'unlink', 'yes');
     expect(calls).toContain('unlink');
     const r = await d.answer('close');
     expect(r.finished).toBe(true);
+  });
+
+  it('yes/no settings say what each choice does, and Back leaves them unchanged', async () => {
+    const { svc, values } = fakeService();
+    const base = (await svc.info('whatsapp'))!.settings!;
+    const settings = base.map((s) => s.key === 'answerCalls' ? { ...s, optionLabels: { true: 'On: Mercury picks up when you call', false: 'Off: calls ring out' } } : s);
+    const d = (await PluginDialog.menu({ ...svc, info: async () => ({ ...(await svc.info('whatsapp'))!, settings: settings.map((s) => ({ ...s, value: values[s.key] })) }) } as typeof svc, 'whatsapp', true))!;
+    expect(renderPrompt((await d.current())!, false)).toMatch(/Answer your voice calls: On/);
+    const opened = await say(d, '3');
+    expect(opened.at(-1)).toMatch(/On: Mercury picks up when you call ✓ now[\s\S]*Off: calls ring out[\s\S]*← Back/);
+    await say(d, '3'); // Back
+    expect(values.answerCalls).toBe(true);
+    const saved = await say(d, '3', '2');
+    expect(values.answerCalls).toBe(false);
+    expect(saved).toContain('✅ Answer your voice calls: Off: calls ring out');
+  });
+
+  it('a typed setting offers suggestions, and typing your own still works', async () => {
+    const values: Record<string, unknown> = { hotkey: 'ctrl+alt+m' };
+    const svc = {
+      info: async () => ({
+        id: 'optimus', name: 'Optimus', description: 'x', kind: 'out-of-process', tier: 'official', status: 'enabled', installedVersion: '0.4.4', enabled: true, running: true, verified: true, tools: [], commands: [],
+        settings: [{ key: 'hotkey', type: 'string', description: '', value: values.hotkey, label: 'Key to start and stop talking', setup: true, examples: ['ctrl+alt+m', 'ctrl+shift+space', 'f9'] }],
+      }),
+      setSetting: async (_id: string, k: string, v: unknown) => { values[k] = v; },
+    } as unknown as PluginService;
+    const d = (await PluginDialog.menu(svc, 'optimus', true))!;
+    expect(renderPrompt((await d.current())!, false)).toMatch(/Key to start and stop talking: ctrl\+alt\+m/);
+    const opened = await say(d, '1');
+    expect(opened.at(-1)).toMatch(/Pick one, or reply with your own[\s\S]*ctrl\+alt\+m ✓ now[\s\S]*ctrl\+shift\+space[\s\S]*f9/);
+    await say(d, '3');
+    expect(values.hotkey).toBe('f9');
+    await say(d, '1', 'ctrl+alt+k');
+    expect(values.hotkey).toBe('ctrl+alt+k');
+  });
+
+  it('a section lists its settings; choosing an engine asks for what it needs next', async () => {
+    const values: Record<string, unknown> = { voiceEngine: 'openai', voiceModel: 'gpt-realtime', geminiModel: 'gemini-3.8-live' };
+    let geminiKey = false;
+    const settings = () => [
+      { key: 'voiceEngine', type: 'enum', description: '', options: ['openai', 'gemini'], value: values.voiceEngine, label: 'Who listens and speaks?', setup: true, group: 'voice', optionLabels: { openai: '⭐ OpenAI Realtime: recommended', gemini: 'Google Gemini Live: free tier' } },
+      { key: 'voiceModel', type: 'string', description: '', value: values.voiceModel, label: 'OpenAI voice model', group: 'voice', when: { voiceEngine: ['openai'] } },
+      { key: 'geminiKey', type: 'secret', description: '', value: undefined, isSet: geminiKey, label: 'Gemini API key', setup: true, required: true, group: 'voice', when: { voiceEngine: ['gemini'] } },
+      { key: 'geminiModel', type: 'string', description: '', value: values.geminiModel, label: 'Gemini Live model', group: 'voice', when: { voiceEngine: ['gemini'] } },
+    ];
+    const svc = {
+      info: async () => ({
+        id: 'optimus', name: 'Optimus', description: 'x', kind: 'out-of-process', tier: 'official', status: 'enabled', installedVersion: '0.4.4', enabled: true, running: true, verified: true, tools: [], commands: [],
+        settingGroups: [{ id: 'voice', label: '🎙 Voice', ready: values.voiceEngine === 'openai' || geminiKey }],
+        settings: settings(),
+      }),
+      setSetting: async (_id: string, k: string, v: unknown) => { if (k === 'geminiKey') geminiKey = true; else values[k] = v; },
+    } as unknown as PluginService;
+    const d = (await PluginDialog.menu(svc, 'optimus', true))!;
+    expect(renderPrompt((await d.current())!, false)).toMatch(/🎙 Voice: OpenAI Realtime ✓/);
+    const section = await say(d, '1');
+    expect(section.at(-1)).toMatch(/Who listens and speaks\?: OpenAI Realtime[\s\S]*OpenAI voice model: gpt-realtime[\s\S]*Set up step by step[\s\S]*← Back/);
+    expect(section.at(-1)).not.toMatch(/Gemini API key/); // doesn't apply to OpenAI
+    const picked = await say(d, '1', '2'); // engine → Gemini
+    expect(values.voiceEngine).toBe('gemini');
+    // The key is required for Gemini, so it's asked right away; the model has a working default.
+    expect(picked.join('\n')).toMatch(/✅ Who listens and speaks\?: Google Gemini Live: free tier\nNext, one more thing it needs:[\s\S]*Gemini API key/);
+    const after = await say(d, 'AIzaSyTESTKEY123456');
+    expect(geminiKey).toBe(true);
+    expect(after.at(-1)).toMatch(/🎙 Voice[\s\S]*Who listens and speaks\?: Google Gemini Live[\s\S]*Gemini API key: set ✓/);
   });
 
   it('members see status only, with no actions', async () => {

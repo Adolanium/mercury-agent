@@ -58,7 +58,8 @@ describe('guided setup from chat', () => {
       expect(readSettings('greeter')).toMatchObject({ greeting: 'Salaam', tone: 'formal' });
 
       await handlePluginsCommand('/plugins greeter', msg, channel);
-      expect(sent.at(-1)).toMatch(/How should I greet people\?: Salaam[\s\S]*Tone: Formal[\s\S]*Change a setting/);
+      // Every setting is on the menu itself, with its value: one tap to change.
+      expect(sent.at(-1)).toMatch(/\*1\* · How should I greet people\?: Salaam[\s\S]*\*2\* · Tone: Formal/);
       await answerPluginDialog('cancel', msg, channel);
       expect(hasPluginDialog('cli:test')).toBe(false);
     } finally {

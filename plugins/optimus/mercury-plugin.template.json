@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "optimus",
   "name": "Optimus",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "Mercury uses your computer like a person: sees the screen, moves the mouse, types and opens apps, by chat or out loud with a talk key. macOS, Windows and Linux. Asks before anything that submits, sends, pays or deletes.",
   "kind": "out-of-process",
   "author": "Cosmic Stack",
@@ -127,11 +127,15 @@
     "fields": {
       "allowControl": {
         "type": "boolean",
-        "label": "Let Optimus control this computer?",
+        "label": "Control this computer",
         "description": "Optimus sees your screen and uses the mouse and keyboard in any app. It asks before anything that submits, sends, pays, deletes or installs, and stops the moment you move the mouse.",
         "default": false,
         "setup": true,
-        "required": true
+        "required": true,
+        "optionLabels": {
+          "true": "On: Optimus can see your screen and use the mouse and keyboard",
+          "false": "Off: Optimus does nothing until you turn it on"
+        }
       },
       "mode": {
         "type": "enum",
@@ -143,7 +147,7 @@
         "default": "both",
         "setup": true,
         "required": true,
-        "label": "How do you want to talk to Optimus?",
+        "label": "How you talk to Optimus",
         "description": "Chat: type to Mercury as usual. Listening: press a key, talk, and hear Mercury answer while it works on your screen.",
         "optionLabels": {
           "both": "⭐ Both: chat, plus a key to talk out loud (recommended)",
@@ -168,38 +172,53 @@
       "showOverlay": {
         "type": "boolean",
         "default": true,
-        "label": "Show \"Mercury is driving\" by the pointer",
-        "description": "A ring around the pointer and a small label while Optimus moves the mouse, so it's clear the agent is in control. Never appears in Optimus's own screenshots."
+        "label": "\"Mercury is driving\" ring by the pointer",
+        "description": "A ring around the pointer and a small label while Optimus moves the mouse, so it's clear the agent is in control. Never appears in Optimus's own screenshots.",
+        "optionLabels": {
+          "true": "On: a ring and label follow the pointer while Mercury drives",
+          "false": "Off: no ring or label"
+        }
       },
       "hotkey": {
         "type": "string",
         "default": "ctrl+alt+m",
         "setup": true,
-        "label": "Key to start and stop talking",
+        "label": "Talk key",
         "description": "Press it to start listening, press again to stop (or say goodbye). While Mercury is speaking, pressing it interrupts. Examples: ctrl+alt+m, ctrl+shift+space, f9. On a Mac, alt is Option and cmd is Command.",
         "when": {
           "mode": [
             "voice",
             "both"
           ]
-        }
+        },
+        "examples": [
+          "ctrl+alt+m",
+          "ctrl+shift+space",
+          "ctrl+alt+space",
+          "f9"
+        ]
       },
       "muteHotkey": {
         "type": "string",
         "default": "ctrl+alt+shift+m",
-        "label": "Key to mute and unmute",
+        "label": "Mute key",
         "description": "While talking: Optimus stops listening (nothing you say is sent anywhere) but keeps working and still speaks. Press again, or press the talk key, to unmute. Saying \"mute\" also mutes.",
         "when": {
           "mode": [
             "voice",
             "both"
           ]
-        }
+        },
+        "examples": [
+          "ctrl+alt+shift+m",
+          "ctrl+alt+n",
+          "f10"
+        ]
       },
       "bargeIn": {
         "type": "boolean",
         "default": false,
-        "label": "I use headphones (let me interrupt by talking)",
+        "label": "Headphones",
         "description": "With speakers, Optimus mutes the mic while Mercury talks so it doesn't hear itself; press the key to interrupt. With headphones, turn this on to interrupt just by talking.",
         "group": "voice",
         "when": {
@@ -207,12 +226,16 @@
             "voice",
             "both"
           ]
+        },
+        "optionLabels": {
+          "true": "On: I use headphones, so I can interrupt just by talking",
+          "false": "Off: speakers, so the mic waits while Mercury talks (press the talk key to interrupt)"
         }
       },
       "thinkingSound": {
         "type": "boolean",
         "default": true,
-        "label": "Soft \"tick… tock\" while Mercury works",
+        "label": "Tick-tock while working",
         "description": "A quiet wooden tick-tock while Mercury searches or works on your screen and nobody is talking, so you know it's still going. It's well below speech level and never mutes your mic.",
         "group": "voice",
         "when": {
@@ -220,12 +243,16 @@
             "voice",
             "both"
           ]
+        },
+        "optionLabels": {
+          "true": "On: a soft tick… tock while Mercury searches or works",
+          "false": "Off: silence while it works"
         }
       },
       "idleStopSeconds": {
         "type": "number",
         "default": 60,
-        "label": "Stop listening after this much silence (seconds)",
+        "label": "Stop listening after silence (seconds)",
         "description": "The mic closes by itself when you haven't spoken for this long and Mercury isn't working on something, so it never streams (and costs) for nothing. 0 keeps listening until you press the key or say bye.",
         "group": "voice",
         "when": {
@@ -233,7 +260,13 @@
             "voice",
             "both"
           ]
-        }
+        },
+        "examples": [
+          "30",
+          "60",
+          "120",
+          "0"
+        ]
       },
       "voiceEngine": {
         "type": "enum",
@@ -799,7 +832,12 @@
             "voice",
             "both"
           ]
-        }
+        },
+        "examples": [
+          "15",
+          "30",
+          "60"
+        ]
       }
     },
     "groups": {

@@ -104,8 +104,13 @@ const settingField = z.object({
   setup: z.boolean().default(false),
   /** Setup can't finish without a value. */
   required: z.boolean().default(false),
-  /** Plain-language labels for enum options, e.g. { "general": "General: chat only" }. */
+  /**
+   * Plain-language labels for enum options, e.g. { "general": "General: chat only" },
+   * and for booleans under "true" / "false", saying what each choice does.
+   */
   optionLabels: z.record(z.string(), z.string().max(160)).optional(),
+  /** Suggested values for a string setting, offered as one-tap choices (typing your own still works). */
+  examples: z.array(z.string().min(1).max(60)).max(8).optional(),
   /** Input format for string settings, validated and normalised on save. */
   format: z.enum(['text', 'phone']).default('text'),
   /** For type 'secret': the env var name the plugin receives it as (must be in permissions.secrets). */
@@ -364,6 +369,7 @@ export interface PluginListItem {
     setup?: boolean;
     required?: boolean;
     optionLabels?: Record<string, string>;
+    examples?: string[];
     format?: 'text' | 'phone';
     /** Only relevant when these other settings match (the menu and setup hide it otherwise). */
     when?: WhenCondition | WhenCondition[];

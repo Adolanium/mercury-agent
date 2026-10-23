@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "whatsapp",
   "name": "WhatsApp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Chat with Mercury on WhatsApp and talk to it by voice call: OpenAI by default, or Gemini, Grok, ElevenLabs, Azure, Qwen, or your own Mercury model with Deepgram/Cartesia/MiniMax/Sarvam voices. Runs on a spare number as a linked device (unofficial protocol).",
   "kind": "out-of-process",
   "author": "Cosmic Stack",
@@ -75,14 +75,14 @@
         "when": {
           "voiceEngine": "openai"
         },
-        "alternative": "Or pick another voice in /plugins whatsapp \u2192 \ud83c\udf99 Voice calls."
+        "alternative": "Or pick another voice in /plugins whatsapp → 🎙 Voice calls."
       },
       "grok": {
         "unlocks": "Voice calls with Grok",
         "when": {
           "voiceEngine": "grok"
         },
-        "alternative": "Or pick another voice in /plugins whatsapp \u2192 \ud83c\udf99 Voice calls."
+        "alternative": "Or pick another voice in /plugins whatsapp → 🎙 Voice calls."
       }
     }
   },
@@ -138,7 +138,11 @@
         "type": "boolean",
         "description": "Answer in WhatsApp groups (owner and members only).",
         "default": false,
-        "label": "Answer in WhatsApp groups"
+        "label": "Answer in WhatsApp groups",
+        "optionLabels": {
+          "true": "On: Mercury answers in groups when someone mentions it",
+          "false": "Off: Mercury only answers in one-to-one chats"
+        }
       },
       "answerCalls": {
         "type": "boolean",
@@ -146,7 +150,11 @@
         "default": true,
         "label": "Answer your voice calls",
         "setup": false,
-        "group": "voice"
+        "group": "voice",
+        "optionLabels": {
+          "true": "On: Mercury picks up when you call it",
+          "false": "Off: your calls to Mercury ring out"
+        }
       },
       "voiceEngine": {
         "type": "enum",
@@ -164,7 +172,7 @@
           "mercury"
         ],
         "optionLabels": {
-          "openai": "\u2b50 OpenAI Realtime: recommended for the best calls (uses your OpenAI key)",
+          "openai": "⭐ OpenAI Realtime: recommended for the best calls (uses your OpenAI key)",
           "gemini": "Google Gemini Live: cheapest, free tier, Hindi and Urdu",
           "grok": "xAI Grok Voice: uses your Grok provider",
           "elevenlabs": "ElevenLabs Realtime (experimental)",
@@ -580,19 +588,29 @@
         "description": "Most times Mercury may call you in an hour.",
         "default": 4,
         "label": "Most calls from Mercury per hour",
-        "group": "voice"
+        "group": "voice",
+        "examples": [
+          "2",
+          "4",
+          "8"
+        ]
       },
       "maxCallMinutes": {
         "type": "number",
         "description": "Longest a call can last, in minutes.",
         "default": 15,
         "label": "Longest call, in minutes",
-        "group": "voice"
+        "group": "voice",
+        "examples": [
+          "10",
+          "15",
+          "30"
+        ]
       }
     },
     "groups": {
       "voice": {
-        "label": "\ud83c\udf99 Voice calls",
+        "label": "🎙 Voice calls",
         "description": "Who listens and speaks when you call Mercury (or it calls you). OpenAI is recommended for the best results; every other option works too.",
         "readyUnless": [
           "provider:openai",

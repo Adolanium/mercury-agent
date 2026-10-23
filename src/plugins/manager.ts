@@ -623,7 +623,7 @@ export class PluginManager {
         key, type: f.type, description: f.description, options: f.options,
         value: f.type === 'secret' ? undefined : values[key],
         isSet: f.type === 'secret' ? !!secretValue(f.secret!) : undefined,
-        label: f.label, setup: f.setup, required: f.required, optionLabels: f.optionLabels, format: f.format, when: f.when,
+        label: f.label, setup: f.setup, required: f.required, optionLabels: f.optionLabels, examples: f.examples, format: f.format, when: f.when,
         group: f.group, setupWhenMissing: f.setupWhenMissing,
       }));
       const missingKeys = new Set((item.missing ?? []).map((m) => m.key));
