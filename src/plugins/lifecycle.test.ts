@@ -312,7 +312,7 @@ describe('menu sections and "ask only while missing"', () => {
       await d.answer('+15550001111');
       expect(await text()).toMatch(/is set up/);
       const menu = await open('menu');
-      expect(await menu.text()).toMatch(/🎙 Voice calls: ready ✓ \(⭐ OpenAI/);
+      expect(await menu.text()).toMatch(/🎙 Voice calls: OpenAI ✓/);
     } finally {
       setProviderLookup(() => undefined);
     }
@@ -332,7 +332,7 @@ describe('menu sections and "ask only while missing"', () => {
       expect((await mgr.info('voicey'))?.missing?.[0].fix).toMatch(/Or pick another voice in Voice calls\./);
 
       const menu = await open('menu');
-      expect(await menu.text()).toMatch(/🎙 Voice calls: not set up ⚠[\s\S]*🎙 Voice calls ⚠ set up/);
+      expect(await menu.text()).toMatch(/🎙 Voice calls: OpenAI ⚠ needs setup/);
       // Choosing Gemini in the section asks for its key; until then it isn't ready.
       await mgr.setSetting('voicey', 'engine', 'gemini');
       expect((await mgr.info('voicey'))?.settingGroups?.[0].ready).toBe(false);
@@ -343,14 +343,15 @@ describe('menu sections and "ask only while missing"', () => {
     }
   });
 
-  it('the section walks through only what applies', async () => {
+  it('the section lists what applies, and a new choice asks for what it needs', async () => {
     const { setProviderLookup } = await import('./manager.js');
     setProviderLookup(() => undefined);
     await mgr.install(inProcessPlugin(src, { id: 'voicey', manifest }));
     const { d, text } = await open('menu');
     expect(await text()).toMatch(/1\* · 🎙 Voice calls/);
     await d.answer('1');
-    expect(await text()).toMatch(/🎙 Voice calls[\s\S]*Change it/);
+    expect(await text()).toMatch(/🎙 Voice calls[\s\S]*1\* · Who handles calls\?: OpenAI[\s\S]*Set up step by step[\s\S]*← Back/);
+    expect(await text()).not.toMatch(/Gemini key/); // doesn't apply to OpenAI
     await d.answer('1');
     expect(await text()).toMatch(/Who handles calls\?/);
     await d.answer('2'); // Gemini → now its key
