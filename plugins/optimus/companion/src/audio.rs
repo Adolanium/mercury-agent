@@ -52,6 +52,17 @@ impl Output {
         self.busy() || (self.start.elapsed().as_millis() as u64).saturating_sub(self.last_sound.load(Ordering::Relaxed)) < ms
     }
 
+    /// One soft low tone: "muted".
+    pub fn mute_tone(&self) {
+        let mut q = self.queue.lock().unwrap();
+        let n = (self.rate as f32 * 0.12) as usize;
+        for i in 0..n {
+            let t = i as f32 / self.rate as f32;
+            let env = (std::f32::consts::PI * i as f32 / n as f32).sin();
+            q.push_back((2.0 * std::f32::consts::PI * 440.0 * t).sin() * 0.14 * env);
+        }
+    }
+
     /// A short tone: rising for "listening", falling for "stopped".
     pub fn chime(&self, rising: bool) {
         let mut q = self.queue.lock().unwrap();

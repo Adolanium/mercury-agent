@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "optimus",
   "name": "Optimus",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "Mercury uses your computer like a person: sees the screen, moves the mouse, types and opens apps, by chat or out loud with a talk key. macOS, Windows and Linux. Asks before anything that submits, sends, pays or deletes.",
   "kind": "out-of-process",
   "author": "Cosmic Stack",
@@ -177,6 +177,18 @@
         "setup": true,
         "label": "Key to start and stop talking",
         "description": "Press it to start listening, press again to stop (or say goodbye). While Mercury is speaking, pressing it interrupts. Examples: ctrl+alt+m, ctrl+shift+space, f9. On a Mac, alt is Option and cmd is Command.",
+        "when": {
+          "mode": [
+            "voice",
+            "both"
+          ]
+        }
+      },
+      "muteHotkey": {
+        "type": "string",
+        "default": "ctrl+alt+shift+m",
+        "label": "Key to mute and unmute",
+        "description": "While talking: Optimus stops listening (nothing you say is sent anywhere) but keeps working and still speaks. Press again, or press the talk key, to unmute. Saying \"mute\" also mutes.",
         "when": {
           "mode": [
             "voice",

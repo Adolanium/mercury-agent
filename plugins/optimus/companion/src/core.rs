@@ -123,7 +123,7 @@ pub struct Shared {
     /// How the talk key reads, e.g. "Control+Option+M" (empty when there's none).
     pub hotkey_label: Mutex<String>,
     /// Screen operations in progress, and the (listening, working) state last reported.
-    working: Mutex<(u32, Option<(bool, bool)>)>,
+    working: Mutex<(u32, Option<(bool, bool, bool)>)>,
     /// Steps that failed or were stopped, with when: a voice answer is checked against them.
     pub failures: Mutex<Vec<(std::time::Instant, String)>>,
 }
@@ -136,12 +136,15 @@ impl Shared {
 
     /// Tell Mercury whether Optimus is listening and/or working (the TUI status bar shows it).
     pub fn publish_activity(&self) {
-        let listening = self.session.lock().unwrap().is_some();
+        let (listening, muted) = match self.session.lock().unwrap().as_ref() {
+            Some(s) => (true, s.is_muted()),
+            None => (false, false),
+        };
         let mut w = self.working.lock().unwrap();
-        let now = (listening, w.0 > 0);
+        let now = (listening, w.0 > 0, muted);
         if w.1 != Some(now) {
             w.1 = Some(now);
-            self.out.notify("mercury/channel/activity", json!({ "listening": now.0, "working": now.1 }));
+            self.out.notify("mercury/channel/activity", json!({ "listening": now.0, "working": now.1, "muted": now.2 }));
         }
     }
 }
@@ -294,11 +297,40 @@ fn start_hotkey(shared: &Arc<Shared>) {
         Ok(()) => {
             *shared.hotkey_label.lock().unwrap() = label.clone();
             log(format!("press {label} to talk"));
-            status(format!("Press {label} to talk; press it again to stop."));
+            let mute = start_mute_key(shared);
+            status(match mute {
+                Some(m) => format!("Press {label} to talk; press it again to stop. {m} mutes."),
+                None => format!("Press {label} to talk; press it again to stop."),
+            });
         }
         Err(e) => {
             log(format!("talk key {label}: {e}"));
             status(format!("Talk key {label} isn't working: {e}"));
+        }
+    }
+}
+
+/// The mute key (default ctrl+alt+shift+m): stop listening, keep working.
+fn start_mute_key(shared: &Arc<Shared>) -> Option<String> {
+    let spec = settings().get("muteHotkey").and_then(Value::as_str).filter(|s| !s.trim().is_empty()).unwrap_or("ctrl+alt+shift+m").to_string();
+    let hk = match crate::hotkey::parse(&spec) {
+        Ok(h) => h,
+        Err(e) => {
+            log(format!("mute key: {e}"));
+            return None;
+        }
+    };
+    let label = hk.to_string();
+    let sh = shared.clone();
+    match crate::hotkey::listen(hk, move || {
+        if let Some(s) = sh.session.lock().unwrap().as_ref() {
+            s.toggle_mute();
+        }
+    }) {
+        Ok(()) => Some(label),
+        Err(e) => {
+            log(format!("mute key {label}: {e}"));
+            None
         }
     }
 }

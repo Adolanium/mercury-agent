@@ -397,7 +397,7 @@ export class PluginChannel extends BaseChannel {
   /** Plugin API 1.2: what a desktop plugin is doing right now, for the status bar. */
   private onActivity(params: unknown): void {
     const p = (params ?? {}) as Record<string, unknown>;
-    desktopActivityHook?.(activityLabel(this.manifest.name, p.listening === true, p.working === true));
+    desktopActivityHook?.(activityLabel(this.manifest.name, p.listening === true, p.working === true, p.muted === true));
   }
 
   private onCallEnded(params: unknown): void {
@@ -835,8 +835,9 @@ export function setDesktopActivityHook(fn: ((label: string | null) => void) | nu
   desktopActivityHook = fn;
 }
 
-/** "🎙 Optimus listening", "🖱 Optimus working", both, or null when idle. */
-export function activityLabel(name: string, listening: boolean, working: boolean): string | null {
+/** "🎙 Optimus listening", "🖱 Optimus working", "🔇 Optimus muted", combinations, or null when idle. */
+export function activityLabel(name: string, listening: boolean, working: boolean, muted = false): string | null {
+  if (listening && muted) return working ? `🔇🖱 ${name} working (muted)` : `🔇 ${name} muted`;
   if (listening && working) return `🎙🖱 ${name} working`;
   if (working) return `🖱 ${name} working`;
   if (listening) return `🎙 ${name} listening`;

@@ -26,6 +26,7 @@ Change any of it later in `/plugins optimus`.
 - **Chat:** ask Mercury in any chat (TUI, dashboard, WhatsApp, Telegram): "look at my screen", "open Safari and search for…".
 - **Listening:** press the talk key (you hear a rising chime), talk, and Mercury answers out loud while it works on your screen, saying each step as it happens. A soft tick means it's still working.
 - **The talk key:** while Optimus is working it's the **stop button** (everything halts, you keep talking); while Mercury is speaking it interrupts; when all is quiet it ends the session (falling chime).
+- **Mute:** Control+Option+Shift+M (or say "mute") stops listening while Mercury keeps working and talking; nothing you say is sent. Press it again, or the talk key, to unmute. The status bar shows 🔇.
 - **Saying "stop"** ("cancel", "ruko", "bas") halts every action and the task at once; **"bye"** does the same and ends the session. Silence for 60 seconds ends it too.
 - Links and details go to your Mercury chat. Approvals are asked out loud.
 - With speakers, the mic is muted while Mercury talks so it doesn't hear itself. With headphones, turn on "I use headphones" in `/plugins optimus` → 🎙 Voice to interrupt just by talking.

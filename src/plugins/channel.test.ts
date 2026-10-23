@@ -558,6 +558,8 @@ describe('plugin channels (plugin API 1.1)', () => {
         setDesktopActivityHook(null);
       }
       expect(activityLabel('Optimus', false, true)).toBe('🖱 Optimus working');
+      expect(activityLabel('Optimus', true, false, true)).toBe('🔇 Optimus muted');
+      expect(activityLabel('Optimus', true, true, true)).toBe('🔇🖱 Optimus working (muted)');
     });
 
     it('"stop" on the call ends the work it started, and its pending approvals', async () => {

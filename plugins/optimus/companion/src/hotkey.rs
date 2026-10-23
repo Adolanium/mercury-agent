@@ -92,7 +92,7 @@ pub fn parse(spec: &str) -> Result<Hotkey, String> {
 pub fn listen(hk: Hotkey, on_press: impl Fn() + Send + 'static) -> Result<(), String> {
     let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
     std::thread::Builder::new()
-        .name("optimus-hotkey".into())
+        .name(format!("optimus-hotkey-{}", hk.key))
         .spawn(move || platform::run(hk, on_press, tx))
         .map_err(|e| e.to_string())?;
     rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap_or_else(|_| Err("the hotkey listener didn't start".into()))
@@ -109,7 +109,6 @@ mod platform {
         fn CGEventTapEnable(tap: *mut std::ffi::c_void, enable: bool);
     }
 
-    static TAP: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());
 
     fn keycode(key: &str) -> Option<i64> {
         let k = match key {
@@ -131,6 +130,9 @@ mod platform {
             return;
         };
         let want = hk.mods;
+        // Each listener (talk, mute) has its own tap, re-enabled if macOS pauses it.
+        let me = std::sync::Arc::new(AtomicPtr::<std::ffi::c_void>::new(std::ptr::null_mut()));
+        let me2 = me.clone();
         let tap = CGEventTap::new(
             CGEventTapLocation::Session,
             CGEventTapPlacement::HeadInsertEventTap,
@@ -138,7 +140,7 @@ mod platform {
             vec![CGEventType::KeyDown],
             move |_proxy, etype, event| {
                 if matches!(etype, CGEventType::TapDisabledByTimeout | CGEventType::TapDisabledByUserInput) {
-                    let t = TAP.load(Ordering::Relaxed);
+                    let t = me2.load(Ordering::Relaxed);
                     if !t.is_null() {
                         unsafe { CGEventTapEnable(t, true) };
                     }
@@ -166,7 +168,7 @@ mod platform {
         );
         match tap {
             Ok(tap) => unsafe {
-                TAP.store(tap.mach_port.as_concrete_TypeRef() as *mut std::ffi::c_void, Ordering::Relaxed);
+                me.store(tap.mach_port.as_concrete_TypeRef() as *mut std::ffi::c_void, Ordering::Relaxed);
                 let Ok(source) = tap.mach_port.create_runloop_source(0) else {
                     let _ = ready.send(Err("couldn't attach the hotkey listener".into()));
                     return;

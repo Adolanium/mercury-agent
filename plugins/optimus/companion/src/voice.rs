@@ -30,10 +30,13 @@ pub enum Ctl {
     Stop,
     /// What Mercury is doing on the screen right now, to say as it happens.
     Narrate(String),
+    /// The mute key: stop (or start again) listening, without stopping any work.
+    Mute,
 }
 
 pub struct SessionCtl {
     tx: mpsc::UnboundedSender<Ctl>,
+    muted: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl SessionCtl {
@@ -42,6 +45,12 @@ impl SessionCtl {
     }
     pub fn narrate(&self, line: String) {
         let _ = self.tx.send(Ctl::Narrate(line));
+    }
+    pub fn toggle_mute(&self) {
+        let _ = self.tx.send(Ctl::Mute);
+    }
+    pub fn is_muted(&self) -> bool {
+        self.muted.load(std::sync::atomic::Ordering::Relaxed)
     }
 }
 
@@ -61,13 +70,14 @@ pub async fn press(sh: Arc<Shared>, from_tool: bool) -> Result<String, String> {
         return Err("listening mode is off: choose Listening or Both in /plugins optimus".into());
     }
     let (tx, rx) = mpsc::unbounded_channel::<Ctl>();
+    let muted = Arc::new(std::sync::atomic::AtomicBool::new(false));
     {
         // Claim the slot first, so a double press can't start two sessions.
         let mut live = sh.session.lock().unwrap();
         if live.is_some() {
             return Ok(String::new());
         }
-        *live = Some(SessionCtl { tx });
+        *live = Some(SessionCtl { tx, muted: muted.clone() });
     }
     crate::core::clear_halt();
     let call_id = format!("desk-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0));
@@ -100,7 +110,7 @@ pub async fn press(sh: Arc<Shared>, from_tool: bool) -> Result<String, String> {
     sh.publish_activity();
     let sh2 = sh.clone();
     tokio::spawn(async move {
-        run_session(sh2.clone(), audio, rx, call_id, instructions).await;
+        run_session(sh2.clone(), audio, rx, muted, call_id, instructions).await;
         *sh2.session.lock().unwrap() = None;
         sh2.publish_activity();
     });
@@ -149,13 +159,13 @@ fn tools() -> Value {
     ])
 }
 
-async fn run_session(sh: Arc<Shared>, audio: Audio, ctl: mpsc::UnboundedReceiver<Ctl>, call_id: String, instructions: String) {
+async fn run_session(sh: Arc<Shared>, audio: Audio, ctl: mpsc::UnboundedReceiver<Ctl>, muted: Arc<std::sync::atomic::AtomicBool>, call_id: String, instructions: String) {
     let started = Instant::now();
     let mut transcript: Vec<Value> = Vec::new();
     audio.out.chime(true);
     let engine = links::engine(&settings());
     log(format!("session {call_id} starting with {engine}"));
-    let outcome = match bridge(&sh, audio, ctl, &call_id, &instructions, &mut transcript).await {
+    let outcome = match bridge(&sh, audio, ctl, &muted, &call_id, &instructions, &mut transcript).await {
         Ok(()) => "completed".to_string(),
         Err(e) => {
             log(format!("session {call_id} ({engine}) failed: {e}"));
@@ -182,6 +192,7 @@ async fn bridge(
     sh: &Arc<Shared>,
     mut audio: Audio,
     mut ctl: mpsc::UnboundedReceiver<Ctl>,
+    muted: &Arc<std::sync::atomic::AtomicBool>,
     call_id: &str,
     instructions: &str,
     transcript: &mut Vec<Value>,
@@ -284,6 +295,16 @@ async fn bridge(
                         speak_narration(&link, brain, &mut narration, &mut responding);
                     }
                 }
+                Some(Ctl::Mute) => {
+                    let now = !muted.load(std::sync::atomic::Ordering::Relaxed);
+                    set_muted(sh, muted, &out, now, &call_id);
+                    last_activity = Instant::now();
+                }
+                Some(Ctl::Press) if muted.load(std::sync::atomic::Ordering::Relaxed) => {
+                    // Muted: the talk key unmutes rather than stopping anything.
+                    set_muted(sh, muted, &out, false, &call_id);
+                    last_activity = Instant::now();
+                }
                 Some(Ctl::Press) => {
                     if busy_working(&pending) {
                         // While it's working, the key is the stop button: everything halts, the session stays.
@@ -306,6 +327,8 @@ async fn bridge(
             },
             frame = mic.recv() => {
                 let Some(frame) = frame else { break Err("the microphone stopped".to_string()) };
+                // Muted: nothing the owner says is sent anywhere.
+                if muted.load(std::sync::atomic::Ordering::Relaxed) { continue; }
                 // With speakers, the mic would hear Mercury: send silence while it talks.
                 let muted = !barge_in && out.recently_audible(350);
                 link.send(LinkCmd::Audio(if muted { silence.clone() } else { frame }));
@@ -330,6 +353,7 @@ async fn bridge(
                     continue;
                 }
                 if responding || out.busy() { last_activity = Instant::now(); continue; }
+                if muted.load(std::sync::atomic::Ordering::Relaxed) { last_activity = Instant::now(); }
                 if idle_stop > 0.0
                     && last_activity.elapsed().as_secs_f64() >= idle_stop
                     && last_narrated.elapsed().as_secs_f64() >= idle_stop
@@ -420,6 +444,10 @@ async fn bridge(
                         transcript.push(json!({ "role": "owner", "text": t.clone() }));
                         user_said.push((Instant::now(), t.clone()));
                         if user_said.len() > 20 { user_said.remove(0); }
+                        if is_mute(&t) {
+                            set_muted(sh, muted, &out, true, &call_id);
+                            continue;
+                        }
                         if is_stop(&t) && verifying.is_none() && awaiting.is_none() {
                             // "Stop" / "cancel" / "ruko": halt everything at once.
                             stop_all(&pending);
@@ -525,6 +553,19 @@ fn honest(brain: Brain, answer: String, failed: &[String]) -> String {
             if admits { answer } else { format!("Heads up, some steps didn't work. {answer}") }
         }
     }
+}
+
+fn set_muted(sh: &Arc<Shared>, muted: &Arc<std::sync::atomic::AtomicBool>, out: &Arc<audio::Output>, on: bool, call_id: &str) {
+    muted.store(on, std::sync::atomic::Ordering::Relaxed);
+    if on { out.mute_tone() } else { out.chime(true) }
+    log(format!("{call_id}: {}", if on { "muted" } else { "unmuted" }));
+    sh.publish_activity();
+}
+
+/// "Mute" / "mute yourself" / "go on mute".
+fn is_mute(t: &str) -> bool {
+    let t = format!(" {} ", t.to_lowercase().replace(|c: char| !c.is_alphanumeric() && !c.is_whitespace() && (c as u32) < 128, " "));
+    t.split_whitespace().count() <= 4 && [" mute ", " go on mute ", " mute yourself ", " mute karo "].iter().any(|w| t.contains(w)) && !t.contains(" unmute ")
 }
 
 fn say_stopped(link: &Link, brain: Brain) {
@@ -640,6 +681,14 @@ mod tests {
         assert!(honest(Brain::Voice, "I've posted it.".into(), &["act: FAILED".into()]).contains("don't tell the user it's done"));
         assert!(honest(Brain::Mercury, "I've posted it.".into(), &["act: FAILED".into()]).starts_with("Heads up"));
         assert_eq!(honest(Brain::Mercury, "The click failed.".into(), &["act: FAILED".into()]), "The click failed.");
+    }
+
+    #[test]
+    fn mute_words() {
+        assert!(is_mute("Mute."));
+        assert!(is_mute("mute yourself"));
+        assert!(!is_mute("unmute"));
+        assert!(!is_mute("how do I mute notifications on my phone"));
     }
 
     #[test]
