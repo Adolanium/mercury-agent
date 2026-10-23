@@ -200,7 +200,7 @@ fn action_schema() -> Value {
 
 const TOOL_DESCRIPTIONS: [(&str, &str); 7] = [
     ("look", "See the screen: a screenshot of the display the mouse is on (or `display` N), with the active window. Use `zoom` [x0,y0,x1,y1] for a closer look at part of the last screenshot (coordinates stay in the full screenshot)."),
-    ("act", "Use the mouse and keyboard like a person: click, type, paste, press keys, scroll, drag, draw freehand. Returns a fresh screenshot. Pass `actions` as a list. To write text (posts, emails, articles) click the box, then use type: it types key by key like a person, so it works in every editor (up to 3,000 characters per type action; longer text in parts). Use paste only if typing fails. Only for ordinary, reversible steps. Anything that submits, sends, posts, pays, buys, deletes, installs or changes settings must go through act_consequential instead. Never type passwords, card numbers or 2FA codes: ask the owner to do that part."),
+    ("act", "Use the mouse and keyboard like a person: click, type, paste, press keys, scroll, drag, draw freehand. Returns a fresh screenshot. Pass `actions` as a list. To write text (posts, emails, articles) click the box, then use type: it types key by key like a person, so it works in every editor (up to 3,000 characters per type action; longer text in parts). Use paste only if typing fails. \"Sent\" means the input was sent, not that it worked: check the returned screenshot, and before telling the owner a task is done, look and confirm the result. FAILED means nothing (or not everything) happened. Only for ordinary, reversible steps. Anything that submits, sends, posts, pays, buys, deletes, installs or changes settings must go through act_consequential instead. Never type passwords, card numbers or 2FA codes: ask the owner to do that part."),
     ("act_consequential", "Same as act, for the step that commits something: submit a form, send a message or email, post, pay or buy, delete, install, change a setting. The owner approves it first, so say what it will do."),
     ("open", "Open an app by name (\"Chrome\", \"Notes\", \"Freeform\"), a URL, or a file/folder path. Faster and more reliable than clicking through menus. If the app isn't installed, the reply lists what is. For drawing use Freeform (Mac), Paint (Windows) or a web canvas like https://excalidraw.com."),
     ("windows", "List open windows (app and title), front first."),
@@ -247,7 +247,10 @@ fn call_tool(shell: &Arc<Shell>, name: &str, args: &Value) -> Value {
             }
             json!({ "content": content })
         }
-        Err(e) => json!({ "content": [{ "type": "text", "text": e }], "isError": true }),
+        Err(e) => {
+            let text = if e.starts_with("FAILED") || e.starts_with("Stopped") || e.starts_with("Optimus is off") { e } else { format!("FAILED: {e}") };
+            json!({ "content": [{ "type": "text", "text": text }], "isError": true })
+        }
     }
 }
 

@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "optimus",
   "name": "Optimus",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Mercury uses your computer like a person: sees the screen, moves the mouse, types and opens apps, by chat or out loud with a talk key. macOS, Windows and Linux. Asks before anything that submits, sends, pays or deletes.",
   "kind": "out-of-process",
   "author": "Cosmic Stack",
@@ -32,7 +32,7 @@
       },
       {
         "name": "act",
-        "description": "Use the mouse and keyboard like a person: click, type, paste, press keys, scroll, drag, draw freehand. Returns a fresh screenshot. Pass `actions` as a list. To write text (posts, emails, articles) click the box, then use type: it types key by key like a person, so it works in every editor (up to 3,000 characters per type action; longer text in parts). Use paste only if typing fails. Only for ordinary, reversible steps. Anything that submits, sends, posts, pays, buys, deletes, installs or changes settings must go through act_consequential instead. Never type passwords, card numbers or 2FA codes: ask the owner to do that part.",
+        "description": "Use the mouse and keyboard like a person: click, type, paste, press keys, scroll, drag, draw freehand. Returns a fresh screenshot. Pass `actions` as a list. To write text (posts, emails, articles) click the box, then use type: it types key by key like a person, so it works in every editor (up to 3,000 characters per type action; longer text in parts). Use paste only if typing fails. \"Sent\" means the input was sent, not that it worked: check the returned screenshot, and before telling the owner a task is done, look and confirm the result. FAILED means nothing (or not everything) happened. Only for ordinary, reversible steps. Anything that submits, sends, posts, pays, buys, deletes, installs or changes settings must go through act_consequential instead. Never type passwords, card numbers or 2FA codes: ask the owner to do that part.",
         "readOnly": true,
         "timeoutMs": 300000
       },

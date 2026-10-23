@@ -125,6 +125,7 @@ fn instructions_for(instructions: &str) -> String {
         When ask_mercury returns, say what was done or found, briefly and in the past tense. \
         Some actions need the user's approval. When you get an approval request, ask the user plainly whether to go ahead, wait for their answer, \
         then call answer_approval. Never answer an approval yourself: only the user's own words count. \
+        Only say something is done when ask_mercury's answer says so; if it says something failed, couldn't be checked or was stopped, tell the user plainly. Never fill in a result yourself. \
         Links, lists and details go to the user's Mercury chat automatically; just say you've sent them. \
         When the user says goodbye or is done, say a short goodbye and call end_conversation.";
     if instructions.is_empty() { base.to_string() } else { format!("{base}\n\n{instructions}") }
@@ -201,7 +202,7 @@ async fn bridge(
     let mut mic = std::mem::replace(&mut audio.mic, mpsc::unbounded_channel().1);
     let pending: Arc<std::sync::Mutex<HashMap<String, (Instant, Instant, u32)>>> = Arc::new(std::sync::Mutex::new(HashMap::new()));
     let mut responding = false;
-    let (answer_tx, mut answer_rx) = mpsc::unbounded_channel::<(String, String)>();
+    let (answer_tx, mut answer_rx) = mpsc::unbounded_channel::<(String, String, Instant)>();
     let mut ready_answers: VecDeque<(String, String)> = VecDeque::new();
     let mut awaiting: Option<(String, Instant)> = None;
     let mut user_said: Vec<(Instant, String)> = Vec::new();
@@ -242,7 +243,7 @@ async fn bridge(
                 .and_then(|v| v.get("answer").and_then(Value::as_str).map(str::to_string))
                 .unwrap_or_else(|| "Mercury didn't answer in time. It will send the answer to the chat.".into());
             pending2.lock().unwrap().remove(&id);
-            let _ = tx2.send((id, answer));
+            let _ = tx2.send((id, answer, now));
         });
     };
 
@@ -312,7 +313,9 @@ async fn bridge(
             Some(a) = answer_rx.recv() => {
                 if a.1.starts_with("(superseded") || a.1.starts_with("(stopped") { continue; }
                 narration = None; // the result supersedes anything still unsaid
-                ready_answers.push_back(a);
+                // Hold the answer against what actually happened on the screen.
+                let failed: Vec<String> = sh.failures.lock().unwrap().iter().filter(|(at, _)| *at >= a.2).map(|(_, f)| f.clone()).collect();
+                ready_answers.push_back((a.0, honest(brain, a.1, &failed)));
                 if !responding { deliver(&link, brain, &mut ready_answers, &mut responding); }
             }
             _ = status_tick.tick() => {
@@ -505,6 +508,25 @@ async fn bridge(
     result
 }
 
+/// Mercury's answer, with the steps that failed during it made impossible to miss.
+fn honest(brain: Brain, answer: String, failed: &[String]) -> String {
+    if failed.is_empty() {
+        return answer;
+    }
+    match brain {
+        Brain::Voice => format!(
+            "{answer}\n[Optimus log for this request, not part of Mercury's answer: {} step(s) failed or were stopped ({}). Unless the answer above says Mercury checked the result on the screen, don't tell the user it's done: say what didn't work and offer to try again.]",
+            failed.len(),
+            failed.join("; ")
+        ),
+        Brain::Mercury => {
+            let a = answer.to_lowercase();
+            let admits = ["fail", "couldn", "could not", "didn", "did not", "not able", "unable", "wasn't", "stopped"].iter().any(|w| a.contains(w));
+            if admits { answer } else { format!("Heads up, some steps didn't work. {answer}") }
+        }
+    }
+}
+
 fn say_stopped(link: &Link, brain: Brain) {
     match brain {
         Brain::Voice => link.send(LinkCmd::Instruct("[The user stopped everything, not said by the user] All of Mercury's actions have been stopped. Say only: 'Stopped.' Then wait.".into())),
@@ -556,7 +578,7 @@ fn speak_narration(link: &Link, brain: Brain, pending: &mut Option<String>, resp
     if let Some(line) = pending.take() {
         match brain {
             Brain::Voice => link.send(LinkCmd::Instruct(format!(
-                "[Live update, not said by the user] Mercury is doing this on the screen right now: {line}. Say it in a few words, present tense, and nothing else."
+                "[Live update, not said by the user] Mercury is doing this on the screen right now: {line}. It is in progress, not finished. Say it in a few words, present tense, and nothing else; never say the task is done because of an update."
             ))),
             Brain::Mercury => link.send(LinkCmd::Say(line)),
         }
@@ -610,6 +632,14 @@ mod tests {
         assert_eq!(spoken_verdict(&[(after, "No, don't".into())], asked), Some(false));
         assert_eq!(spoken_verdict(&[(after, "what?".into())], asked), None);
         assert_eq!(spoken_verdict(&[(asked - Duration::from_secs(5), "yes".into())], asked), None);
+    }
+
+    #[test]
+    fn failed_steps_are_never_hidden() {
+        assert_eq!(honest(Brain::Voice, "Done.".into(), &[]), "Done.");
+        assert!(honest(Brain::Voice, "I've posted it.".into(), &["act: FAILED".into()]).contains("don't tell the user it's done"));
+        assert!(honest(Brain::Mercury, "I've posted it.".into(), &["act: FAILED".into()]).starts_with("Heads up"));
+        assert_eq!(honest(Brain::Mercury, "The click failed.".into(), &["act: FAILED".into()]), "The click failed.");
     }
 
     #[test]

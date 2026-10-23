@@ -124,6 +124,8 @@ pub struct Shared {
     pub hotkey_label: Mutex<String>,
     /// Screen operations in progress, and the (listening, working) state last reported.
     working: Mutex<(u32, Option<(bool, bool)>)>,
+    /// Steps that failed or were stopped, with when: a voice answer is checked against them.
+    pub failures: Mutex<Vec<(std::time::Instant, String)>>,
 }
 
 impl Shared {
@@ -157,6 +159,7 @@ pub fn run(inbox: std::sync::mpsc::Receiver<Value>, send: impl Fn(Value) + Send 
         session: Mutex::new(None),
         hotkey_label: Mutex::new(String::new()),
         working: Mutex::new((0, None)),
+        failures: Mutex::new(Vec::new()),
     });
     shared.publish_activity();
 
@@ -195,6 +198,18 @@ pub fn run(inbox: std::sync::mpsc::Receiver<Value>, send: impl Fn(Value) + Send 
             }
             rt.spawn_blocking(move || {
                 let r = sh.ops.lock().unwrap_or_else(|e| e.into_inner()).run(&name, &args);
+                // Remember what didn't work, so nobody can say it did.
+                let failed = match &r {
+                    Err(e) => Some(e.clone()),
+                    Ok(v) => v.get("text").and_then(Value::as_str).filter(|t| t.starts_with("FAILED")).map(str::to_string),
+                };
+                if let Some(f) = failed {
+                    let mut list = sh.failures.lock().unwrap();
+                    list.push((std::time::Instant::now(), format!("{name}: {}", f.chars().take(160).collect::<String>())));
+                    if list.len() > 50 {
+                        list.remove(0);
+                    }
+                }
                 sh.out.op_result(id, r);
                 if on_screen {
                     {

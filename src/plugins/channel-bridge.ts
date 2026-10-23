@@ -160,7 +160,7 @@ interface IncomingParams {
 }
 
 /** Put in front of a question asked out loud in a desktop voice session. */
-const DESKTOP_VOICE_NOTE = '[Voice, on the owner\'s own computer: they asked this out loud. Use your tools to get the real answer: web_search for anything current, fetch_url, memory, skills, and the Optimus tools to see and use their screen. Then answer in one to three short spoken sentences, with no markdown, lists, links or code. Go ahead and do what they ask: if an action needs approval, Mercury asks them out loud and continues once they say yes. Links, lists and other details worth keeping: don\'t read them out; put them after a final line "For the chat:" (that part isn\'t spoken; it goes to their Mercury chat).]';
+const DESKTOP_VOICE_NOTE = '[Voice, on the owner\'s own computer: they asked this out loud. Use your tools to get the real answer: web_search for anything current, fetch_url, memory, skills, and the Optimus tools to see and use their screen. Then answer in one to three short spoken sentences, with no markdown, lists, links or code. Only say something is done if you checked it on the screen; if a step failed or you could not confirm it, say so. Go ahead and do what they ask: if an action needs approval, Mercury asks them out loud and continues once they say yes. Links, lists and other details worth keeping: don\'t read them out; put them after a final line "For the chat:" (that part isn\'t spoken; it goes to their Mercury chat).]';
 
 export class PluginChannel extends BaseChannel {
   readonly type: ChannelType;
@@ -632,6 +632,7 @@ export class PluginChannel extends BaseChannel {
         `## Channel: ${name} (voice, on the owner's computer)`,
         'You\'re talking with the owner, out loud, at their own computer. Your answer is spoken: one to three short sentences, no markdown, lists, links or code.',
         `To see their screen use ${this.manifest.id}__look; to do things on it use ${this.manifest.id}__open and ${this.manifest.id}__act, and ${this.manifest.id}__act_consequential for the step that submits, sends, posts, pays, deletes or installs (e.g. the final Post or Send button). Give every open/act call a short \`say\` ("Opening Gmail", "Typing your post"): it is spoken the moment it happens, so the owner hears each step live. Look after each step and check it worked before the next. To write text, click the box and use a type action (it types like a person); paste only if typing fails.`,
+        'Never say a task is done unless you saw it done: before answering, take a fresh look and check the exact result (the post is published, the emails are gone, the file is saved), and say what you saw. If any step came back FAILED, was stopped, or you could not confirm the result, say that plainly and offer to try again. A step reply that says "Sent" only means the input reached the screen.',
         'Access: Extended. Use your tools, skills, files and memory as you would anywhere else. Approvals are asked out loud and answered by voice.',
       ].join('\n');
     }

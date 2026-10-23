@@ -199,7 +199,11 @@ impl Ops {
     // ── Acting ─────────────────────────────────────────────────────────
 
     fn act(&mut self, args: &Value) -> OpResult {
-        let actions = actions_of(args)?;
+        let actions = actions_of(args).map_err(|e| {
+            let raw = args.to_string();
+            crate::core::log(format!("act: couldn't read the steps ({e}): {}", raw.chars().take(600).collect::<String>()));
+            format!("FAILED: nothing was done. {e}")
+        })?;
         let actions = &actions;
         if actions.is_empty() {
             return Err("no actions given".into());
@@ -242,11 +246,12 @@ impl Ops {
         crate::overlay::done();
         // Let the screen settle, then show what happened (unless asked not to).
         let mut out = json!({});
-        let mut text = if done.is_empty() { "Nothing was done.".to_string() } else { format!("Done: {}.", done.join("; ")) };
+        // "Sent", not "done": an input reaching the screen doesn't mean it had the intended effect.
+        let mut text = if done.is_empty() { "Nothing was sent.".to_string() } else { format!("Sent: {}.", done.join("; ")) };
         if let Some(s) = &stopped {
-            text.push(' ');
-            text.push_str(s);
+            text = format!("FAILED: {s} {text}");
         }
+        text.push_str(" This only means the input was sent: check the screenshot below to see whether it actually worked before saying so.");
         if args.get("screenshot").and_then(Value::as_bool) != Some(false) {
             std::thread::sleep(Duration::from_millis(args.get("settle_ms").and_then(Value::as_u64).unwrap_or(500).min(5000)));
             match self.look(&json!({})) {
@@ -613,20 +618,38 @@ fn find_mac_app(name: &str) -> Result<String, String> {
     ))
 }
 
-/// The action list, however the model sent it: a list, a JSON string of
-/// one, a single action, or the action's fields at the top level.
-fn actions_of(args: &Value) -> Result<Vec<Value>, String> {
-    let raw = match args.get("actions") {
-        Some(Value::String(s)) => serde_json::from_str::<Value>(s).map_err(|_| "actions must be a list of {\"type\": …} steps".to_string())?,
-        Some(v) => v.clone(),
+/// The action list, however the model sent it: a list; that list as a JSON
+/// string (even twice-encoded, or with single quotes); one action; an object
+/// of numbered actions; or one action's fields at the top level. Also under
+/// "steps" or "action".
+pub fn actions_of(args: &Value) -> Result<Vec<Value>, String> {
+    const HOW: &str = "actions must be a list of steps, e.g. [{\"type\": \"click\", \"x\": 100, \"y\": 200}]";
+    let raw = match args.get("actions").or_else(|| args.get("steps")).or_else(|| args.get("action")) {
+        Some(v) => decode(v.clone()).ok_or(HOW)?,
         None if args.get("type").is_some() => args.clone(),
-        None => return Err("actions must be a list of {\"type\": …} steps".into()),
+        None => return Err(HOW.into()),
     };
     let list = match raw {
         Value::Array(a) => a,
-        Value::Object(_) => vec![raw],
-        _ => return Err("actions must be a list of {\"type\": …} steps".into()),
+        Value::Object(ref o) if o.contains_key("type") => vec![raw],
+        // {"0": {...}, "1": {...}} or {"actions": [...]} one level down.
+        Value::Object(o) => {
+            if let Some(inner) = o.get("actions").cloned().and_then(decode) {
+                return actions_of(&serde_json::json!({ "actions": inner }));
+            }
+            let mut items: Vec<(usize, Value)> = o.into_iter().filter_map(|(k, v)| Some((k.parse::<usize>().ok()?, v))).collect();
+            if items.is_empty() {
+                return Err(HOW.into());
+            }
+            items.sort_by_key(|(k, _)| *k);
+            items.into_iter().map(|(_, v)| v).collect()
+        }
+        _ => return Err(HOW.into()),
     };
+    let list: Vec<Value> = list.into_iter().filter_map(decode).collect();
+    if list.iter().any(|a| !a.is_object()) {
+        return Err(HOW.into());
+    }
     // Numbers sent as strings ("x": "120") are fine too.
     Ok(list
         .into_iter()
@@ -644,6 +667,21 @@ fn actions_of(args: &Value) -> Result<Vec<Value>, String> {
             a
         })
         .collect())
+}
+
+/// A value that may be JSON text (possibly encoded more than once, or with
+/// single quotes): decoded until it's an array or object.
+fn decode(v: Value) -> Option<Value> {
+    let mut v = v;
+    for _ in 0..4 {
+        let Value::String(s) = &v else { return Some(v) };
+        let t = s.trim();
+        let t = t.strip_prefix("```json").or_else(|| t.strip_prefix("```")).unwrap_or(t).trim_end_matches("```").trim();
+        v = serde_json::from_str::<Value>(t)
+            .or_else(|_| serde_json::from_str::<Value>(&t.replace('\'', "\"")))
+            .ok()?;
+    }
+    (!v.is_string()).then_some(v)
 }
 
 /// [[x, y], …] or [{"x": …, "y": …}, …]
@@ -816,6 +854,14 @@ mod action_input_tests {
         assert_eq!(actions_of(&json!({ "type": "key", "keys": "enter" })).unwrap().len(), 1);
         assert!(actions_of(&json!({})).is_err());
         assert!(actions_of(&json!({ "actions": "not json" })).is_err());
+        // Twice-encoded, single quotes, numbered objects, code fences, other keys.
+        let twice = serde_json::to_string(&serde_json::to_string(&json!([{ "type": "click", "x": 1, "y": 2 }])).unwrap()).unwrap();
+        assert_eq!(actions_of(&json!({ "actions": serde_json::from_str::<Value>(&twice).unwrap() })).unwrap().len(), 1);
+        assert_eq!(actions_of(&json!({ "actions": "[{'type': 'key', 'keys': 'enter'}]" })).unwrap().len(), 1);
+        assert_eq!(actions_of(&json!({ "actions": { "1": { "type": "key", "keys": "b" }, "0": { "type": "key", "keys": "a" } } })).unwrap()[0]["keys"], json!("a"));
+        assert_eq!(actions_of(&json!({ "actions": "```json\n[{\"type\":\"key\",\"keys\":\"enter\"}]\n```" })).unwrap().len(), 1);
+        assert_eq!(actions_of(&json!({ "steps": [{ "type": "key", "keys": "enter" }] })).unwrap().len(), 1);
+        assert_eq!(actions_of(&json!({ "actions": ["{\"type\":\"key\",\"keys\":\"enter\"}"] })).unwrap().len(), 1);
     }
 
     #[test]
