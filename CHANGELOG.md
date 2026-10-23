@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.4.0 — Plugins: WhatsApp calls, and Optimus uses your computer
+## 1.4.0 — Pluggy Mercury: plugins, WhatsApp calls, and Optimus uses your computer
 
 The first stable release since 1.3.8. It also carries the 1.3.9 hotfix below, which only shipped on the dev channel.
 

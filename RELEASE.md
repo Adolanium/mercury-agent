@@ -1,6 +1,6 @@
 # Release v1.4.0
 
-## ☿ Mercury Agent v1.4.0 — Mercury Plugins
+## ☿ Mercury Agent v1.4.0 — Pluggy Mercury
 
 Mercury gets plugins. Install what you need with `/plugins install <id>`: each plugin runs in its own process, comes from a checksum-verified catalog, and asks for exactly the access it needs. Two official plugins ship today on macOS, Windows and Linux:
 

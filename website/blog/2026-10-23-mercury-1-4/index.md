@@ -8,7 +8,7 @@ image: ./cover.jpg
 keywords: [mercury agent, mercury 1.4, ai agent plugins, whatsapp ai agent, ai voice calls, computer use agent, optimus]
 ---
 
-Mercury 1.4 is out. It adds a plugin system, and two official plugins built on it. The WhatsApp plugin lets you chat with Mercury and talk to it by voice call: you can call it, and it can call you. Optimus lets Mercury use your computer. It looks at the screen, moves the pointer and types the way a person does, and you can drive it by chat or by pressing a key and talking.
+Mercury 1.4, which we are calling Pluggy Mercury, is out. It adds a plugin system, and two official plugins built on it. The WhatsApp plugin lets you chat with Mercury and talk to it by voice call: you can call it, and it can call you. Optimus lets Mercury use your computer. It looks at the screen, moves the pointer and types the way a person does, and you can drive it by chat or by pressing a key and talking.
 
 {/* truncate */}
 

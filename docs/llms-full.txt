@@ -5,7 +5,7 @@
 Published 2026-10-23 by Salman Qureshi. Tags: news, releases, product.
 Canonical: https://mercuryagent.sh/blog/mercury-1-4
 
-Mercury 1.4 is out. It adds a plugin system, and two official plugins built on it. The WhatsApp plugin lets you chat with Mercury and talk to it by voice call: you can call it, and it can call you. Optimus lets Mercury use your computer. It looks at the screen, moves the pointer and types the way a person does, and you can drive it by chat or by pressing a key and talking.
+Mercury 1.4, which we are calling Pluggy Mercury, is out. It adds a plugin system, and two official plugins built on it. The WhatsApp plugin lets you chat with Mercury and talk to it by voice call: you can call it, and it can call you. Optimus lets Mercury use your computer. It looks at the screen, moves the pointer and types the way a person does, and you can drive it by chat or by pressing a key and talking.
 
 This is the first stable release since 1.3.8. The [release notes](/docs/releases/1.4.0) have the full list. This post is about why we built it this way.
 
