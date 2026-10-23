@@ -16,11 +16,11 @@ The first stable release since 1.3.8. It also carries the 1.3.9 hotfix below, wh
 - **Voice calls in both directions.** Mercury can call you ("call me at 9pm", "call me when it's done"), keeps you posted while it works, takes approvals by voice or in the chat, and sends links, photos and documents mid-call.
 - Choose the voice engine (OpenAI by default, Gemini, Grok, ElevenLabs, Azure, Qwen, or your own Mercury model), access levels (General / Extended), and link or unlink from the dashboard.
 
-### Optimus plugin 0.4.6 (new)
+### Optimus plugin 0.4.7 (new)
 - **Mercury uses your computer.** It looks at the screen, then moves the pointer, scrolls and types the way a person does, with a "Mercury is driving" overlay while it has control. macOS, Windows and Linux; no developer certificates needed.
 - **Talk to it.** A talk key starts listening mode with spoken replies, a mute key stops listening without stopping the work, and saying "stop" halts every action at once. Silence ends a session, so nothing is captured or spent while you're away.
 - **Honest about results.** Optimus checks the screen before it reports something as done, and failed actions are reported as failed.
-- Consequential actions ask first; games with anti-cheat are refused. The TUI status bar shows when Optimus is listening or working, and a soft tick-tock plays while it works.
+- Consequential actions ask first; Mercury declines to play or automate games that use anti-cheat (Vanguard, Easy Anti-Cheat, BattlEye), since automated input there can get your account banned. The TUI status bar shows when Optimus is listening or working, and a soft tick-tock plays while it works.
 - Voice settings are shared with WhatsApp.
 
 ### Also new
