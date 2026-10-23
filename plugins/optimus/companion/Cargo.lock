@@ -1280,7 +1280,7 @@ dependencies = [
 
 [[package]]
 name = "mercury-optimus"
-version = "0.4.7"
+version = "0.4.8"
 dependencies = [
  "base64 0.22.1",
  "core-foundation",
@@ -1299,6 +1299,7 @@ dependencies = [
  "tokio",
  "tokio-websockets",
  "ureq",
+ "wayland-sys",
  "windows-sys 0.61.2",
  "x11rb",
  "xcap",
@@ -2695,6 +2696,7 @@ dependencies = [
  "libc",
  "log",
  "memoffset",
+ "once_cell",
  "pkg-config",
 ]
 
