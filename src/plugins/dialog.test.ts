@@ -175,6 +175,17 @@ describe('/plugins <id> menu', () => {
     expect(after.at(-1)).toMatch(/🎙 Voice[\s\S]*Who listens and speaks\?: Google Gemini Live[\s\S]*Gemini API key: set ✓/);
   });
 
+  it('a desktop plugin (Optimus) has nothing to link: no link step in setup or the menu', async () => {
+    const { svc } = fakeService({ id: 'optimus', name: 'Optimus', channel: { type: 'desktop', state: 'connected', detail: 'Press Control+Option+M to talk.' } });
+    const setup = (await PluginDialog.setup(svc, 'optimus'))!;
+    const all = (await say(setup, '+15550001111', '1', '1')).join('\n');
+    expect(all).not.toMatch(/Link the|Pairing code|spare number/);
+    expect(all).toMatch(/is set up/);
+    const menu = renderPrompt((await (await PluginDialog.menu(svc, 'optimus', true))!.current())!, false);
+    expect(menu).toMatch(/Press Control\+Option\+M to talk\./);
+    expect(menu).not.toMatch(/Account:|Link the account|test message|Unlink/);
+  });
+
   it('members see status only, with no actions', async () => {
     const { svc } = fakeService();
     const d = (await PluginDialog.menu(svc, 'whatsapp', false))!;

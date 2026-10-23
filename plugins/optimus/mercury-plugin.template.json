@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "optimus",
   "name": "Optimus",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "description": "Mercury uses your computer like a person: sees the screen, moves the mouse, types and opens apps, by chat or out loud with a talk key. macOS, Windows and Linux. Asks before anything that submits, sends, pays or deletes.",
   "kind": "out-of-process",
   "author": "Cosmic Stack",
@@ -213,59 +213,6 @@
           "ctrl+alt+shift+m",
           "ctrl+alt+n",
           "f10"
-        ]
-      },
-      "bargeIn": {
-        "type": "boolean",
-        "default": false,
-        "label": "Headphones",
-        "description": "With speakers, Optimus mutes the mic while Mercury talks so it doesn't hear itself; press the key to interrupt. With headphones, turn this on to interrupt just by talking.",
-        "group": "voice",
-        "when": {
-          "mode": [
-            "voice",
-            "both"
-          ]
-        },
-        "optionLabels": {
-          "true": "On: I use headphones, so I can interrupt just by talking",
-          "false": "Off: speakers, so the mic waits while Mercury talks (press the talk key to interrupt)"
-        }
-      },
-      "thinkingSound": {
-        "type": "boolean",
-        "default": true,
-        "label": "Tick-tock while working",
-        "description": "A quiet wooden tick-tock while Mercury searches or works on your screen and nobody is talking, so you know it's still going. It's well below speech level and never mutes your mic.",
-        "group": "voice",
-        "when": {
-          "mode": [
-            "voice",
-            "both"
-          ]
-        },
-        "optionLabels": {
-          "true": "On: a soft tick… tock while Mercury searches or works",
-          "false": "Off: silence while it works"
-        }
-      },
-      "idleStopSeconds": {
-        "type": "number",
-        "default": 60,
-        "label": "Stop listening after silence (seconds)",
-        "description": "The mic closes by itself when you haven't spoken for this long and Mercury isn't working on something, so it never streams (and costs) for nothing. 0 keeps listening until you press the key or say bye.",
-        "group": "voice",
-        "when": {
-          "mode": [
-            "voice",
-            "both"
-          ]
-        },
-        "examples": [
-          "30",
-          "60",
-          "120",
-          "0"
         ]
       },
       "voiceEngine": {
@@ -820,6 +767,59 @@
           ]
         },
         "group": "voice"
+      },
+      "bargeIn": {
+        "type": "boolean",
+        "default": false,
+        "label": "Headphones",
+        "description": "With speakers, Optimus mutes the mic while Mercury talks so it doesn't hear itself; press the key to interrupt. With headphones, turn this on to interrupt just by talking.",
+        "group": "voice",
+        "when": {
+          "mode": [
+            "voice",
+            "both"
+          ]
+        },
+        "optionLabels": {
+          "true": "On: I use headphones, so I can interrupt just by talking",
+          "false": "Off: speakers, so the mic waits while Mercury talks (press the talk key to interrupt)"
+        }
+      },
+      "thinkingSound": {
+        "type": "boolean",
+        "default": true,
+        "label": "Tick-tock while working",
+        "description": "A quiet wooden tick-tock while Mercury searches or works on your screen and nobody is talking, so you know it's still going. It's well below speech level and never mutes your mic.",
+        "group": "voice",
+        "when": {
+          "mode": [
+            "voice",
+            "both"
+          ]
+        },
+        "optionLabels": {
+          "true": "On: a soft tick… tock while Mercury searches or works",
+          "false": "Off: silence while it works"
+        }
+      },
+      "idleStopSeconds": {
+        "type": "number",
+        "default": 60,
+        "label": "Stop listening after silence (seconds)",
+        "description": "The mic closes by itself when you haven't spoken for this long and Mercury isn't working on something, so it never streams (and costs) for nothing. 0 keeps listening until you press the key or say bye.",
+        "group": "voice",
+        "when": {
+          "mode": [
+            "voice",
+            "both"
+          ]
+        },
+        "examples": [
+          "30",
+          "60",
+          "120",
+          "0"
+        ]
       },
       "maxSessionMinutes": {
         "type": "number",

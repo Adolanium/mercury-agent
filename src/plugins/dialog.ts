@@ -60,10 +60,12 @@ export class PluginDialog {
     // A setting with setupWhenMissing is only asked while that requirement is
     // missing (with an OpenAI key, the default voice just works).
     const fields = (info.settings ?? []).filter((s) => s.setup && (!s.setupWhenMissing || missing.has(s.setupWhenMissing)));
-    fields.forEach((f, i) => d.steps.push(d.settingStep(f, { index: i + 1, total: fields.length + (info.channel ? 1 : 0), setup: true })));
-    if (info.channel) d.steps.push(d.linkStep(info, true));
+    // Only chat apps (WhatsApp) have an account to link; a desktop channel (Optimus) doesn't.
+    const linkable = !!info.channel && info.channel.type !== 'desktop';
+    fields.forEach((f, i) => d.steps.push(d.settingStep(f, { index: i + 1, total: fields.length + (linkable ? 1 : 0), setup: true })));
+    if (linkable) d.steps.push(d.linkStep(info, true));
     d.steps.push(d.finishStep(info));
-    if (d.steps.length === 1 && !info.channel && !fields.length) return null;
+    if (d.steps.length === 1 && !linkable && !fields.length) return null;
     return d;
   }
 
@@ -273,7 +275,11 @@ export class PluginDialog {
         const lines = [`🧩 *${i.name}* ${i.installedVersion ?? i.latestVersion ?? ''}`, i.description];
         const status = i.installedVersion ? (i.enabled ? (i.status === 'enabled' ? 'on' : i.status) : 'off') : 'not installed';
         lines.push('', `Status: ${status}`);
-        if (i.channel) lines.push(`Account: ${i.channel.state === 'connected' ? `linked${i.channel.account ? ` as +${i.channel.account}` : ''}` : (i.channel.state ?? 'not linked')}`);
+        if (i.channel?.type === 'desktop') {
+          if (i.channel.detail) lines.push(i.channel.detail);
+        } else if (i.channel) {
+          lines.push(`Account: ${i.channel.state === 'connected' ? `linked${i.channel.account ? ` as +${i.channel.account}` : ''}` : (i.channel.state ?? 'not linked')}`);
+        }
         for (const m of i.missing ?? []) lines.push(`⚠️ ${m.unlocks} is off: needs ${m.needs}.`);
         const options: DialogOption[] = [];
         if (!this.admin) return { text: lines.join('\n') };
@@ -291,7 +297,7 @@ export class PluginDialog {
           if (loose.length > MENU_SETTINGS || (i.settings ?? []).some((x) => !x.group && !x.setup && !x.label && settingApplies(x, i.settings ?? []))) {
             options.push({ label: 'More settings', value: 'settings' });
           }
-          if (i.channel && i.enabled) {
+          if (i.channel && i.channel.type !== 'desktop' && i.enabled) {
             if (i.channel.state === 'connected') {
               options.push({ label: 'Send me a test message', value: 'test' });
               options.push({ label: 'Unlink the account', value: 'unlink' });
