@@ -100,7 +100,7 @@ import { modelSeesImages, withAttachments } from './attachments.js';
 import { AlertGate } from './alert-gate.js';
 import { setPluginImagesAllowed } from '../plugins/tool-bridge.js';
 import { handleCallCommand } from '../plugins/call-schedule.js';
-import { handlePluginsCommand, tryPluginCommand, pluginCommandHelp, hasPluginDialog, answerPluginDialog } from '../plugins/commands.js';
+import { handlePluginsCommand, tryPluginCommand, hasPluginDialog, answerPluginDialog } from '../plugins/commands.js';
 import { handleChatCommand as handleChatCommandImpl } from './commands/chat-command.js';
 import { handleBgCommand as handleBgCommandImpl } from './commands/bg-command.js';
 import { handleSaverCommand as handleSaverCommandImpl } from './commands/saver-command.js';
@@ -760,7 +760,7 @@ export class Agent {
       const channel = this.channels.getChannelForMessage(msg);
       if (channel) {
         answerPluginDialog(trimmed, msg, channel).catch((err) => {
-          logger.error({ err: (err as any)?.message ?? err }, 'plugin dialog failed');
+          logger.error({ err: err instanceof Error ? err.message : err }, 'plugin dialog failed');
         });
         return;
       }
@@ -781,7 +781,7 @@ export class Agent {
       const channel = this.channels.getChannelForMessage(msg);
       if (channel) {
         handlePluginsCommand(trimmed, msg, channel).catch((err) => {
-          logger.error({ err: (err as any)?.message ?? err, content: trimmed.slice(0, 50) }, '/plugins command failed');
+          logger.error({ err: err instanceof Error ? err.message : err, content: trimmed.slice(0, 50) }, '/plugins command failed');
         });
       }
       return;

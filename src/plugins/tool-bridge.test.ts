@@ -19,6 +19,8 @@ function liveTool(result: unknown) {
 
 async function run(result: unknown, callId = 'call-1') {
   publishTool(liveTool(result));
+  // The bridge returns an AI SDK tool; the test drives its two callbacks directly.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const t = getPluginTools({} as PermissionManager)['shots__look'] as any;
   const output = await t.execute({}, { toolCallId: callId, messages: [] });
   const model = await t.toModelOutput({ toolCallId: callId, input: {}, output });

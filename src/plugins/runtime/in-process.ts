@@ -150,10 +150,9 @@ export class InProcessRuntime implements PluginRuntime {
       ...(Object.keys(m.permissions.providers ?? {}) as PluginProviderId[]).flatMap((p) => Object.values(providerSecretNames(p))),
     ]);
     const signal = this.ac.signal;
-    const self = this;
 
     const register = (def: PluginToolDefinition): Disposable => {
-      if (!self.running) throw new Error('Plugin is not running.');
+      if (!this.running) throw new Error('Plugin is not running.');
       const decl = declaredTools.get(def?.name);
       if (!decl) throw new Error(`Tool "${def?.name}" is not declared in mercury-plugin.json (contributes.tools).`);
       if (typeof def.execute !== 'function') throw new Error(`Tool "${def.name}" has no execute function.`);
@@ -170,20 +169,20 @@ export class InProcessRuntime implements PluginRuntime {
         readOnly: decl.readOnly,
         timeoutMs: decl.timeoutMs,
         invoke: async (args, toolSignal) => {
-          if (!self.running) throw new Error('the plugin is not running');
+          if (!this.running) throw new Error('the plugin is not running');
           const combined = AbortSignal.any([toolSignal, signal]);
           return def.execute(args, { signal: combined });
         },
       });
-      self.registered.add(`tool:${decl.name}`);
-      return self.track(() => {
+      this.registered.add(`tool:${decl.name}`);
+      return this.track(() => {
         unpublish();
-        self.registered.delete(`tool:${decl.name}`);
+        this.registered.delete(`tool:${decl.name}`);
       });
     };
 
     const registerCommand = (def: PluginCommandDefinition): Disposable => {
-      if (!self.running) throw new Error('Plugin is not running.');
+      if (!this.running) throw new Error('Plugin is not running.');
       const decl = declaredCommands.get(def?.name);
       if (!decl) throw new Error(`Command "${def?.name}" is not declared in mercury-plugin.json (contributes.commands).`);
       if (typeof def.run !== 'function') throw new Error(`Command "${def.name}" has no run function.`);
@@ -193,19 +192,19 @@ export class InProcessRuntime implements PluginRuntime {
         name: decl.name,
         description: decl.description,
         run: async (args, io) => {
-          if (!self.running) throw new Error('the plugin is not running');
+          if (!this.running) throw new Error('the plugin is not running');
           await def.run(args, { reply: io.reply, signal: AbortSignal.any([io.signal, signal]) });
         },
       });
-      self.registered.add(`command:${decl.name}`);
-      return self.track(() => {
+      this.registered.add(`command:${decl.name}`);
+      return this.track(() => {
         unpublish();
-        self.registered.delete(`command:${decl.name}`);
+        this.registered.delete(`command:${decl.name}`);
       });
     };
 
     const pluginFetch = async (url: string, init: RequestInit = {}): Promise<Response> => {
-      if (!self.running) throw new Error('Plugin is not running.');
+      if (!this.running) throw new Error('Plugin is not running.');
       let target = url;
       const reqSignal = init.signal ? AbortSignal.any([init.signal, signal]) : signal;
       for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
@@ -238,28 +237,28 @@ export class InProcessRuntime implements PluginRuntime {
         error: (msg: string, data?: Record<string, unknown>) => scoped.error(msg, data),
       }),
       settings: Object.freeze({
-        get: <T,>(key: string) => self.deps.settings[key] as T | undefined,
-        all: () => ({ ...self.deps.settings }),
+        get: <T,>(key: string) => this.deps.settings[key] as T | undefined,
+        all: () => ({ ...this.deps.settings }),
       }),
       secrets: Object.freeze({
-        get: (name: string) => (declaredSecrets.has(name) ? self.deps.secrets[name] : undefined),
+        get: (name: string) => (declaredSecrets.has(name) ? this.deps.secrets[name] : undefined),
       }),
       tools: Object.freeze({ register }),
       commands: Object.freeze({ register: registerCommand }),
       timers: Object.freeze({
         setTimeout: (fn: () => void | Promise<void>, ms: number): Disposable => {
-          const h = setTimeout(() => self.guard(fn, 'timer'), Math.max(0, ms));
-          return self.track(() => clearTimeout(h));
+          const h = setTimeout(() => this.guard(fn, 'timer'), Math.max(0, ms));
+          return this.track(() => clearTimeout(h));
         },
         setInterval: (fn: () => void | Promise<void>, ms: number): Disposable => {
-          const h = setInterval(() => self.guard(fn, 'interval'), Math.max(1000, ms));
-          return self.track(() => clearInterval(h));
+          const h = setInterval(() => this.guard(fn, 'interval'), Math.max(1000, ms));
+          return this.track(() => clearInterval(h));
         },
       }),
       fetch: pluginFetch,
       signal,
       onDispose: (fn: () => void | Promise<void>) => {
-        self.track(fn);
+        this.track(fn);
       },
     }) as PluginContext;
   }

@@ -184,7 +184,7 @@ describe('in-process plugins', () => {
   it('an uncaught error from plugin code is attributed and the plugin disabled', async () => {
     await mgr.install(inProcessPlugin(src, { id: 'crasher' }));
     const err = new Error('raw timer blew up');
-    err.stack = `Error: raw timer blew up\n    at Timeout._onTimeout (${pluginDir('crasher')}/versions/1.0.0/index.mjs:3:11)`;
+    err.stack = `Error: raw timer blew up\n    at Timeout._onTimeout (${join(pluginDir('crasher'), 'versions', '1.0.0', 'index.mjs')}:3:11)`;
     expect(mgr.attributeFault(err)).toBe(true);
     await waitFor(() => readState().plugins.crasher?.enabled === false);
     expect(mgr.attributeFault(new Error('not from a plugin'))).toBe(false);

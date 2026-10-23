@@ -17,7 +17,8 @@ afterEach(async () => { await mgr.shutdown(); resetToolBridge(); env.restore(); 
 
 describe('author tooling', () => {
   it('the embedded SDK types match src/plugins/sdk.ts (run: node scripts/gen-plugin-sdk.mjs)', () => {
-    expect(PLUGIN_SDK_DTS).toBe(readFileSync(join(process.cwd(), 'src/plugins/sdk.ts'), 'utf8'));
+    // Git may check sdk.ts out with CRLF endings on Windows; the embedded copy is always LF.
+    expect(PLUGIN_SDK_DTS).toBe(readFileSync(join(process.cwd(), 'src/plugins/sdk.ts'), 'utf8').replace(/\r\n/g, '\n'));
   });
 
   for (const kind of ['in-process', 'out-of-process'] as const) {

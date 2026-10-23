@@ -209,7 +209,7 @@ export class PluginDialog {
     if (!follow.length) return { kind: 'next', message };
     return {
       kind: 'push',
-      steps: follow.map((f, n) => this.liveSettingStep(f.key, { index: n + 1, total: follow.length })),
+      steps: follow.map((f) => this.liveSettingStep(f.key)),
       message: `${message}\nNext, ${follow.length === 1 ? 'one more thing it needs' : `${follow.length} things it needs`}:`,
     };
   }
@@ -386,7 +386,7 @@ export class PluginDialog {
         const i = (await this.svc.info(this.pluginId))!;
         if (option.value === 'walk') {
           const keys = (i.settings ?? []).filter((x) => x.group === gid).map((x) => x.key);
-          return { kind: 'push', steps: [...keys.map((k, n) => this.liveSettingStep(k, { index: n + 1, total: keys.length })), this.groupMenuStep(gid)] };
+          return { kind: 'push', steps: [...keys.map((k) => this.liveSettingStep(k)), this.groupMenuStep(gid)] };
         }
         const fresh = i.settings?.find((x) => x.key === option.value.slice('set:'.length));
         return fresh ? { kind: 'push', steps: [this.settingStep(fresh), this.groupMenuStep(gid)] } : { kind: 'retry', message: 'That setting is gone.' };
@@ -395,7 +395,7 @@ export class PluginDialog {
   }
 
   /** A setting step that looks the setting up when it's reached (values may have changed since). */
-  private liveSettingStep(key: string, ctx: { index: number; total: number }): Step {
+  private liveSettingStep(key: string): Step {
     let inner: Step | null = null;
     const load = async () => {
       const s = (await this.svc.info(this.pluginId))?.settings?.find((x) => x.key === key);

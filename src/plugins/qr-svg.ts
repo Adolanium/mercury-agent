@@ -3,9 +3,9 @@
  * encoder bundled in qrcode-terminal, which Mercury already ships, so the
  * dashboard needs no QR library of its own.
  */
-// @ts-ignore: CommonJS module without types
+// @ts-expect-error: CommonJS module without types
 import QRCode from 'qrcode-terminal/vendor/QRCode/index.js';
-// @ts-ignore: CommonJS module without types
+// @ts-expect-error: CommonJS module without types
 import QRErrorCorrectLevel from 'qrcode-terminal/vendor/QRCode/QRErrorCorrectLevel.js';
 
 interface QRCodeInstance {

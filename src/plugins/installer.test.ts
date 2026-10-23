@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { installPackage, parseSource, rollbackPackage, sha256File, uninstallPackage, loadManifest } from './installer.js';
 import { pluginDataDir, pluginDir, pluginVersionDir, readState, stagingRoot, withLock } from './store.js';
@@ -25,7 +25,7 @@ describe('parseSource', () => {
   it('recognises ids, paths, https URLs and github repos', () => {
     expect(parseSource('weather')).toEqual({ kind: 'id', id: 'weather' });
     expect(parseSource('./plugins/weather')).toMatchObject({ type: 'path' });
-    expect(parseSource('/tmp/x.tgz')).toMatchObject({ type: 'path', path: '/tmp/x.tgz' });
+    expect(parseSource('/tmp/x.tgz')).toMatchObject({ type: 'path', path: resolve('/tmp/x.tgz') });
     expect(parseSource('https://example.com/p.tgz')).toEqual({ type: 'url', url: 'https://example.com/p.tgz' });
     expect(parseSource('github:acme/mercury-weather@v1.2.0')).toEqual({ type: 'github', repo: 'acme/mercury-weather', tag: 'v1.2.0' });
   });
