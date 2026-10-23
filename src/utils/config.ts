@@ -92,6 +92,11 @@ export interface MercuryConfig {
     name: string;
     owner: string;
     creator?: string;
+    /**
+     * Background Mercury should always know and can talk about: who made it,
+     * the team, what it's for. Included in every chat and call.
+     */
+    about?: string;
   };
   cloud: CloudConfig;
   providers: {
@@ -287,6 +292,7 @@ export function getDefaultConfig(): MercuryConfig {
       name: getEnv('MERCURY_NAME', 'Mercury'),
       owner: getEnv('MERCURY_OWNER', ''),
       creator: getEnv('MERCURY_CREATOR', ''),
+      about: getEnv('MERCURY_ABOUT', ''),
     },
     cloud: {
       enabled: getEnvBool('MERCURY_CLOUD_ENABLED', false),

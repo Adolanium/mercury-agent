@@ -13,3 +13,6 @@ soul/
 memory/
 # Claude Code worktrees / local state
 .claude/
+
+# plugin-system tests (src/plugins/test-fixtures.ts)
+.vitest-tmp/

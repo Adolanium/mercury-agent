@@ -20,6 +20,7 @@ import spotifyRoutes, { setSpotifyClient } from './api/spotify.js';
 import kanbanRoutes, { setKanbanSupervisor, setKanbanBoardManager, setKanbanProviders } from './api/kanban.js';
 import ideRoutes, { setIDEProviders } from './api/workspace-ide.js';
 import lifecycleRoutes, { setShutdownHandler } from './api/lifecycle.js';
+import pluginRoutes from './api/plugins.js';
 import { BoardManager } from '../core/board-manager.js';
 import { isBetterSqlite3Available } from '../memory/second-brain-db.js';
 
@@ -83,6 +84,7 @@ app.route('/', spotifyRoutes);
 app.route('/', kanbanRoutes);
 app.route('/', ideRoutes);
 app.route('/', lifecycleRoutes);
+app.route('/', pluginRoutes);
 
 // ── Legacy static assets (vendor fonts, icons, wasm — still needed by React SPA) ──
 app.get('/vendor/*', (c) => {

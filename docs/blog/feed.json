@@ -5,6 +5,23 @@
     "description": "News, engineering notes and field reports from the team building Mercury.",
     "items": [
         {
+            "id": "https://mercuryagent.sh/blog/mercury-1-4",
+            "content_html": null,
+            "url": "https://mercuryagent.sh/blog/mercury-1-4",
+            "title": "Mercury 1.4: plugins, WhatsApp calls, and an agent at your desk",
+            "summary": "Mercury 1.4 adds isolated plugins and two official ones: WhatsApp chat with voice calls both ways, and Optimus, which sees your screen and uses your mouse.",
+            "date_modified": "2026-10-23T00:00:00.000Z",
+            "author": {
+                "name": "Salman Qureshi",
+                "url": "https://github.com/hotheadhacker"
+            },
+            "tags": [
+                "News",
+                "Releases",
+                "Product"
+            ]
+        },
+        {
             "id": "https://mercuryagent.sh/blog/ai-coding-verification-bottleneck",
             "content_html": null,
             "url": "https://mercuryagent.sh/blog/ai-coding-verification-bottleneck",

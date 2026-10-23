@@ -880,7 +880,7 @@ function HeaderBanner({ cols }: { cols: number }): React.ReactNode {
 }
 
 function TokenBarView({ state, cols }: { state: TuiState; cols: number }) {
-  if (!state.tokenInfo && !state.provider && !state.currentSession) return null;
+  if (!state.tokenInfo && !state.provider && !state.currentSession && !state.desktopActivity) return null;
 
   const saverActive = !!(state.saverInfo && state.saverInfo.state !== 'off');
   const saverColor = state.saverInfo?.state === 'auto' ? 'yellow' : 'green';
@@ -909,6 +909,11 @@ function TokenBarView({ state, cols }: { state: TuiState; cols: number }) {
   // 2. Provider
   if (state.provider) {
     segments.push({ text: `${state.provider.name} · ${state.provider.model}`, color: 'magenta' });
+  }
+
+  // 2b. Optimus (desktop plugin) listening / working right now
+  if (state.desktopActivity) {
+    segments.push({ text: state.desktopActivity, color: 'yellow' });
   }
 
   // 3. Session
@@ -2718,6 +2723,7 @@ export function MercuryCodeView({
   // '' = not read yet (async refresh pending); hide the segment until then.
   const hasGit = git.branch !== '' && git.branch !== 'no-git' && git.branch !== 'not-a-git-repo';
   const rightSegs: Array<{ text: string; color: string }> = [{ text: mc.dirName, color: THEME_ACCENT }];
+  if (state.desktopActivity) rightSegs.push({ text: state.desktopActivity, color: 'yellow' });
   if (hasGit) {
     const gitBits = [`⎇ ${git.branch}`];
     if (git.ahead > 0) gitBits.push(`↑${git.ahead}`);

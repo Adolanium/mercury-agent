@@ -1,12 +1,12 @@
 {
   "catalogVersion": 1,
-  "updatedAt": "2026-10-23T12:00:00Z",
+  "updatedAt": "2026-10-23T11:20:21Z",
   "plugins": [
     {
       "id": "whatsapp",
       "name": "WhatsApp",
-      "description": "Chat with Mercury on WhatsApp and talk to it by voice call. Runs on a spare number as a linked device (unofficial protocol).",
-      "version": "0.1.0",
+      "description": "Chat with Mercury on WhatsApp and talk to it by voice call: OpenAI by default, or Gemini, Grok, ElevenLabs, Azure, Qwen, or your own Mercury model with Deepgram/Cartesia/MiniMax/Sarvam voices. Runs on a spare number as a linked device (unofficial protocol).",
+      "version": "0.1.1",
       "kind": "out-of-process",
       "tier": "official",
       "homepage": "https://github.com/cosmicstack-labs/mercury-agent/tree/main/plugins/whatsapp",
@@ -16,29 +16,29 @@
       },
       "artifacts": {
         "darwin-arm64": {
-          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/mercury-dev-latest/mercury-plugin-whatsapp-darwin-arm64.tgz",
-          "sha256": "c03fdfa8915ae064b33ab2211565fef0bce754f1ae50dbdb1a3ac8d7e1acab7c",
-          "size": 4199672
+          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/v1.4.0/mercury-plugin-whatsapp-darwin-arm64.tgz",
+          "sha256": "a40d93d187d9c977266459756d8e379e2064828bfa3ed254ba29e2271d3d2aa8",
+          "size": 4192524
         },
         "darwin-x64": {
-          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/mercury-dev-latest/mercury-plugin-whatsapp-darwin-x64.tgz",
-          "sha256": "1d1b5e61a8b99467ad8f61d3589a4039eb4bbcdf5d7b3df82b92811fd7859155",
-          "size": 4538375
+          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/v1.4.0/mercury-plugin-whatsapp-darwin-x64.tgz",
+          "sha256": "6927d2d72aa16f045f747c64412422fa07a38313ace069878df5ae434c3a79c6",
+          "size": 4538454
         },
         "linux-x64": {
-          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/mercury-dev-latest/mercury-plugin-whatsapp-linux-x64.tgz",
-          "sha256": "3dc0daef7a55f5b0be6a56fa6bf654e49ff40fdd8adce9caa17862c858292c77",
-          "size": 4873852
+          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/v1.4.0/mercury-plugin-whatsapp-linux-x64.tgz",
+          "sha256": "a9cf89171ea993ba5bcb3c33f90e543cccd2d17259679285eff67435890e212e",
+          "size": 4872414
         },
         "linux-arm64": {
-          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/mercury-dev-latest/mercury-plugin-whatsapp-linux-arm64.tgz",
-          "sha256": "c4f4a0b8ec37c22183b1ce9e846d05f688ed923b05477c6d095d99487346bea0",
-          "size": 4686482
+          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/v1.4.0/mercury-plugin-whatsapp-linux-arm64.tgz",
+          "sha256": "8d9037bda09d991130567ed81ef26126b8e8d91199c0adb7257e3da9efe280ff",
+          "size": 4690055
         },
         "win32-x64": {
-          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/mercury-dev-latest/mercury-plugin-whatsapp-win32-x64.tgz",
-          "sha256": "abac8d84cb5acbad3b699d1cec38efa293e8439336feb94ac7df911378fa6501",
-          "size": 4464976
+          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/v1.4.0/mercury-plugin-whatsapp-win32-x64.tgz",
+          "sha256": "dd1ccaf4134481e85ebea850f13404c1b0ab46db04a22616f68225bba93b4d84",
+          "size": 4467679
         }
       },
       "tools": [
@@ -79,7 +79,7 @@
       "id": "optimus",
       "name": "Optimus",
       "description": "Mercury uses your computer like a person: sees the screen, moves the mouse, types and opens apps, by chat or out loud with a talk key. macOS, Windows and Linux. Asks before anything that submits, sends, pays or deletes.",
-      "version": "0.4.2",
+      "version": "0.4.7",
       "kind": "out-of-process",
       "tier": "official",
       "homepage": "https://github.com/cosmicstack-labs/mercury-agent/tree/main/plugins/optimus",
@@ -89,29 +89,29 @@
       },
       "artifacts": {
         "darwin-arm64": {
-          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/mercury-dev-latest/mercury-plugin-optimus-darwin-arm64.tgz",
-          "sha256": "c07d6c3214f9e0240ed2211872671c185cfc7de692415083ab9d5e6813f0da48",
-          "size": 1409323
+          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/v1.4.0/mercury-plugin-optimus-darwin-arm64.tgz",
+          "sha256": "f4d80888c0c1d5f85511c15b81b94d1f0e57b8307088985fc2a9bfc2e5064a4d",
+          "size": 1420810
         },
         "darwin-x64": {
-          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/mercury-dev-latest/mercury-plugin-optimus-darwin-x64.tgz",
-          "sha256": "3708bc85a62b929c7b192fc7c98b45ee10ef9b8942ca7651cecc0b791252b645",
-          "size": 1551522
+          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/v1.4.0/mercury-plugin-optimus-darwin-x64.tgz",
+          "sha256": "ed314ae65d9e9e2f881ec576af022c455d4a80713029fbcf10f2e2753529b1e4",
+          "size": 1563994
         },
         "linux-x64": {
-          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/mercury-dev-latest/mercury-plugin-optimus-linux-x64.tgz",
-          "sha256": "19257425bc12a75ce4cd429f0f77f35df4346d8dc962323d664064c36ffdea99",
-          "size": 2648806
+          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/v1.4.0/mercury-plugin-optimus-linux-x64.tgz",
+          "sha256": "a34cc6a015f97bf2f6a7a61aa8a8095b8515461aad47b94efbd6fb2b1e36035f",
+          "size": 2664287
         },
         "linux-arm64": {
-          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/mercury-dev-latest/mercury-plugin-optimus-linux-arm64.tgz",
-          "sha256": "a2eea3bf672b97dba7be90eade62f7e5838f6337a6de3b199e05e8fad8b41114",
-          "size": 2499735
+          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/v1.4.0/mercury-plugin-optimus-linux-arm64.tgz",
+          "sha256": "4ff0bf17a157770b002687672870b050bdc6256bca6544fd09c5ea85e0745e35",
+          "size": 2513292
         },
         "win32-x64": {
-          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/mercury-dev-latest/mercury-plugin-optimus-win32-x64.tgz",
-          "sha256": "d254448d02c9c1f3692b6424d8ae0a6ac2d7ff25436620f630bc42c58df775c0",
-          "size": 1443783
+          "url": "https://github.com/cosmicstack-labs/mercury-agent/releases/download/v1.4.0/mercury-plugin-optimus-win32-x64.tgz",
+          "sha256": "98e13dedea46d012271a317a37ab8b706d8d4684e08320e584be0c4a878b96fe",
+          "size": 1457487
         }
       },
       "tools": [

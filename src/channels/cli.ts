@@ -461,6 +461,8 @@ export interface TuiState {
   /** A newer Mercury version the background check found — shown as a tiny
    * bottom-bar indicator (⬆ vX) in Mercury Code until ignored. */
   updateAvailable: string | null;
+  /** What a desktop plugin (Optimus) is doing right now, e.g. "🎙 Optimus listening"; null when idle. */
+  desktopActivity: string | null;
   /** Active Mercury Bot chat — transcript is swapped to the bot's thread. */
   botChat: { botId: string; botName: string } | null;
   /** Per-bot real-time activity (what each bot is doing RIGHT NOW) — rendered
@@ -505,6 +507,7 @@ const defaultState: TuiState = {
   statusVerbs: null,
   tuiFrozen: false,
   updateAvailable: null,
+  desktopActivity: null,
   botChat: null,
   botLiveActivity: {},
   botStreamTails: {},
@@ -2157,6 +2160,12 @@ export class CLIChannel extends BaseChannel {
       case 'continue': return false;
       default: return prompt?.options ? 'no' : '';
     }
+  }
+
+  /** Status-bar note for a desktop plugin's activity (Optimus listening / working); null clears it. */
+  setDesktopActivity(text: string | null): void {
+    if (this.state.desktopActivity === text) return;
+    this.update({ desktopActivity: text });
   }
 
   setSkills(skills: SkillInfo[]): void {

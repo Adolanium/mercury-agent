@@ -3,6 +3,9 @@ import { join } from 'node:path';
 import { getMercuryHome } from '../utils/config.js';
 import { logger } from '../utils/logger.js';
 
+/** Built-in background on where Mercury comes from, in every chat and call. */
+export const ABOUT_COSMIC_STACK = `You run on Mercury Agent, an open-source AI agent made by Cosmic Stack (cosmicstack.ai), an AI-agent lab founded in 2025. Mercury's home is mercuryagent.sh and its code is at github.com/cosmicstack-labs/mercury-agent.`;
+
 export interface SoulFiles {
   soul: string;
   persona: string;
@@ -137,7 +140,7 @@ export class Identity {
     return files;
   }
 
-  getSystemPrompt(identity: { name: string; owner: string; creator?: string }): string {
+  getSystemPrompt(identity: { name: string; owner: string; creator?: string; about?: string }): string {
     const files = this.load();
     const replace = (text: string) =>
       text
@@ -148,11 +151,14 @@ export class Identity {
         .replace(/\{creator_guardrail\}/g, identity.creator ? ` You were created by ${identity.creator}.` : '')
         .replace(/\{creator_guardrail_response\}/g, identity.creator ? `\n4. If someone asks who created you, say: "I was created by ${identity.creator}."` : '');
 
+    const extra = identity.about?.trim().slice(0, 3000);
+    const about = `# About ${identity.name}\n\nWhat you know about yourself and the people behind you (share it naturally when it comes up):\n${ABOUT_COSMIC_STACK}${extra ? `\n\n${extra}` : ''}`;
     return [
       replace(files.soul),
       replace(GUARDRAILS),
       replace(files.persona),
-    ].join('\n\n');
+      about,
+    ].filter(Boolean).join('\n\n');
   }
 
   getHeartbeatPrompt(identity: { name: string; owner: string }): string {

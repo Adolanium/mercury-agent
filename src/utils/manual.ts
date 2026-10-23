@@ -151,6 +151,15 @@ export function getManual(): string {
     ['/skills view <id>', 'Show details + registry URL for a skill'],
     ['/skills install <id|url>', 'Install from the registry or a raw SKILL.md URL'],
     ['/skills remove <id>', 'Uninstall a skill'],
+    ['/call <when> [about …]', 'Schedule Mercury to call you on WhatsApp (9pm, in 20m, tomorrow 8:30am)'],
+    ['/calls', 'List or cancel scheduled calls'],
+    ['/plugins', 'Installed and available plugins, with status'],
+    ['/plugins install <id|path|url>', 'Install a plugin (shows what it needs first)'],
+    ['/plugins enable|disable <id>', 'Turn a plugin on or off'],
+    ['/plugins update [id]', 'Update plugins from the catalog'],
+    ['/plugins rollback <id>', 'Go back to the previous version'],
+    ['/plugins uninstall <id> [--purge]', 'Remove a plugin (keeps data unless --purge)'],
+    ['/plugins pair <id> <phone>', 'Link a channel plugin (e.g. WhatsApp) with a pairing code'],
     ['/permissions', 'Change permission mode (Ask Me / Allow All)'],
     ['/models', 'List configured providers and their models'],
     ['/models use <provider>', 'Switch the default model (saved across restarts)'],
@@ -297,6 +306,7 @@ export function getManual(): string {
     ['~/.mercury/permissions.yaml', 'Capabilities and approval rules'],
     ['~/.mercury/soul/*.md', 'Agent personality (soul, persona, taste, heartbeat)'],
     ['~/.mercury/skills/', 'Installed skills'],
+    ['~/.mercury/plugins/', 'Installed plugins, their data and settings'],
     ['~/.mercury/schedules.yaml', 'Scheduled tasks'],
     ['~/.mercury/token-usage.json', 'Daily token usage tracking'],
     ['~/.mercury/memory/', 'Short-term, long-term, episodic memory'],
@@ -343,6 +353,13 @@ export function getTelegramHelp(): string {
   lines.push('/bg current — Move the current task to the background (keeps running)');
   lines.push('/bg list — List background tasks');
   lines.push('/bg cancel <id> — Cancel a background task');
+  lines.push('');
+
+  lines.push('**Plugins**');
+  lines.push('/plugins — Installed and available plugins, with buttons');
+  lines.push('/plugins install <id> — Install (shows what it needs first)');
+  lines.push('/plugins enable|disable <id> — Turn a plugin on or off');
+  lines.push('/plugins uninstall <id> — Remove (keeps data unless --purge)');
   lines.push('');
 
   lines.push('**Budget**');
@@ -450,6 +467,13 @@ export function getDiscordHelp(): string {
   lines.push('/bg current \u2014 Move the current task to the background (keeps running)');
   lines.push('/bg list \u2014 List background tasks');
   lines.push('/bg cancel <id> \u2014 Cancel a background task');
+  lines.push('');
+
+  lines.push('**Plugins**');
+  lines.push('/plugins \u2014 Installed and available plugins');
+  lines.push('/plugins install <id> \u2014 Install (shows what it needs first)');
+  lines.push('/plugins enable|disable <id> \u2014 Turn a plugin on or off');
+  lines.push('/plugins uninstall <id> \u2014 Remove (keeps data unless --purge)');
   lines.push('');
 
   lines.push('**Budget**');

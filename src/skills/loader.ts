@@ -5,7 +5,7 @@ import { getMercuryHome } from '../utils/config.js';
 import type { SkillDiscovery, Skill, SkillMeta } from './types.js';
 import { IntentRouter } from './intent-router.js';
 import { logger } from '../utils/logger.js';
-import { DEFAULT_SKILL_SEEDS, getCategoryLabel } from './default-skills.js';
+import { DEFAULT_SKILL_SEEDS, PREVIOUS_SEED_CONTENTS, getCategoryLabel } from './default-skills.js';
 
 const SKILL_FILE = 'SKILL.md';
 const DISABLED_FILE = '.disabled';
@@ -407,7 +407,17 @@ Describe what this skill enables Mercury to do. When invoked via the use_skill t
     for (const seed of DEFAULT_SKILL_SEEDS) {
       const skillDir = join(this.skillsDir, seed.dirName);
       const skillFile = join(skillDir, seed.fileName);
-      if (existsSync(skillFile)) continue;
+      if (existsSync(skillFile)) {
+        // Upgrade an untouched copy of an older built-in version; never overwrite edits.
+        try {
+          const current = readFileSync(skillFile, 'utf-8');
+          if (current !== seed.content && (PREVIOUS_SEED_CONTENTS[seed.dirName] ?? []).includes(current)) {
+            writeFileSync(skillFile, seed.content, 'utf-8');
+            logger.info({ skill: seed.dirName }, 'Upgraded default skill');
+          }
+        } catch { /* leave it */ }
+        continue;
+      }
 
       mkdirSync(skillDir, { recursive: true });
       writeFileSync(skillFile, seed.content, 'utf-8');

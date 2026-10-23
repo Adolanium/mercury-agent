@@ -1,47 +1,65 @@
-# Release v1.3.0
+# Release v1.4.0
 
-## ☿ Mercury Agent v1.3.0 — Mercury Bots
+## ☿ Mercury Agent v1.4.0 — Pluggy Mercury
 
-Mercury stops being one agent and becomes **a fleet**. This release introduces **Mercury Bots** — persistent, persona-scoped agents that run *outside your conversation*: each with its own persona, private sandbox workspace, skill library, permission scopes, token budget, and a durable job queue. Onboard a researcher, a writer, a watchtower — chain them into multi-level fleets where a lead bot recruits and manages its own crew. They work 24/7, stream their thinking into their own threads, and escalate only what truly needs you.
+Mercury gets plugins. Install what you need with `/plugins install <id>`: each plugin runs in its own process, comes from a checksum-verified catalog, and asks for exactly the access it needs. Two official plugins ship today on macOS, Windows and Linux:
 
-### What's New
+- **WhatsApp**: chat with Mercury, and talk to it on voice calls. It can call you, or listen to you on the go.
+- **Optimus**: Mercury uses your computer. It sees the screen, moves, scrolls and types like a person, talks back, and stops the moment you say "stop".
 
-- **Persistent bot runtime** — Bots are long-lived persona agents, not temp sub-agents: `bot.yaml` manifest + `permissions.yaml`, private sandbox at `~/.mercury/bots/<id>/`, journal-backed thread history that hydrates on reopen. A wake turns them on; they work through a durable job queue that survives restarts.
-- **Fleets — leads + crews** — Promote any bot to **fleet lead**; it recruits, organizes, and manages its own crew (imperative self-organization). Multi-level hierarchies supported; crew results bubble up through the lead. Onboarding tiers: solo → lead auto-build → lead manual.
-- **Durable queue + DLQ** — Jobs survive restarts, lease-heartbeat while running, classify to `timed out` on worker death, and replay non-destructively from the DLQ (`/bots replay`). Nothing dies silently.
-- **Web cockpit** — The local dashboard gained a **Mercury Bots section**: live roster states, per-bot threads, needs-you escalation badges, and a fleet step view that mirrors the TUI.
-- **Sandbox + deliverables** — Per-bot isolated workspace; final artifacts go out via `bot_deliver`; retention janitor caps disk; fleet-shared folder for cross-bot files with implicit grants.
-- **Bundles** — `/bots export` produces a shareable bundle (manifests + personas + permissions + skills; a lead's bundle carries its whole crew). `/bots import` recreates bots — imported bots start **disabled** by design; sandbox, journals, and `.env` never travel.
-- **Permission tiers at onboarding** — `ask` / `allow` per capability, set explicitly. Per-bot shell allow-lists flow from `permissions.yaml autoApproveCommands`; malformed scopes skip + warn, never crash turns.
-- **Bot-facing tools** — `dispatch_bot`, `bot_schedule`, `bot_deliver`, `fleet_status`, `journal_append` + native/per-bot skill libraries with auto-synthesis. Bots can schedule their own future runs.
-- **`mercury bots` CLI** — `doctor` (exit 1 when actionable), `list`, `storage`.
+The first stable release since 1.3.8. It also carries the 1.3.9 hotfix below, which only shipped on the dev channel.
+
+### Plugins (#203)
+- **Optional plugins.** `/plugins install|enable|disable|update|rollback|uninstall`, from a checksum-verified catalog at mercuryagent.sh. Plugins run out of process, so a crashing plugin can't take Mercury down, and they declare their network hosts, secrets and permissions up front.
+- **Plugin API 1.2.** Plugins can return images to the model (kept out of chat history), request desktop access (`permissions.desktop`), and add `whatsapp` or `desktop` channels.
+- **Plugins use Mercury's own providers.** You set a key once; plugins borrow it. A missing optional key is explained once, with what it turns off.
+- **Guided setup and a flatter `/plugins <id>` menu.** Settings are listed on the menu itself, yes/no options say what each answer does, and the follow-up settings appear right after you save. No dead ends.
+- Installing a plugin into a running Mercury now starts it immediately (it used to wait for a restart).
+
+### WhatsApp plugin 0.1.1 (#202)
+- Chat with Mercury on WhatsApp from a spare number, as a linked device.
+- **Voice calls in both directions.** Mercury can call you ("call me at 9pm", "call me when it's done"), keeps you posted while it works, takes approvals by voice or in the chat, and sends links, photos and documents mid-call.
+- Choose the voice engine (OpenAI by default, Gemini, Grok, ElevenLabs, Azure, Qwen, or your own Mercury model), access levels (General / Extended), and link or unlink from the dashboard.
+
+### Optimus plugin 0.4.7 (new)
+- **Mercury uses your computer.** It looks at the screen, then moves the pointer, scrolls and types the way a person does, with a "Mercury is driving" overlay while it has control. macOS, Windows and Linux; no developer certificates needed.
+- **Talk to it.** A talk key starts listening mode with spoken replies, a mute key stops listening without stopping the work, and saying "stop" halts every action at once. Silence ends a session, so nothing is captured or spent while you're away.
+- **Honest about results.** Optimus checks the screen before it reports something as done, and failed actions are reported as failed.
+- Consequential actions ask first; Mercury declines to play or automate games that use anti-cheat (Vanguard, Easy Anti-Cheat, BattlEye), since automated input there can get your account banned. The TUI status bar shows when Optimus is listening or working, and a soft tick-tock plays while it works.
+- Voice settings are shared with WhatsApp.
+
+### Also new
+- **Built-in `web_search`.**
+- **Mercury reads photos and PDFs, and listens to voice notes, from chat.**
+- Mercury always knows it comes from Cosmic Stack.
+- Web dashboard: plain-language model names, renaming, a reasoning picker, every local Ollama model, ChatGPT Plus/Pro plan models.
 
 ### Fixed
-
-- Fleet duplication on reopen; `/bots` stays inside the bot thread it opened.
-- Bot thinking streams live into its thread; fleet speed fixes (single-provider lease wait, batched roster fetches).
-- Bot-thread results no longer sliced at 800 chars; durable retries + durable mailboxes close delivery-contract gaps.
-- Windows hardening: SQLite queue teardown EBUSY, heartbeat-test EBUSY, retention EINVAL, separator-agnostic traversal guard; post-close queue ops degrade to no-ops.
-- JSON backend lease-expiry race closed; doctor flags routines registered in schedules but missing from `bot.yaml` (the silently-never-fires failure).
-- Telegram member installs no longer surface `install_skill`.
+- **The desktop channel no longer loops broadcasts.** One failing alert used to fan out into hundreds of WhatsApp messages; repeated alerts are now sent once.
+- ChatGPT OAuth turns no longer fail after a tool call.
+- Long messages no longer fail memory search ("Expression tree is too large").
+- New dashboard chats no longer land in the previous conversation; dashboard permission prompts render and resolve.
+- Plugin tar calls work with GNU tar on Windows.
+- **The web dashboard works on the Windows standalone binary.** Mercury looked for its `web/` folder inside the binary's virtual filesystem, because it only recognised Bun's macOS/Linux marker (`$bunfs`) and not Windows' (`~BUN`), so the dashboard reported "web UI not found". Found and fixed by @farena-ai in #189; the same check is now shared by the login page and the memory-graph fallback.
 
 ### Upgrade
 
 **npm:**
 ```
-npm install -g @cosmicstack/mercury-agent@1.3.0
+npm install -g @cosmicstack/mercury-agent@1.4.0
 mercury restart
 ```
 
-**Standalone binary:** re-run the one-line installer from mercuryagent.sh, then `mercury restart`.
+**Standalone binary:** `mercury upgrade`, or re-run the one-line installer from mercuryagent.sh.
 
-No config migrations. Bots are opt-in: `/bots create <id> "Name" "Description"` onboards your first bot.
+Then try a plugin:
+```
+/plugins install optimus
+/plugins install whatsapp
+```
 
-### Files Touched (highlights)
+No config migrations. Plugins are opt-in.
 
-- `src/bots/*` — the entire fleet module (new): store, queue (SQLite+JSON), bot-manager, bot-turn, journal, bundle, doctor, persona-template, fleet-*, skill-synthesis, retention, tools/.
-- `src/core/agent.ts`, `src/cli/*`, `src/channels/cli.ts` — /bots chat surface, CLI command group, bot-thread region, thinking streams.
-- `src/web/*` — Mercury Bots cockpit section on the dashboard.
-- PRs: #131–#139, #117 (RevShare).
+Docs: https://mercuryagent.sh/docs/integrations/optimus · https://mercuryagent.sh/docs/integrations/whatsapp · https://mercuryagent.sh/docs/releases/1.4.0
 
-**Full Changelog**: https://github.com/cosmicstack-labs/mercury-agent/compare/v1.2.7...v1.3.0
+**Full Changelog**: https://github.com/cosmicstack-labs/mercury-agent/compare/v1.3.8...v1.4.0

@@ -266,6 +266,77 @@ export const skills = {
   delete: (name: string) => del<{ success: boolean }>(`/api/skills/${name}`),
 };
 
+// ── Plugins ──
+export type PluginStatus = "available" | "installed" | "enabled" | "disabled" | "update-available" | "incompatible" | "error";
+
+export interface PluginSetting {
+  key: string;
+  type: "string" | "number" | "boolean" | "enum" | "secret";
+  description: string;
+  options?: string[];
+  value: unknown;
+  label?: string;
+  when?: Record<string, string | boolean | string[]> | Array<Record<string, string | boolean | string[]>>;
+  isSet?: boolean;
+  group?: string;
+  setup?: boolean;
+  required?: boolean;
+  optionLabels?: Record<string, string>;
+  format?: "text" | "phone";
+}
+
+export interface PluginItem {
+  id: string;
+  name: string;
+  description: string;
+  kind: "in-process" | "out-of-process";
+  tier: "official" | "community" | "local";
+  status: PluginStatus;
+  installedVersion?: string;
+  latestVersion?: string;
+  sizeBytes?: number;
+  enabled: boolean;
+  running: boolean;
+  verified: boolean;
+  tools: string[];
+  commands: string[];
+  permissions?: { network: string[]; secrets: string[] };
+  disabled?: { code: string; message: string; at: string };
+  lastError?: string;
+  incompatibleReason?: string;
+  settings?: PluginSetting[];
+  channel?: { type: string; state?: string; detail?: string; account?: string };
+  missing?: Array<{ key: string; unlocks: string; needs: string; fix: string }>;
+  settingGroups?: Array<{ id: string; label: string; description?: string; ready: boolean }>;
+}
+
+export interface PluginChannelStatus {
+  state: string;
+  detail?: string;
+  account?: string;
+  pairCode?: string;
+  qrImage?: string;
+}
+
+export const plugins = {
+  list: (refresh = false) =>
+    get<{ items: PluginItem[]; catalogError?: string; stale: boolean; safeMode: boolean }>(`/api/plugins${refresh ? "?refresh=1" : ""}`),
+  info: (id: string) => get<{ plugin: PluginItem | null }>(`/api/plugins/${encodeURIComponent(id)}`),
+  install: (source: string) =>
+    post<{ id: string; name: string; version: string; previousVersion?: string; verified: boolean; unchanged: boolean; tier: string }>("/api/plugins/install", { source }),
+  enable: (id: string) => post<{ ok: boolean }>(`/api/plugins/${encodeURIComponent(id)}/enable`),
+  disable: (id: string) => post<{ ok: boolean }>(`/api/plugins/${encodeURIComponent(id)}/disable`),
+  update: (id: string) => post<{ changed: Array<{ id: string; from: string; to: string }> }>(`/api/plugins/${encodeURIComponent(id)}/update`),
+  rollback: (id: string) => post<{ from: string; to: string }>(`/api/plugins/${encodeURIComponent(id)}/rollback`),
+  uninstall: (id: string, purge = false) => del<{ ok: boolean }>(`/api/plugins/${encodeURIComponent(id)}${purge ? "?purge=1" : ""}`),
+  setSetting: (id: string, key: string, value: unknown) =>
+    post<{ ok: boolean }>(`/api/plugins/${encodeURIComponent(id)}/settings`, { key, value }),
+  channel: (id: string) => get<{ status: PluginChannelStatus | null }>(`/api/plugins/${encodeURIComponent(id)}/channel`),
+  pair: (id: string, method: "qr" | "code", phone?: string) =>
+    post<{ status: PluginChannelStatus }>(`/api/plugins/${encodeURIComponent(id)}/pair`, { method, phone }),
+  unlink: (id: string) => post<{ ok: boolean }>(`/api/plugins/${encodeURIComponent(id)}/unlink`, {}),
+};
+
 // ── Permissions ──
 export const permissions = {
   get: () => get<{ manifest: PermissionManifest }>("/api/permissions"),
@@ -908,6 +979,7 @@ const api = {
   agents,
   bgTasks,
   skills,
+  plugins,
   permissions,
   usage,
   schedules,

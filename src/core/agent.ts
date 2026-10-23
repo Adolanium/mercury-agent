@@ -96,6 +96,11 @@ import { createTaskSurface } from './task-surface.js';
 import { buildFileChangePreview } from '../utils/file-preview.js';
 import { whatsNewText } from '../utils/whats-new.js';
 import { handleBotsCommand as handleBotsCommandImpl } from './commands/bots-command.js';
+import { modelSeesImages, withAttachments } from './attachments.js';
+import { AlertGate } from './alert-gate.js';
+import { setPluginImagesAllowed } from '../plugins/tool-bridge.js';
+import { handleCallCommand } from '../plugins/call-schedule.js';
+import { handlePluginsCommand, tryPluginCommand, hasPluginDialog, answerPluginDialog } from '../plugins/commands.js';
 import { handleChatCommand as handleChatCommandImpl } from './commands/chat-command.js';
 import { handleBgCommand as handleBgCommandImpl } from './commands/bg-command.js';
 import { handleSaverCommand as handleSaverCommandImpl } from './commands/saver-command.js';
@@ -525,6 +530,7 @@ export function looksLikeCodingTask(text: string): boolean {
   return (intent.test(t) && artifact.test(t)) || pathOrCommand.test(t) || fence.test(t);
 }
 
+
 export class Agent {
   readonly lifecycle: Lifecycle;
   readonly scheduler: Scheduler;
@@ -747,6 +753,45 @@ export class Agent {
         });
       }
       return;
+    }
+
+    // A plugin setup or menu waiting for an answer in this chat ("2", "+91…").
+    if (!trimmed.startsWith('/') && hasPluginDialog(msg.channelId)) {
+      const channel = this.channels.getChannelForMessage(msg);
+      if (channel) {
+        answerPluginDialog(trimmed, msg, channel).catch((err) => {
+          logger.error({ err: err instanceof Error ? err.message : err }, 'plugin dialog failed');
+        });
+        return;
+      }
+    }
+
+    // /call and /calls: scheduled calls, worked out in code (no model turn).
+    if (/^\/calls?(\s|$)/.test(trimmed)) {
+      const channel = this.channels.getChannelForMessage(msg);
+      if (channel) {
+        void channel.send(handleCallCommand(trimmed, msg.senderRole === 'member'), msg.channelId).catch(() => {});
+      }
+      return;
+    }
+
+    // /plugins is fast-path like /bots: installing or toggling a plugin must
+    // work while a turn is running (that's often when you notice you need it).
+    if (/^\/plugins?(\s|$)/.test(trimmed)) {
+      const channel = this.channels.getChannelForMessage(msg);
+      if (channel) {
+        handlePluginsCommand(trimmed, msg, channel).catch((err) => {
+          logger.error({ err: err instanceof Error ? err.message : err, content: trimmed.slice(0, 50) }, '/plugins command failed');
+        });
+      }
+      return;
+    }
+
+    // Slash commands contributed by plugins. Built-in names are reserved,
+    // so a plugin can never take over /help, /stop, /bots and so on.
+    if (trimmed.startsWith('/')) {
+      const channel = this.channels.getChannelForMessage(msg);
+      if (channel && tryPluginCommand(trimmed, msg, channel)) return;
     }
 
     // /bot <id> <message> — talk to a named bot from ANY channel (TUI,
@@ -1518,6 +1563,14 @@ export class Agent {
     status: 'running' | 'done' | 'error',
     durationMs?: number,
   ): void {
+    // Channels that narrate progress themselves (plugin channels: a voice call
+    // speaks "still searching the web…") hear about every tool start.
+    if (status === 'running' && this.currentMessage) {
+      const current = this.channels.getChannelForMessage(this.currentMessage) as { toolStarted?: (channelId: string, toolName: string) => void } | undefined;
+      if (typeof current?.toolStarted === 'function') {
+        try { current.toolStarted(this.currentMessage.channelId, toolName); } catch { /* best effort */ }
+      }
+    }
     const ch = this.channels.get('cli');
     if (!(ch instanceof CLIChannel)) return;
     if (status === 'running') {
@@ -1591,6 +1644,14 @@ export class Agent {
         (channel as CLIChannel).sendHeartbeat(heartbeatText);
       } else if (channel instanceof WebChannel) {
         (channel as WebChannel).sendHeartbeat(heartbeatText, msg.channelId);
+      } else if (channel && (channel as { quietProgress?: boolean }).quietProgress) {
+        // Phone chats (plugin channels like WhatsApp): keep "typing…" alive, and
+        // say once, early, that this one is taking a while and what it's doing.
+        void channel.typing(msg.channelId).catch(() => {});
+        if (heartbeatCount === 1) {
+          const doing = this.currentActivity ? this.currentActivity.replace(/[.…]+$/, '') : 'working on it';
+          void channel.send(`⏳ This one takes a moment. Still on it: ${doing.charAt(0).toLowerCase()}${doing.slice(1)}…`, msg.channelId).catch(() => {});
+        }
       } else if (channel) {
         void channel.send(heartbeatText, msg.channelId).catch((e) => logger.warn({ e }, 'channel send failed'));
       }
@@ -2108,6 +2169,10 @@ export class Agent {
     if (channel instanceof TelegramChannel || channel instanceof SignalChannel || channel instanceof DiscordChannel || channel instanceof SlackChannel) {
       channel.endTask(msg.channelId);
       channel.resetStepCounter(msg.channelId);
+    } else if (channel && typeof (channel as { endTask?: unknown }).endTask === 'function') {
+      // Any other channel that wants to know a turn finished (plugin channels: a
+      // voice call waits for the turn's answer).
+      try { (channel as unknown as { endTask: (id: string) => void }).endTask(msg.channelId); } catch { /* best effort */ }
     }
   }
 
@@ -2585,7 +2650,19 @@ export class Agent {
       const loopWarning = detectRepetitionLoop(recentMemory);
       if (loopWarning) contextBlocks.push(loopWarning);
 
-      contextBlocks.push(...(await this.retrieveMemoryContext(msg)));
+      // Chat channels can carry an access level and guidance (plugin API 1.1,
+      // e.g. WhatsApp): "general" means no tools, no personal memory and no
+      // learning from the turn; the guidance tells the model where it is and
+      // how to write for it.
+      // A scheduled task the owner approved with specific plugin tools runs them unattended.
+      this.capabilities.permissions.setTurnPluginGrants(
+        msg.senderId === 'system' && Array.isArray(msg.metadata?.allowTools) ? (msg.metadata.allowTools as unknown[]).filter((t): t is string => typeof t === 'string') : [],
+      );
+      const generalAccess = msg.metadata?.channelAccess === 'general';
+      this.capabilities.setToolsDisabled(generalAccess);
+      const guidance = typeof msg.metadata?.channelGuidance === 'string' ? msg.metadata.channelGuidance.slice(0, 2000) : '';
+      if (guidance) contextBlocks.unshift(guidance);
+      if (!generalAccess) contextBlocks.push(...(await this.retrieveMemoryContext(msg)));
 
       for (const m of recentMemory) messages.push(toModelMessage(m));
 
@@ -3011,7 +3088,8 @@ export class Agent {
                         }
                       }
                     } else {
-                      void channel.send(`  [Using: ${names}]`, msg.channelId).catch((e) => logger.warn({ e }, 'channel send failed'));
+                      if ((channel as { quietProgress?: boolean }).quietProgress) void channel.typing(msg.channelId).catch(() => {});
+                      else void channel.send(`  [Using: ${names}]`, msg.channelId).catch((e) => logger.warn({ e }, 'channel send failed'));
                     }
                     this.markProgress();
                   }
@@ -3088,7 +3166,9 @@ export class Agent {
           // DeepSeek thinking models require prior reasoning_content to be
           // passed back with assistant turns (issue #24); other providers
           // get plain text.
-          const providerMessages = deepseekProviderOptions ? withReasoningParts(messages) : messages;
+          // Photos and PDFs from the chat go to models that can take them.
+          setPluginImagesAllowed(modelSeesImages(provider.name, provider.getModel()));
+          const providerMessages = withAttachments(deepseekProviderOptions ? withReasoningParts(messages) : messages, msg, provider.name, provider.getModel());
           // Per-provider output ceiling: a 32K request is rejected outright by
           // providers with smaller limits and burned a halve-and-retry round.
           const providerMaxOutputTokens = Math.min(effectiveMaxOutputTokens, provider.getMaxOutputTokens() ?? Infinity);
@@ -3541,6 +3621,7 @@ export class Agent {
       while (
         !loopAbortController.signal.aborted
         && this.programmingMode.isExecute()
+        && !this.capabilities.areToolsDisabled()
         && executeGuardRounds < (narrationSecondWind ? MAX_EXECUTE_CONTINUATIONS * 2 : MAX_EXECUTE_CONTINUATIONS)
         // A turn that ends by asking the user something in plain text is a
         // legitimate pause — forcing rounds here looped the model forever
@@ -3798,6 +3879,7 @@ export class Agent {
         !loopAbortController.signal.aborted
         && turnEnd() === 'text-stop'
         && this.programmingMode.isExecute()
+        && !this.capabilities.areToolsDisabled()
         && verificationContinuations < MAX_VERIFICATION_CONTINUATIONS
         && shouldRequireVerification({
           taskText: msg.content,
@@ -3884,6 +3966,7 @@ export class Agent {
       if (
         !loopAbortController.signal.aborted
         && this.programmingMode.isExecute()
+        && !this.capabilities.areToolsDisabled()
         && !responseAsksUser(result.text || '')
         && shouldForceExecuteContinuation({
           taskText: msg.content,
@@ -3910,6 +3993,7 @@ export class Agent {
       if (
         !loopAbortController.signal.aborted
         && this.programmingMode.isExecute()
+        && !this.capabilities.areToolsDisabled()
         && lastVerification != null
         && !verifiedAfterLastMutation()
         && !responseAsksUser(result.text || '')
@@ -4025,7 +4109,7 @@ export class Agent {
         channelType: msg.channelType,
       });
 
-      if (msg.channelType !== 'internal') {
+      if (msg.channelType !== 'internal' && msg.metadata?.channelAccess !== 'general') {
         this.extractMemory(msg.content, finalText).catch(err => {
           logger.warn({ err }, 'Memory extraction failed');
         });
@@ -4127,6 +4211,8 @@ export class Agent {
       stallWatchdog.stop();
       stopHeartbeat();
       this.finalizeChannelTask(msg);
+      this.capabilities.setToolsDisabled(false);
+      this.capabilities.permissions.setTurnPluginGrants([]);
       this.currentMessage = null;
       this.currentAbort = null;
       this.currentAbortReason = null;
@@ -4187,7 +4273,7 @@ export class Agent {
     });
   }
 
-  async processInternalPrompt(prompt: string, channelId?: string, channelType?: string): Promise<void> {
+  async processInternalPrompt(prompt: string, channelId?: string, channelType?: string, opts: { allowTools?: string[]; scheduledTaskId?: string } = {}): Promise<void> {
     const syntheticMsg: ChannelMessage = {
       id: `internal-${Date.now().toString(36)}`,
       channelId: channelId || 'internal',
@@ -4195,6 +4281,9 @@ export class Agent {
       senderId: 'system',
       content: prompt,
       timestamp: Date.now(),
+      ...(opts.allowTools?.length || opts.scheduledTaskId
+        ? { metadata: { ...(opts.allowTools?.length ? { allowTools: opts.allowTools } : {}), ...(opts.scheduledTaskId ? { scheduledTaskId: opts.scheduledTaskId } : {}) } }
+        : {}),
     };
     this.enqueueMessage(syntheticMsg);
   }
@@ -4242,7 +4331,7 @@ export class Agent {
       if (!prompt) {
         prompt = `Execute scheduled task: ${manifest.description}`;
       }
-      await this.processInternalPrompt(prompt, manifest.sourceChannelId, manifest.sourceChannelType);
+      await this.processInternalPrompt(prompt, manifest.sourceChannelId, manifest.sourceChannelType, { allowTools: manifest.allowTools, scheduledTaskId: manifest.id });
     } catch (err) {
       logger.error({ err, task: manifest.id }, 'Scheduled task execution failed');
     }
@@ -4302,6 +4391,24 @@ export class Agent {
         }
       }
     }
+  }
+
+  /** Learn from a conversation that didn't happen as chat turns (e.g. a voice call). */
+  learnFromConversation(ownerSaid: string, mercurySaid: string): void {
+    void this.extractMemory(ownerSaid, mercurySaid).catch((err) => logger.warn({ err }, 'Learning from a call failed'));
+  }
+
+  /** Who Mercury is, for a voice that isn't the main model: identity, about, and the owner's profile. */
+  voiceBriefing(): string {
+    const parts = [this.identity.getSystemPrompt(this.config.identity)];
+    if (this.userMemory) {
+      try {
+        const profile = this.userMemory.getProfile().trim();
+        const active = this.userMemory.getActiveSummary().trim();
+        if (profile || active) parts.push(`# What you know about ${this.config.identity.owner || 'your owner'} (from your Second Brain)\n${[profile, active].filter(Boolean).join('\n').slice(0, 4000)}`);
+      } catch { /* memory unavailable: identity alone */ }
+    }
+    return parts.join('\n\n');
   }
 
   private async extractMemory(userMessage: string, agentResponse: string): Promise<void> {
@@ -4449,6 +4556,27 @@ RULES:
    * next start does not auto-resume killed tasks. Crash recovery is
    * unaffected — this is only invoked on intentional exits.
    */
+  /**
+   * Stop only the work started from one place (e.g. a desktop voice session,
+   * "desktop:call:<id>"): the running turn if it's theirs, and anything
+   * queued for it. Other chats keep going. Returns whether anything stopped.
+   */
+  stopWorkFor(channelPrefix: string, reason = 'Stopped by the owner.'): boolean {
+    const before = this.messageQueue.length;
+    this.messageQueue = this.messageQueue.filter((i) => !i.message.channelId.startsWith(channelPrefix));
+    let stopped = this.messageQueue.length !== before;
+    if (this.currentMessage?.channelId.startsWith(channelPrefix) && this.currentAbort && !this.currentAbort.signal.aborted) {
+      this.currentAbortReason = 'stopped';
+      this.currentAbort.abort();
+      if (this.currentWorkKey) {
+        try { this.workLedger.markCancelled(this.currentWorkKey, reason); } catch { /* entry may not exist */ }
+      }
+      stopped = true;
+    }
+    if (stopped) logger.info({ channelPrefix }, 'Work stopped for one channel');
+    return stopped;
+  }
+
   cancelActiveWork(reason = 'Cancelled by the user.'): number {
     try {
       return this.workLedger.cancelActive(reason);
@@ -4476,10 +4604,18 @@ RULES:
    * what happened to their task.
    */
   async notifyAllChannels(message: string): Promise<void> {
+    const outcome = await this.alertGate.run(message, () => this.broadcastToChannels(message));
+    if (outcome !== 'sent') logger.warn({ outcome, message: message.slice(0, 120) }, 'Broadcast not sent');
+  }
+
+  /** Broadcasts never nest or repeat (see AlertGate). */
+  private alertGate = new AlertGate();
+
+  private async broadcastToChannels(message: string): Promise<void> {
     const active = this.channels.getActiveChannels();
     const sends = active.map((type) => {
       const ch = this.channels.get(type);
-      if (!ch) return Promise.resolve();
+      if (!ch || ch.noBroadcast) return Promise.resolve();
       return ch.send(message).catch((e) => {
         logger.warn({ e, channel: type }, 'Failed to notify channel before exit');
       });
