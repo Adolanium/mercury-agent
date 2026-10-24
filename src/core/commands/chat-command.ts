@@ -52,6 +52,73 @@ import { publishStatus, updateCliProviderStatus } from '../provider-status.js';
 import { whatsNewText } from '../../utils/whats-new.js';
 import { FORGET_THAT_RE, MEMORY_SUBCOMMAND_HELP, handleBeliefCommand } from './memory-commands.js';
 
+/**
+ * The owner's own screens: the foreground terminal (CLI channel) and the
+ * attached terminal or dashboard (web channel). Both can show an arrow-key
+ * picker; every other channel gets text. Since 1.3.1 the default launch
+ * attaches, so a picker offered only to the CLI channel was a picker nobody
+ * saw — /model made people type `/models use <name>`.
+ */
+function isOwnerScreen(channel: unknown, channelType: string): channel is CLIChannel | WebChannel {
+  return channel instanceof WebChannel || (channelType === 'cli' && channel instanceof CLIChannel);
+}
+
+/**
+ * An arrow-key choice on an owner screen. Returns the chosen label, or null
+ * when the owner dismissed it (Esc) or the screen could not show it, so a
+ * dismissed picker never silently acts on the first option.
+ */
+async function pickOnOwnerScreen(agent: Agent, channel: CLIChannel | WebChannel, channelType: string, channelId: string, question: string, labels: string[]): Promise<string | null> {
+  if (channel instanceof WebChannel) {
+    const value = await channel.presentChoicePrompt(question, labels.map((label, i) => ({ value: String(i), label })), channelId);
+    const idx = Number.parseInt(value, 10);
+    return Number.isInteger(idx) && labels[idx] !== undefined ? labels[idx] : null;
+  }
+  const picked = await agent.presentChoice(question, labels, channelId, channelType);
+  return labels.includes(picked) ? picked : null;
+}
+
+/**
+ * The Ask Me / Allow All picker on an owner screen (/permissions, and a
+ * fresh /new session). The current mode is named in the question; Esc keeps
+ * it. A pick is applied, saved and pushed to every status row.
+ */
+async function offerPermissionMode(agent: Agent, channel: CLIChannel | WebChannel, channelId: string, question: string): Promise<void> {
+  if (channel instanceof CLIChannel) {
+    const mode = await channel.askPermissionMode(loadPermissionMode() ?? undefined);
+    if (mode === 'allow-all') {
+      agent.capabilities.permissions.setAutoApproveAll(true);
+      agent.capabilities.permissions.addTempScope('/', true, true);
+    } else {
+      agent.capabilities.permissions.setAutoApproveAll(false);
+    }
+    const chosen = mode === 'allow-all' ? 'allow-all' : 'ask-me';
+    savePermissionMode(chosen);
+    channel.setPermissionModeStatus(chosen);
+    publishStatus();
+    await channel.send(`${describePermissionMode(chosen)} Saved: Mercury remembers this. Change it any time with /permissions.`, channelId);
+    return;
+  }
+  // The attached terminal and the dashboard (channel type 'web').
+  const current = loadPermissionMode() ?? (channel.getSettings().bypassPermissions ? 'allow-all' : 'ask-me');
+  const picked = await channel.presentChoicePrompt(
+    `${question} (now: ${current === 'allow-all' ? 'Allow All' : 'Ask Me'})`,
+    [
+      { value: 'ask-me', label: 'Ask Me: ask before writing files or running commands' },
+      { value: 'allow-all', label: 'Allow All: just do it (blocked commands stay blocked)' },
+    ],
+    channelId,
+  );
+  if (picked !== 'ask-me' && picked !== 'allow-all') {
+    await channel.send(`${describePermissionMode(current)} Unchanged. /permissions switches any time.`, channelId);
+    return;
+  }
+  channel.setBypassPermissions(picked === 'allow-all');
+  savePermissionMode(picked);
+  publishStatus();
+  await channel.send(`${describePermissionMode(picked)} Saved: Mercury remembers this. Change it any time with /permissions.`, channelId);
+}
+
 export async function handleChatCommand(agent: Agent, content: string, channelType: string, channelId: string): Promise<boolean> {
   const trimmed = content.trim();
   const cmd = trimmed.toLowerCase();
@@ -70,6 +137,9 @@ export async function handleChatCommand(agent: Agent, content: string, channelTy
   // Unlike /reset this never halts agents, clears queues, or wipes state.
   if (cmd === '/new') {
     await agent.handleSessionCommand('/session new', channelType as ChannelType, channelId);
+    // A fresh session on the owner's own screen asks which permission mode
+    // to run in (the current one is shown; Esc keeps it).
+    if (isOwnerScreen(channel, channelType)) await offerPermissionMode(agent, channel, channelId, 'Permission mode for this session?');
     return true;
   }
 
@@ -169,41 +239,8 @@ export async function handleChatCommand(agent: Agent, content: string, channelTy
   }
 
   if (cmd === '/permissions') {
-    if (channelType === 'cli' && channel instanceof CLIChannel) {
-      const mode = await channel.askPermissionMode?.();
-      if (mode === 'allow-all') {
-        agent.capabilities.permissions.setAutoApproveAll(true);
-        agent.capabilities.permissions.addTempScope('/', true, true);
-      } else {
-        agent.capabilities.permissions.setAutoApproveAll(false);
-      }
-      const chosen = mode === 'allow-all' ? 'allow-all' : 'ask-me';
-      savePermissionMode(chosen);
-      channel.setPermissionModeStatus(chosen);
-      publishStatus();
-      await channel.send(`${describePermissionMode(chosen)} Saved: Mercury remembers this. Change it any time with /permissions.`, channelId);
-      return true;
-    }
-    // The attached terminal and the dashboard are the owner's own screens
-    // (channel type 'web'): offer the same choice and remember it.
-    if (channel instanceof WebChannel) {
-      const current = loadPermissionMode() ?? (channel.getSettings().bypassPermissions ? 'allow-all' : 'ask-me');
-      const picked = await channel.presentChoicePrompt(
-        `How should Mercury handle risky actions? (now: ${current === 'allow-all' ? 'Allow All' : 'Ask Me'})`,
-        [
-          { value: 'ask-me', label: 'Ask Me: ask before writing files or running commands' },
-          { value: 'allow-all', label: 'Allow All: just do it (blocked commands stay blocked)' },
-        ],
-        channelId,
-      );
-      if (picked !== 'ask-me' && picked !== 'allow-all') {
-        await channel.send('No change. Type /permissions allow-all or /permissions ask-me to switch directly.', channelId);
-        return true;
-      }
-      channel.setBypassPermissions(picked === 'allow-all');
-      savePermissionMode(picked);
-      publishStatus();
-      await channel.send(`${describePermissionMode(picked)} Saved: Mercury remembers this. Change it any time with /permissions.`, channelId);
+    if (isOwnerScreen(channel, channelType)) {
+      await offerPermissionMode(agent, channel, channelId, 'How should Mercury handle risky actions?');
       return true;
     }
     await channel.send('On Telegram, use the /permissions button or command. Your own terminal and dashboard use /permissions too.', channelId);
@@ -255,18 +292,18 @@ export async function handleChatCommand(agent: Agent, content: string, channelTy
       ];
       await channel.send(lines.join('\n'), channelId);
 
-      if (channelType === 'cli' && channel instanceof CLIChannel && activeProviders.length > 1) {
+      if (activeProviders.length > 1 && isOwnerScreen(channel, channelType)) {
         const choices = [
           ...activeProviders.map((p) => `${p.name} · ${p.model}${p.name === current.name ? ' (current)' : ''}`),
           'Open doctor instructions',
           'Keep current model',
         ];
-        const picked = await agent.presentChoice('Switch session model?', choices, channelId, channelType);
+        const picked = await pickOnOwnerScreen(agent, channel, channelType, channelId, 'Switch session model?', choices);
+        if (picked === null || picked === 'Keep current model') return true;
         if (picked === 'Open doctor instructions') {
           await channel.send('Run `mercury doctor` and update provider/model settings. Then restart Mercury to persist defaults.', channelId);
           return true;
         }
-        if (picked === 'Keep current model') return true;
         const providerName = picked.split(' · ')[0].trim();
         if (providerName && providerName !== current.name) {
           const switched = await agent.switchSessionProvider(providerName);
@@ -368,7 +405,7 @@ export async function handleChatCommand(agent: Agent, content: string, channelTy
         ];
         await channel.send(lines.join('\n'), channelId);
 
-        if (channelType === 'cli' && channel instanceof CLIChannel) {
+        if (isOwnerScreen(channel, channelType)) {
           const availableModels = models.filter((m) => m.available);
           const choices = [
             ...availableModels.map((m) => `${m.id} · ${m.label}${m.id === currentModel ? ' (current)' : ''}`),
@@ -378,8 +415,8 @@ export async function handleChatCommand(agent: Agent, content: string, channelTy
             await channel.send('Only one model available for your tier. Upgrade to unlock more.', channelId);
             return true;
           }
-          const picked = await agent.presentChoice('Switch cloud model?', choices, channelId, channelType);
-          if (picked === 'Keep current model') return true;
+          const picked = await pickOnOwnerScreen(agent, channel, channelType, channelId, 'Switch cloud model?', choices);
+          if (picked === null || picked === 'Keep current model') return true;
           const modelId = picked.split(' · ')[0].trim();
           if (modelId) {
             cfg.providers.mercuryCloud.model = modelId;

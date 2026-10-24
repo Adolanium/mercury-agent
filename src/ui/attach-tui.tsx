@@ -1,10 +1,10 @@
 import React from 'react';
 import { parseAttachHandoff } from './attach-handoff.js';
-import { LaunchPad } from './launch-pad.js';
+import { LaunchPad, launchPadRows } from './launch-pad.js';
 import { useTick, spinnerFrame } from './tick-store.js';
 import { rotateTip } from './tips.js';
 import type { TuiState } from '../channels/cli.js';
-import { Box, Text, Spacer, Static, useApp, useInput } from 'ink';
+import { Box, Text, Static, useApp, useInput } from 'ink';
 import type { AttachClient, AttachEvent, AttachThread } from '../cli/attach.js';
 import { renderMarkdown } from '../utils/markdown.js';
 import { useTerminalSize } from './use-terminal-size.js';
@@ -89,15 +89,25 @@ const attachItemKey = (message: TranscriptMessage): string => message.id;
 
 function AttachMessageBlock({ message }: { message: TranscriptMessage }): React.ReactNode {
   const isUser = message.role === 'user';
+  // A system note (the permission mode on entry) is one dim line, no header.
+  if (message.role === 'system') {
+    return (
+      <Box flexDirection="column" marginBottom={1} paddingX={2} flexShrink={0}>
+        {message.content.split('\n').map((line, idx) => (
+          <Box key={`${message.id}:${idx}`} flexShrink={0}><Text dimColor>{line.length > 0 ? line : ' '}</Text></Box>
+        ))}
+      </Box>
+    );
+  }
   return (
     <Box flexDirection="column" marginBottom={1} flexShrink={0}>
       <Box flexShrink={0}>
-        <Text bold color={isUser ? 'yellow' : message.role === 'system' ? 'gray' : 'cyan'}>
-          {isUser ? 'YOU' : message.role === 'system' ? '—' : 'MERCURY'}:
+        <Text bold color={isUser ? 'yellow' : 'cyan'}>
+          {isUser ? 'YOU' : 'MERCURY'}:
         </Text>
       </Box>
       <Box marginLeft={2} flexDirection="column" flexShrink={0}>
-        {(isUser || message.role === 'system' ? message.content : renderMarkdown(message.content)).split('\n').map((line, idx) => (
+        {(isUser ? message.content : renderMarkdown(message.content)).split('\n').map((line, idx) => (
           <Box key={`${message.id}:${idx}`} flexShrink={0}>
             <Text>{line.length > 0 ? line : ' '}</Text>
           </Box>
@@ -175,7 +185,7 @@ export function AttachTui({ client, pid, version, onExit, onHandoff }: { client:
 
   React.useEffect(() => {
     client.listThreads()
-      .then((list) => { setThreads(list.slice(0, 6)); setThreadsLoaded(true); })
+      .then((list) => { setThreads(list.slice(0, 12)); setThreadsLoaded(true); })
       .catch(() => setThreadsLoaded(true));
   }, [client]);
 
@@ -215,6 +225,15 @@ export function AttachTui({ client, pid, version, onExit, onHandoff }: { client:
   // Same input width as the main TUI's chat/Code input (App.tsx).
   const terminalSize = useTerminalSize();
   const inputWidth = Math.max(12, terminalSize.cols - 4);
+  // The pick screen must fit the terminal: pad + 3 header rows + the list
+  // (new-session row, sessions, maybe a "… more" row) + the key hint. On a
+  // short terminal the tip goes first, then sessions fold into "… N more".
+  const pickTip = terminalSize.rows - launchPadRows(terminalSize.cols, launchTip) - 5 >= 3 ? launchTip : null;
+  const pickThreads = React.useMemo(() => {
+    const free = terminalSize.rows - launchPadRows(terminalSize.cols, pickTip) - 5; // header(3) + new row + hint
+    if (threads.length <= free) return threads;
+    return threads.slice(0, Math.max(1, free - 1)); // leave a row for "… N more"
+  }, [threads, terminalSize.rows, terminalSize.cols, pickTip]);
 
   // Live event stream for the attached session.
   React.useEffect(() => {
@@ -239,6 +258,23 @@ export function AttachTui({ client, pid, version, onExit, onHandoff }: { client:
         case 'status':
           applyStatus(event.data);
           break;
+        case 'session_switched': {
+          // /new, /session <ref> or a deleted current session re-bound this
+          // screen: follow it, or every reply from now on goes somewhere we
+          // are not listening and the spinner never stops.
+          const id = String(event.data.id ?? '');
+          if (!id || id === thread.id) break;
+          setStreaming(false);
+          setStreamTail('');
+          setSteps([]);
+          setThread({
+            id,
+            shortId: String(event.data.shortId ?? id.slice(0, 8)),
+            alias: String(event.data.alias ?? 'session'),
+            title: String(event.data.title ?? ''),
+          });
+          break;
+        }
         case 'provider':
           // The model that actually answered this turn (fallbacks included).
           if (event.data.name) setProvider({ name: String(event.data.name), model: String(event.data.model ?? '') });
@@ -337,6 +373,7 @@ export function AttachTui({ client, pid, version, onExit, onHandoff }: { client:
         .map((m) => ({ id: m.id, role: m.role as TranscriptMessage['role'], content: m.content })));
     } else {
       // "New session": create it server-side so send + SSE target the same id.
+      newSessionRef.current = true;
       const created = await client.createThread();
       setThread(created
         ? { id: created.id, shortId: created.shortId, alias: created.alias, title: created.title }
@@ -360,8 +397,11 @@ export function AttachTui({ client, pid, version, onExit, onHandoff }: { client:
       setStreaming(false);
       return;
     }
-    if (!thread.id && result.sessionId) {
-      setThread({ ...thread, id: result.sessionId, alias: 'session', title: 'New session' });
+    if (result.sessionId && result.sessionId !== thread.id) {
+      // The runtime routed this to another session (re-bound meanwhile):
+      // follow it so its reply reaches this screen.
+      const known = (await client.listThreads().catch(() => [] as ThreadInfo[])).find((t) => t.id === result.sessionId);
+      setThread(known ?? { ...thread, id: result.sessionId, shortId: result.sessionId.slice(0, 8), alias: thread.id ? 'session' : 'new session', title: thread.title || 'New session' });
     }
   }, [client, thread, onHandoff, exit]);
 
@@ -372,33 +412,51 @@ export function AttachTui({ client, pid, version, onExit, onHandoff }: { client:
     if (active.id === LOCAL_PERMISSION_MODE_PROMPT) {
       if (value === 'allow-all' || value === 'ask-me') {
         const ok = await client.setPermissionMode(value);
-        setNotice(ok
-          ? `${value === 'allow-all' ? 'Allow All' : 'Ask Me'} saved · change any time with /permissions`
-          : '⚠ could not save the permission mode — try /permissions');
+        // Saved: the status row shows the mode from now on, so no extra line
+        // above the input saying the same thing. Only a failure is announced.
+        if (ok) setRuntimeStatus((st) => ({ mode: st?.mode ?? 'off', permission: value, desktop: st?.desktop ?? '' }));
+        else setNotice('⚠ could not save the permission mode — try /permissions');
       }
       return;
     }
     await client.resolvePermission(active.id, value);
   }, [client, prompt]);
 
-  // First time in a chat with no saved permission mode (users from before
-  // the setup wizard asked): ask once, here, and remember it.
+  // Entering a chat. A NEW session (or no saved mode yet) asks for the
+  // permission mode, the current one listed first so Enter keeps it; a
+  // resumed session just says which mode is in effect, in one dim line.
   const askedModeRef = React.useRef(false);
+  const newSessionRef = React.useRef(false);
   React.useEffect(() => {
     if (phase !== 'chat' || askedModeRef.current) return;
     askedModeRef.current = true;
     // Older runtimes (and test doubles) don't expose it: then nothing to ask.
     if (typeof client.permissionMode !== 'function') return;
     client.permissionMode().then((mode) => {
-      if (mode !== null) return;
+      if (mode === undefined) return;
+      if (mode !== null) setRuntimeStatus((st) => ({ mode: st?.mode ?? 'off', permission: mode, desktop: st?.desktop ?? '' }));
+      if (mode !== null && !newSessionRef.current) {
+        setHistory((prev) => [...prev, {
+          id: `a_mode_${Date.now().toString(36)}`,
+          role: 'system',
+          content: mode === 'allow-all'
+            ? 'Allow All mode: Mercury acts without asking (blocked commands stay blocked) · /permissions to change'
+            : 'Ask Me mode: Mercury asks before writing files or running commands · /permissions to change',
+        }]);
+        return;
+      }
+      const options = [
+        { value: 'ask-me', label: 'Ask Me: confirm before writing files or running commands' },
+        { value: 'allow-all', label: 'Allow All: just do it (blocked commands stay blocked)' },
+      ];
+      if (mode === 'allow-all') options.reverse();
       setPrompt((current) => current ?? {
         id: LOCAL_PERMISSION_MODE_PROMPT,
         kind: 'choice',
-        text: 'How should Mercury handle risky actions? (asked once, change with /permissions)',
-        options: [
-          { value: 'ask-me', label: 'Ask Me: confirm before writing files or running commands' },
-          { value: 'allow-all', label: 'Allow All: just do it (blocked commands stay blocked)' },
-        ],
+        text: mode
+          ? `Permission mode for this session? (now: ${mode === 'allow-all' ? 'Allow All' : 'Ask Me'} — Enter keeps it)`
+          : 'How should Mercury handle risky actions? (change any time with /permissions)',
+        options,
       });
       setPromptIdx(0);
     }).catch(() => {});
@@ -412,16 +470,14 @@ export function AttachTui({ client, pid, version, onExit, onHandoff }: { client:
     }
 
     if (phase === 'pick') {
-      if (threadsLoaded && threads.length >= 0) {
-        const rows = threads.length + 1; // threads + "new session"
+      if (threadsLoaded) {
+        // Row 0 is "Start a new session" (the default), then recent sessions.
+        const rows = pickThreads.length + 1;
         if (key.upArrow) setPickIdx((i) => Math.max(0, i - 1));
         else if (key.downArrow) setPickIdx((i) => Math.min(rows - 1, i + 1));
         else if (key.return) {
-          if (pickIdx < threads.length) {
-            void startThread(threads[pickIdx]);
-          } else {
-            void startThread(null);
-          }
+          if (pickIdx === 0) void startThread(null);
+          else void startThread(pickThreads[pickIdx - 1]);
         } else if (key.escape) {
           exit();
         }
@@ -540,6 +596,9 @@ export function AttachTui({ client, pid, version, onExit, onHandoff }: { client:
   if (phase === 'pick') {
     // The same launch pad the main TUI opens with (ADR-024 made attach the
     // default launch; the first screen must not get plainer for it).
+    // Everything below the pad is budgeted to the terminal height: Ink drops
+    // rows off the top when the output is taller than the screen, and the
+    // wordmark was what went. Sessions beyond the budget fold into one line.
     const padState = {
       version: version ?? 'dev',
       agentName: 'Mercury',
@@ -548,9 +607,17 @@ export function AttachTui({ client, pid, version, onExit, onHandoff }: { client:
       web: { enabled: true, port: Number(new URL(client.getBaseUrl()).port) || 6174 },
       tokenInfo: tokenInfo ? { used: tokenInfo.used, budget: tokenInfo.budget, percentage: tokenInfo.budget > 0 ? Math.round((tokenInfo.used / tokenInfo.budget) * 100) : 0 } : null,
     } as unknown as TuiState;
+    const hidden = threads.length - pickThreads.length;
+    const rowFor = (idx: number, label: React.ReactNode, title?: string) => (
+      <Box key={`row:${idx}`}>
+        <Text color={idx === pickIdx ? 'cyan' : 'gray'}>{idx === pickIdx ? '› ' : '  '}</Text>
+        <Text bold={idx === pickIdx} color={idx === pickIdx ? 'white' : 'gray'}>{label}</Text>
+        {title ? <Text dimColor> {title}</Text> : null}
+      </Box>
+    );
     return (
       <Box flexDirection="column" paddingX={1}>
-        <LaunchPad state={padState} cols={terminalSize.cols} showDetails={false} tip={launchTip} />
+        <LaunchPad state={padState} cols={terminalSize.cols} showDetails={false} tip={pickTip} />
         <Text bold color="cyan">⚿ Attached to the running Mercury</Text>
         {pid != null && <Text dimColor>runtime PID {pid} · Ctrl+C detaches (Mercury keeps running)</Text>}
         <Text> </Text>
@@ -558,19 +625,9 @@ export function AttachTui({ client, pid, version, onExit, onHandoff }: { client:
           <Text dimColor>Loading sessions…</Text>
         ) : (
           [
-            ...threads.map((t, idx) => (
-              <Box key={t.id}>
-                <Text color={idx === pickIdx ? 'cyan' : 'gray'}>{idx === pickIdx ? '› ' : '  '}</Text>
-                <Text bold={idx === pickIdx} color={idx === pickIdx ? 'white' : 'gray'}>
-                  {t.alias} [{t.shortId}]
-                </Text>
-                <Text dimColor> {t.title}</Text>
-              </Box>
-            )),
-            <Box key="__new__">
-              <Text color={threads.length === pickIdx ? 'cyan' : 'gray'}>{threads.length === pickIdx ? '› ' : '  '}</Text>
-              <Text bold={threads.length === pickIdx} color={threads.length === pickIdx ? 'white' : 'gray'}>Start a new session</Text>
-            </Box>,
+            rowFor(0, 'Start a new session'),
+            ...pickThreads.map((t, idx) => rowFor(idx + 1, `${t.alias} [${t.shortId}]`, t.title)),
+            ...(hidden > 0 ? [<Text key="more" dimColor>  … {hidden} more · /sessions in the chat</Text>] : []),
           ]
         )}
         <Text dimColor>↑↓ select · Enter attach</Text>
@@ -578,27 +635,45 @@ export function AttachTui({ client, pid, version, onExit, onHandoff }: { client:
     );
   }
 
-  // Status row under the input (src/ui/status-bar.ts): left = what is
-  // happening now, right = where you are, fitted to the width in priority
-  // order so a long model or session name never crowds out the rest.
+  // What is happening now (spinner, phase, elapsed) is drawn in the chat,
+  // above the input, where the reply will appear. The row under the input
+  // (src/ui/status-bar.ts) is status only — where you are — fitted to the
+  // width in priority order so a long model or session name never crowds
+  // out the rest.
   const runningStep = [...steps].reverse().find((s) => !s.done);
-  const left = activityLine({
+  const live = activityLine({
     busy,
     phase: phaseFromStep(runningStep?.label, streamTail.length > 0),
     elapsedSec: turnStartedAt.current ? (Date.now() - turnStartedAt.current) / 1000 : 0,
     spinner: frame,
-    hints: terminalSize.cols < 70 ? '↵ send · /help' : '↵ send · /help · ctrl+c detach',
   });
+  // Left: which session this is (alias, then its title). Right: mode,
+  // budget, model — and Optimus while it is listening or working, which
+  // outranks everything: it is the last segment the fit ever drops, and the
+  // session shrinks to its alias to make room.
   const rowCols = Math.max(20, terminalSize.cols - 6);
-  const split = splitRow(rowCols, left.text);
+  const desktopActive = Boolean(runtimeStatus?.desktop);
+  const sessionLabel = !thread ? ''
+    : desktopActive || !thread.title || thread.title === 'New session' ? `⚿ ${thread.alias}`
+    : `⚿ ${thread.alias} · ${thread.title}`;
+  // One continuous row, left-aligned: session first, then the status right
+  // after it. Two halves pinned to opposite edges left a hole in the middle
+  // on any wide terminal. The status gets what it needs first; the session
+  // label takes what is left (shortened, or dropped on a very narrow row).
+  const split = splitRow(rowCols, sessionLabel, desktopActive ? 0.25 : 0.45);
   const right = fitSegments(statusSegments({
     provider: provider && provider.name ? provider : null,
     permission: runtimeStatus?.permission === 'allow-all' || runtimeStatus?.permission === 'ask-me' ? runtimeStatus.permission : null,
     tokensPct: tokenInfo && tokenInfo.budget > 0 ? (tokenInfo.used / tokenInfo.budget) * 100 : null,
     codeMode: runtimeStatus?.mode ?? 'off',
     desktop: runtimeStatus?.desktop ?? '',
-    session: thread ? { alias: thread.alias, shortId: thread.shortId } : null,
+    session: null, // shown on the left instead
   }), split.right);
+  const rightWidth = right.reduce((n, seg, i) => n + seg.text.length + (i > 0 ? 3 : 0), 0);
+  const sessionRoom = rowCols - rightWidth - (right.length > 0 ? 3 : 0);
+  const sessionText = sessionRoom >= 6
+    ? (sessionLabel.length <= sessionRoom ? sessionLabel : sessionLabel.slice(0, sessionRoom - 1) + '…')
+    : '';
   // The live tail looks exactly like the settled block it becomes: the same
   // MERCURY header and indent, the same markdown pass (an unclosed fence is
   // closed for rendering only). It used to be drawn with a cyan "│" bar that
@@ -623,19 +698,22 @@ export function AttachTui({ client, pid, version, onExit, onHandoff }: { client:
           </Box>
         </Box>
       )}
-      {steps.length > 0 && (
+      {/* Finished steps with a ✓, then one live line: spinner, phase and
+          elapsed time (cyan, yellow after 30 s, red after 90 s). Said here,
+          in the chat, and nowhere else. */}
+      {steps.some((step) => step.done) && (
         <Box flexDirection="column" paddingX={2} flexShrink={0}>
-          {steps.map((step) => (
+          {steps.filter((step) => step.done).map((step) => (
             <Box key={step.key}>
-              <Text color={step.done ? 'green' : 'cyan'}>{step.done ? '✓' : frame}</Text>
+              <Text color="green">✓</Text>
               <Text dimColor> {step.label}</Text>
             </Box>
           ))}
         </Box>
       )}
-      {streaming && tailLines.length === 0 && steps.length === 0 && (
+      {busy && !prompt && (
         <Box paddingX={2} flexShrink={0}>
-          <Text color="cyan">{frame}</Text><Text dimColor> working…</Text>
+          <Text color={live.color}>{live.text}</Text>
         </Box>
       )}
       {prompt && <AttachPromptView prompt={prompt} activeIdx={promptIdx} />}
@@ -662,18 +740,17 @@ export function AttachTui({ client, pid, version, onExit, onHandoff }: { client:
         </Box>
       </Box>
       <Box paddingX={3} flexShrink={0} height={1} overflow="hidden">
-        <Box width={split.left} flexShrink={0}>
-          <Text color={left.color} dimColor={left.dim} wrap="truncate-end">{left.text}</Text>
-        </Box>
-        <Spacer />
-        <Box flexShrink={0}>
+        {/* One Text so the row can only ever be truncated, never wrapped
+            onto a second (hidden) line that cut it off mid-way. */}
+        <Text wrap="truncate-end">
+          {sessionText && <Text color="blue">{sessionText}</Text>}
           {right.map((seg, idx) => (
             <React.Fragment key={`${seg.priority}:${idx}`}>
-              {idx > 0 && <Text color="gray"> · </Text>}
+              {(idx > 0 || sessionText) && <Text color="gray"> · </Text>}
               <Text color={seg.color}>{seg.text}</Text>
             </React.Fragment>
           ))}
-        </Box>
+        </Text>
       </Box>
     </Box>
   );
