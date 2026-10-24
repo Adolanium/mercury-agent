@@ -14,6 +14,7 @@ import { createRunCommandTool } from './shell/run-command.js';
 import { createCdTool } from './shell/cd.js';
 import { createApproveCommandTool } from './shell/approve-command.js';
 import { createInstallSkillTool } from './skills/install-skill.js';
+import { createCreateSkillTool } from './skills/create-skill.js';
 import { createListSkillsTool } from './skills/list-skills.js';
 import { createUseSkillTool } from './skills/use-skill.js';
 import { createScheduleTaskTool } from './scheduler/schedule-task.js';
@@ -22,6 +23,9 @@ import { createCancelTaskTool } from './scheduler/cancel-task.js';
 import { createBudgetStatusTool } from './system/budget-status.js';
 import { createSaveMemoryTool } from './system/save-memory.js';
 import { createSearchMemoryTool } from './system/search-memory.js';
+import { createForgetMemoryTool } from './system/forget-memory.js';
+import { createConfirmBeliefTool } from './system/confirm-belief.js';
+import { createCorrectBeliefTool } from './system/correct-belief.js';
 import { createGitStatusTool } from './git/git-status.js';
 import { createGitDiffTool } from './git/git-diff.js';
 import { createGitLogTool } from './git/git-log.js';
@@ -242,6 +246,7 @@ export class CapabilityRegistry {
 
     if (this.skillLoader) {
       this.tools.install_skill = createInstallSkillTool(this.skillLoader);
+      this.tools.create_skill = createCreateSkillTool(this.skillLoader);
       this.tools.list_skills = createListSkillsTool(this.skillLoader);
       this.tools.use_skill = createUseSkillTool(this.skillLoader, this.permissions);
       logger.info('Skill tools registered');
@@ -262,7 +267,11 @@ export class CapabilityRegistry {
     if (this.userMemory) {
       this.tools.save_memory = createSaveMemoryTool(this.userMemory);
       this.tools.search_memory = createSearchMemoryTool(this.userMemory);
-      logger.info('Second Brain tools registered (save_memory, search_memory)');
+      // Owner Model (ADR-026): the owner's verbs over what Mercury believes about them.
+      this.tools.forget_memory = createForgetMemoryTool(this.userMemory);
+      this.tools.confirm_belief = createConfirmBeliefTool(this.userMemory);
+      this.tools.correct_belief = createCorrectBeliefTool(this.userMemory);
+      logger.info('Second Brain tools registered (save_memory, search_memory, forget_memory, confirm_belief, correct_belief)');
     }
 
     if (manifest.capabilities.git?.enabled) {
@@ -317,7 +326,7 @@ export class CapabilityRegistry {
     if (this.permissions.getCurrentSenderRole() === 'member') {
       const filtered: Record<string, Tool> = {};
       for (const [name, tool] of Object.entries(this.tools)) {
-        if (name !== 'install_skill') filtered[name] = tool;
+        if (name !== 'install_skill' && name !== 'create_skill') filtered[name] = tool;
       }
       return filtered;
     }
