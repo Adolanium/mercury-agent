@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### MCP servers (ADR-029)
+- **MCP servers: Mercury can use tools from Model Context Protocol servers.** Add a local server (`mercury mcp add files --stdio npx -- -y @modelcontextprotocol/server-filesystem ~/Documents`) or a remote one (`--http <url>`), allow the tools you want (`mercury mcp allow`), and the agent can call them next to its built-in tools. Every MCP call asks first in Ask Me mode, and Allow All does not cover MCP tools; only tools you list in `autoApprove` run without a prompt, and only those run in scheduled tasks. Secrets stay in `.env` as `${env:NAME}` references and are masked everywhere they could appear. Local servers get a minimal environment, never Mercury's API keys, and remote servers go through the SSRF guard. Check health with `mercury mcp test`, `mercury doctor --mcp`, `/mcp` in chat, or the new read-only **MCP** dashboard page. The agent's file tools now always ask before writing `mercury.yaml`, `permissions.yaml` or `.env`, even under Allow All. See [MCP Servers](https://mercuryagent.sh/docs/integrations/mcp) and ADR-029.
+
 ## 1.4.2 — search that finds things, and a research prompt that asks only when you mean it
 
 ### Web search

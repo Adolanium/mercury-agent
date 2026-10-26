@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { getMercuryHome } from '../utils/config.js';
 import { logger } from '../utils/logger.js';
+import { redactSecrets } from '../utils/redact.js';
 import { BLOCKED_COMMANDS } from './shell/blocklist.js';
 import {
   evaluateArgvPolicy,
@@ -19,7 +20,51 @@ import {
   type ContextScope,
 } from './permission-context.js';
 
+import type { McpGateRequest, McpGateResult } from './mcp/types.js';
+
 export type { PermissionContext } from './permission-context.js';
+
+/**
+ * Arguments as the owner sees them in an approval prompt. Up to 4,000
+ * characters are shown whole. Longer ones keep the start AND the end, with
+ * the size of the hidden middle, so a payload can't hide after a cut.
+ */
+const MCP_ARGS_SHOW_ALL = 4000;
+const MCP_ARGS_HEAD = 2400;
+const MCP_ARGS_TAIL = 1200;
+
+export function formatMcpArgs(args: unknown): string {
+  let text: string;
+  try {
+    text = JSON.stringify(args ?? {}, null, 2) ?? '{}';
+  } catch {
+    text = String(args);
+  }
+  text = redactSecrets(text);
+  if (text.length <= MCP_ARGS_SHOW_ALL) return text;
+  const hidden = text.length - MCP_ARGS_HEAD - MCP_ARGS_TAIL;
+  return `${text.slice(0, MCP_ARGS_HEAD)}\n… [${hidden.toLocaleString('en-US')} characters not shown; the start and end are] …\n${text.slice(-MCP_ARGS_TAIL)}`;
+}
+
+/**
+ * A shell segment that changes MCP setup: `mercury mcp add|remove|enable|
+ * disable|allow|disallow`, or anything that names mercury.yaml (sed -i,
+ * tee, cp, mv, echo >>). Reading it is caught too; that only costs a prompt.
+ */
+export function changesMcpSetup(segment: string): boolean {
+  return /\bmcp\s+(add|remove|rm|enable|disable|allow|disallow)\b/.test(segment)
+    || /mercury\.ya?ml/i.test(segment);
+}
+
+function protectedConfigPaths(): string[] {
+  const home = getMercuryHome();
+  return [
+    join(home, 'mercury.yaml'),
+    join(home, 'permissions.yaml'),
+    join(home, '.env'),
+    join(homedir(), '.mercury', '.env'),
+  ];
+}
 
 /** Result of a shell permission check. */
 export interface ShellCheckResult {
@@ -368,6 +413,7 @@ export class PermissionManager {
   /** "Always allow" choices for plugin tools, per channel (see approvePluginTool). */
   private approvedPluginToolsByContext = new Map<string, Set<string>>();
   private approvedWritesByContext = new Map<string, Set<string>>();
+  private approvedMcpByContext = new Map<string, Set<string>>();
   /** Hard-linked files the user answered "always" for, per interaction context. */
   private approvedHardlinkReadsByContext = new Map<string, Set<string>>();
   /**
@@ -787,6 +833,9 @@ export class PermissionManager {
   }
 
   private async checkScopedAccess(path: string, mode: 'read' | 'write'): Promise<FsAccessResult> {
+    if (mode === 'write' && this.isProtectedConfigPath(path)) {
+      return this.confirmConfigWrite(path);
+    }
     if (mode === 'read' && this.isElevated('fs_read')) {
       return { allowed: true };
     }
@@ -910,6 +959,21 @@ export class PermissionManager {
       }
     }
 
+    // Adding or changing an MCP server is an owner action (ADR-029): a shell
+    // command that does it asks every time, Allow All and earlier "always"
+    // answers included, and never runs unattended. Otherwise an injected
+    // prompt could add a server whose autoApprove tools then run in
+    // scheduled turns.
+    if (segments.some(changesMcpSetup)) {
+      if (!this.askHandler || ctx.channelType === 'internal' || this.failClosed) {
+        return { allowed: false, reason: 'Changing MCP servers or mercury.yaml from a shell command needs the owner; run it yourself in a terminal', needsApproval: false };
+      }
+      const answer = await this.askHandler(`Run command (changes Mercury's MCP servers or config, so it always asks): ${trimmed}`);
+      return answer === 'yes' || answer === 'always'
+        ? { allowed: true, needsApproval: false, lane: 'shell' }
+        : { allowed: false, reason: `User denied: ${trimmed}`, needsApproval: false };
+    }
+
     if (this.isGlobalAutoApproveActive()) {
       logger.info({ cmd: trimmed }, 'Shell command auto-approved (Local allow-all mode)');
       return { allowed: true, needsApproval: false, lane: 'shell' };
@@ -1022,6 +1086,59 @@ export class PermissionManager {
     }
 
     return { allowed: false, reason: 'Command not in auto-approve list — requires approval', needsApproval: true };
+  }
+
+  async checkMcpTool(request: McpGateRequest): Promise<McpGateResult> {
+    const { serverId, toolName } = request;
+    const label = `${serverId}/${toolName}`;
+    if (request.autoApprove) return { allowed: true };
+    if (this.failClosed) {
+      return { allowed: false, reason: `Fail-closed: MCP tool ${label} is not in tools.autoApprove` };
+    }
+    const ctx = this.ctx();
+    if (this.approvedMcpByContext.get(ctx.channelId)?.has(label)) return { allowed: true };
+    if (!this.askHandler || ctx.channelType === 'internal') {
+      return {
+        allowed: false,
+        reason: `MCP tool ${label} needs approval; add "${toolName}" to tools.autoApprove for server "${serverId}" to run it unattended`,
+      };
+    }
+    const answer = await this.askHandler(
+      `MCP tool call\nServer: ${serverId}\nTool:   ${toolName}\nArguments:\n${formatMcpArgs(request.args)}`,
+    );
+    if (answer === 'yes') return { allowed: true };
+    if (answer === 'always') {
+      const approved = this.approvedMcpByContext.get(ctx.channelId) ?? new Set<string>();
+      approved.add(label);
+      this.approvedMcpByContext.set(ctx.channelId, approved);
+      return { allowed: true };
+    }
+    return { allowed: false, reason: `User denied MCP tool ${label}` };
+  }
+
+  private isProtectedConfigPath(path: string): boolean {
+    const caseInsensitive = process.platform === 'win32' || process.platform === 'darwin';
+    const normalize = (p: string) => (caseInsensitive ? p.toLowerCase() : p);
+    const protectedPaths = new Set(
+      protectedConfigPaths().flatMap((p) => [resolve(p), this.canonicalizePath(resolve(p))]).map(normalize),
+    );
+    const resolved = resolve(path);
+    return [resolved, this.canonicalizePath(resolved)].some((candidate) => protectedPaths.has(normalize(candidate)));
+  }
+
+  private async confirmConfigWrite(path: string): Promise<FsAccessResult> {
+    const resolved = resolve(path);
+    if (this.failClosed || !this.askHandler || this.ctx().channelType === 'internal') {
+      return {
+        allowed: false,
+        reason: `Permission denied: ${resolved} is a Mercury config file and can only be changed with the owner's confirmation`,
+      };
+    }
+    const answer = await this.askHandler(
+      `Write to Mercury config file: ${resolved}\n(it controls MCP servers, permissions and secrets)`,
+    );
+    if (answer === 'yes' || answer === 'always') return { allowed: true };
+    return { allowed: false, reason: `User denied write to ${path}` };
   }
 
   /**
